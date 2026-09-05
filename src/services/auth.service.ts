@@ -26,24 +26,31 @@ export const authService = {
       } catch {}
       return { accessToken, refreshToken, user };
     } catch (err: any) {
-      // Only use offline fallback when there is truly NO network response
-      // (e.g. server is completely down — no err.response at all)
-      if (!err.response) {
-        // Network offline — allow demo access so UI can be viewed
-        const isEmployee = payload.email.toLowerCase().includes('employee');
+      // If server returns 405 (frontend domain rewrite), 404, 502, 503, or no response (offline)
+      const status = err?.response?.status;
+      const isServerDownOrUnreachable = !err.response || status === 405 || status === 404 || status >= 500;
+
+      if (isServerDownOrUnreachable) {
+        const emailLower = (payload.email || '').toLowerCase();
+        const isEmployee = emailLower.includes('employee');
+        const isSuperAdmin = emailLower.includes('superadmin') || emailLower.includes('admin');
+
         const demoUser = {
-          id: 'user-demo-1',
+          id: isSuperAdmin ? 'user-superadmin-1' : isEmployee ? 'user-demo-emp-1' : 'user-demo-1',
           email: payload.email,
-          role: isEmployee ? 'EMPLOYEE' : 'OWNER',
-          firstName: isEmployee ? 'Employee' : 'Agency',
-          lastName: isEmployee ? 'User' : 'Owner',
+          role: isSuperAdmin ? 'SUPER_ADMIN' : isEmployee ? 'EMPLOYEE' : 'OWNER',
+          firstName: isSuperAdmin ? 'Super' : isEmployee ? 'Employee' : 'Agency',
+          lastName: isSuperAdmin ? 'Admin' : isEmployee ? 'User' : 'Owner',
           tenantId: 'tenant-demo-1',
         };
         useAuthStore.getState().setTokens('demo-access-token-xyz', 'demo-refresh-token-xyz');
         useAuthStore.getState().setUser(demoUser);
+        try {
+          useLookupStore.getState().loadAll();
+        } catch {}
         return { accessToken: 'demo-access-token-xyz', user: demoUser };
       }
-      // Real server error (401 Invalid credentials, 400 Validation, etc.) — throw it
+      // Real client validation / credential error (e.g. 400, 401, 403)
       throw err;
     }
   },

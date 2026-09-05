@@ -1,7 +1,10 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { useAuthStore } from '@store/auth.store';
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? '/api/v1';
+const envUrl = import.meta.env.VITE_API_URL;
+const BASE_URL = (envUrl && envUrl.trim() !== '' && envUrl !== '/api/v1')
+  ? envUrl
+  : 'https://insumitrafinal-20072026.onrender.com/api/v1';
 
 export const api = axios.create({ baseURL: BASE_URL });
 
