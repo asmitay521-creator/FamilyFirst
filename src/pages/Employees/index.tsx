@@ -1,7 +1,7 @@
 import React from 'react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Pencil, UserX, UserCheck, AlertTriangle } from 'lucide-react';
+import { Pencil, UserX, UserCheck, AlertTriangle, Eye, EyeOff } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { employeesService } from '@api/index';
 import DataTable, { Column } from '@comps/common/DataTable';
@@ -22,6 +22,7 @@ const editSchema = z.object({
   firstName:         z.string().trim().min(1, 'First Name is required (पहिले नाव आवश्यक आहे)'),
   lastName:          z.string().trim().min(1, 'Last Name is required (आडनाव आवश्यक आहे)'),
   phone:             z.string().trim().min(1, 'Phone is required (मोबाईल नंबर आवश्यक आहे)').regex(/^\d{10}$/, 'Mobile number must be exactly 10 digits (१० अंकी नंबर असावा)'),
+  password:          z.string().min(8, 'Password must be at least 8 characters (किमान ८ अक्षरे असावीत)').optional().or(z.literal('')),
   designation:       z.string().optional(),
   department:        z.string().optional(),
   dateOfJoining:     z.string().or(z.literal('')).optional(),
@@ -48,6 +49,7 @@ export default function Employees() {
 
   const [page, setPage] = useState(1);
   const [editTarget, setEditTarget]         = useState<Employee | null>(null);
+  const [showPassword, setShowPassword]     = useState(false);
   const [deactivateTarget, setDeactivateTarget] = useState<Employee | null>(null);
   const qc = useQueryClient();
 
@@ -107,9 +109,11 @@ export default function Employees() {
 
   const openEdit = (emp: Employee) => {
     setEditTarget(emp);
+    setShowPassword(false);
     setEditVal('firstName',         emp.firstName);
     setEditVal('lastName',          emp.lastName);
     setEditVal('phone',             emp.phone ?? '');
+    setEditVal('password',          '');
     setEditVal('designation',       emp.designation ?? '');
     setEditVal('department',        emp.department ?? '');
     setEditVal('dateOfJoining',     emp.dateOfJoining ? emp.dateOfJoining.slice(0, 10) : '');
@@ -223,7 +227,13 @@ export default function Employees() {
       <Modal open={!!editTarget} onClose={() => { setEditTarget(null); resetEdit(); }} title="Edit Employee" size="xl">
         <form
           onSubmit={handleEditSubmit(
-            body => updateEmployee.mutateAsync({ id: editTarget!.id, body }),
+            body => {
+              const payload: any = { ...body };
+              if (!payload.password) {
+                delete payload.password;
+              }
+              return updateEmployee.mutateAsync({ id: editTarget!.id, body: payload });
+            },
             () => toast.error('कृपया सर्व आवश्यक माहिती भरा (Please fill all required fields)')
           )}
           className="space-y-3"
@@ -267,6 +277,31 @@ export default function Employees() {
                 inputMode="numeric"
               />
               {editErrors.phone && <p className="text-xs text-red-500 font-semibold mt-1">{editErrors.phone.message}</p>}
+            </div>
+            <div>
+              <label className="label flex items-center justify-between">
+                <span>Password</span>
+                <span className="text-[10px] text-slate-400 font-normal">(Leave blank to keep unchanged)</span>
+              </label>
+              <div className="relative">
+                <input
+                  {...regEdit('password')}
+                  type={showPassword ? 'text' : 'password'}
+                  className={clsx('input pr-10', editErrors.password && 'border-red-500 focus:border-red-500 focus:ring-red-200')}
+                  placeholder="Enter new password (min 8 chars)"
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer"
+                  tabIndex={-1}
+                  title={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+              {editErrors.password && <p className="text-xs text-red-500 font-semibold mt-1">{editErrors.password.message}</p>}
             </div>
             <div>
               <label className="label">Designation</label>
