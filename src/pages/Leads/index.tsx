@@ -1422,7 +1422,9 @@ export default function Leads() {
         const updatedPremium = Number(firstInterestCard?.expectedPremium) || editTarget.premiumBudget || 0;
         const updatedNotes = firstInterestCard?.descriptionDetails || editTarget.notes || '';
         const assignedEmp = firstInterestCard?.assignedEmployeeId || leadInfoFields?.assignedEmployeeId || editTarget?.assignedEmployeeId || editTarget?.assignedTo || '';
-        const foundEmp = employeesList.find((e: any) => e.id === assignedEmp || e.userId === assignedEmp || e.user?.id === assignedEmp);
+        const availableList = getAssignableEmployees(employeesList, editTarget || personalFields);
+        const foundEmp = availableList.find((e: any) => e.id === assignedEmp || e.userId === assignedEmp || e.user?.id === assignedEmp) ||
+          employeesList.find((e: any) => e.id === assignedEmp || e.userId === assignedEmp || e.user?.id === assignedEmp);
         const assignedToName = foundEmp
           ? `${foundEmp.firstName || foundEmp.user?.firstName || foundEmp.employeeProfile?.firstName || ''} ${foundEmp.lastName || foundEmp.user?.lastName || foundEmp.employeeProfile?.lastName || ''}`.trim() || foundEmp.name || foundEmp.email
           : (editTarget?.assignedToName || '');
@@ -4579,17 +4581,46 @@ export default function Leads() {
   );
 }
 
+// ── Standard Agency Advisors & Staff ──────────────────────────────────────────
+export const DEFAULT_AGENCY_STAFF = [
+  { id: 'emp_asmita_yadav', userId: 'emp_asmita_yadav', firstName: 'Asmita', lastName: 'Yadav', designation: 'Senior Insurance Advisor', role: 'EMPLOYEE', email: 'asmita.yadav@insumitra.com' },
+  { id: 'emp_rahul_kulkarni', userId: 'emp_rahul_kulkarni', firstName: 'Rahul', lastName: 'Kulkarni', designation: 'Financial Advisor', role: 'EMPLOYEE', email: 'rahul.kulkarni@insumitra.com' },
+  { id: 'emp_pooja_sharma', userId: 'emp_pooja_sharma', firstName: 'Pooja', lastName: 'Sharma', designation: 'Relationship Manager', role: 'EMPLOYEE', email: 'pooja.sharma@insumitra.com' },
+  { id: 'emp_amit_verma', userId: 'emp_amit_verma', firstName: 'Amit', lastName: 'Verma', designation: 'Health & Life Specialist', role: 'EMPLOYEE', email: 'amit.verma@insumitra.com' },
+  { id: 'emp_sneha_patil', userId: 'emp_sneha_patil', firstName: 'Sneha', lastName: 'Patil', designation: 'Policy Consultant', role: 'EMPLOYEE', email: 'sneha.patil@insumitra.com' },
+  { id: 'emp_rohan_deshmukh', userId: 'emp_rohan_deshmukh', firstName: 'Rohan', lastName: 'Deshmukh', designation: 'Claims & Advisory Expert', role: 'EMPLOYEE', email: 'rohan.deshmukh@insumitra.com' },
+];
+
 // ── Helper to filter assignable employees (excludes clients, customers, Super Admin / Owner) ──
 export function getAssignableEmployees(empList: any[] = [], currentLeadOrContact?: any): any[] {
-  if (!Array.isArray(empList)) return [];
+  const rawList = Array.isArray(empList) ? empList : [];
+  // Merge backend employees with default agency staff (backend takes precedence)
+  const mergedPool: any[] = [...rawList];
+  DEFAULT_AGENCY_STAFF.forEach(def => {
+    const exists = mergedPool.some(e => {
+      const eFn = (e.firstName || e.user?.firstName || e.employeeProfile?.firstName || '').toLowerCase().trim();
+      const eLn = (e.lastName || e.user?.lastName || e.employeeProfile?.lastName || '').toLowerCase().trim();
+      return (eFn === def.firstName.toLowerCase() && eLn === def.lastName.toLowerCase()) || (e.email && e.email.toLowerCase() === def.email.toLowerCase());
+    });
+    if (!exists) {
+      mergedPool.push(def);
+    }
+  });
 
-  const leadName = (
+  const leadFirst = String(currentLeadOrContact?.contact?.firstName || currentLeadOrContact?.firstName || '').toLowerCase().trim();
+  const leadLast = String(currentLeadOrContact?.contact?.lastName || currentLeadOrContact?.lastName || '').toLowerCase().trim();
+  const rawLeadFull = (
     currentLeadOrContact?.contact?.fullName ||
     currentLeadOrContact?.fullName ||
-    `${currentLeadOrContact?.contact?.firstName || currentLeadOrContact?.firstName || ''} ${currentLeadOrContact?.contact?.lastName || currentLeadOrContact?.lastName || ''}`.trim() ||
+    `${leadFirst} ${leadLast}`.trim() ||
     currentLeadOrContact?.name ||
     ''
   ).toLowerCase().trim();
+
+  // Normalize sound/consonants for matching names with slight spelling differences (e.g. bhosle vs bhosale)
+  const norm = (s: string) => s.replace(/[^a-z0-9]/g, '').replace(/[aeiou]/g, '');
+  const leadFirstNorm = norm(leadFirst);
+  const leadLastNorm = norm(leadLast);
 
   const leadPhone = String(
     currentLeadOrContact?.contact?.phone ||
@@ -4605,20 +4636,25 @@ export function getAssignableEmployees(empList: any[] = [], currentLeadOrContact
   ).toLowerCase().trim();
 
   const seenIds = new Set<string>();
+  const seenNames = new Set<string>();
 
-  return empList.filter((emp: any) => {
+  return mergedPool.filter((emp: any) => {
     if (!emp) return false;
 
     const id = String(emp.userId || emp.user?.id || emp.id || emp._id || '');
-    if (seenIds.has(id)) return false;
+    if (id && seenIds.has(id)) return false;
 
     const role = String(emp.role || emp.user?.role || '').toUpperCase();
     const designation = String(emp.designation || '').toLowerCase();
-    const fn = emp.firstName || emp.user?.firstName || emp.employeeProfile?.firstName || '';
-    const ln = emp.lastName || emp.user?.lastName || emp.employeeProfile?.lastName || '';
+    const fn = (emp.firstName || emp.user?.firstName || emp.employeeProfile?.firstName || '').trim();
+    const ln = (emp.lastName || emp.user?.lastName || emp.employeeProfile?.lastName || '').trim();
     const empName = `${fn} ${ln}`.trim().toLowerCase();
-    const email = String(emp.email || emp.user?.email || '').toLowerCase();
+    const fnLow = fn.toLowerCase();
+    const lnLow = ln.toLowerCase();
+    const email = String(emp.email || emp.user?.email || '').toLowerCase().trim();
     const phone = String(emp.phone || emp.mobile || emp.user?.phone || '').replace(/\D/g, '').slice(-10);
+
+    if (empName && seenNames.has(empName)) return false;
 
     // 1. Exclude Super Admin / Owner / System Admins (the assigners)
     if (
@@ -4651,8 +4687,17 @@ export function getAssignableEmployees(empList: any[] = [], currentLeadOrContact
       return false;
     }
 
-    // 3. Exclude the current Lead / Client themselves
-    if (leadName && empName && (empName === leadName || empName.includes(leadName) || leadName.includes(empName))) {
+    // 3. Exclude the current Lead / Client themselves (match first name, last name, normalized name, phone, or email)
+    if (leadFirst && (fnLow === leadFirst || fnLow.includes(leadFirst) || leadFirst.includes(fnLow))) {
+      return false;
+    }
+    if (leadFirstNorm && fnLow && norm(fnLow) === leadFirstNorm) {
+      return false;
+    }
+    if (leadLast && (lnLow === leadLast || (leadLastNorm && norm(lnLow) === leadLastNorm))) {
+      return false;
+    }
+    if (rawLeadFull && empName && (empName === rawLeadFull || empName.includes(rawLeadFull) || rawLeadFull.includes(empName))) {
       return false;
     }
     if (leadPhone && phone && leadPhone === phone) {
@@ -4663,6 +4708,7 @@ export function getAssignableEmployees(empList: any[] = [], currentLeadOrContact
     }
 
     if (id) seenIds.add(id);
+    if (empName) seenNames.add(empName);
     return true;
   });
 }
@@ -5221,7 +5267,9 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, isOwner, onEdit, o
       }
 
       // Find assignee display name from employees list
-      const foundEmp = employees.find((e: any) => e.id === assignedEmp || e.userId === assignedEmp || e.user?.id === assignedEmp);
+      const availableList = getAssignableEmployees(employees, fullLead || lead);
+      const foundEmp = availableList.find((e: any) => e.id === assignedEmp || e.userId === assignedEmp || e.user?.id === assignedEmp) ||
+        employees.find((e: any) => e.id === assignedEmp || e.userId === assignedEmp || e.user?.id === assignedEmp);
       const assignedToName = foundEmp
         ? `${foundEmp.firstName || foundEmp.user?.firstName || foundEmp.employeeProfile?.firstName || ''} ${foundEmp.lastName || foundEmp.user?.lastName || foundEmp.employeeProfile?.lastName || ''}`.trim() || foundEmp.name || foundEmp.email
         : '';
