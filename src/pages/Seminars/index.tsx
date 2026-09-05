@@ -712,7 +712,7 @@ export default function Seminars() {
 
         {/* Filter Tabs */}
         <div className="flex items-center gap-2 shrink-0 ml-auto">
-          {/* Small Super Admin Website Seminar Price Pill */}
+          {/* Super Admin Website Seminar Price Button */}
           {isSuperAdmin && (
             <button
               type="button"
@@ -720,13 +720,13 @@ export default function Seminars() {
                 setConfigFormData(seminarConfig);
                 setSuperAdminConfigModalOpen(true);
               }}
-              className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border shadow-2xs shrink-0 whitespace-nowrap bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 hover:border-purple-400 flex items-center gap-1.5 group"
-              title="Super Admin: Click to change live website price"
+              className="px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm shrink-0 whitespace-nowrap bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white flex items-center gap-2 shadow-purple-500/20 hover:shadow-md hover:scale-105 active:scale-95"
+              title="Super Admin: Click to change live website seminar price"
             >
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[11px] text-slate-500 font-medium">Website Price:</span>
-              <strong className="text-purple-700 font-black text-xs">₹{seminarConfig.price}/-</strong>
-              <Pencil size={11} className="text-purple-600 group-hover:scale-110 transition-transform ml-0.5" />
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+              <span>Website Price:</span>
+              <strong className="text-amber-300 font-extrabold text-xs">₹{seminarConfig.price}/-</strong>
+              <Pencil size={11} className="text-white/80" />
             </button>
           )}
 
@@ -894,6 +894,18 @@ export default function Seminars() {
                           >
                             <Pencil size={12} />
                           </button>
+                          {isSuperAdmin && (
+                            <button
+                              title={`Edit Website Seminar Price (Live: ₹${seminarConfig.price}/-)`}
+                              className="p-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold flex items-center justify-center cursor-pointer shadow-sm shadow-amber-500/20 hover:shadow-md hover:scale-105 transition-all"
+                              onClick={() => {
+                                setConfigFormData(seminarConfig);
+                                setSuperAdminConfigModalOpen(true);
+                              }}
+                            >
+                              <Tag size={12} />
+                            </button>
+                          )}
                           <button
                             title="Delete Entry"
                             className="p-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white font-bold flex items-center justify-center cursor-pointer shadow-sm shadow-rose-500/20 hover:shadow-md hover:scale-105 transition-all"
