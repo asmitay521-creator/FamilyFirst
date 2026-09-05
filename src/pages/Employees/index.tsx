@@ -19,9 +19,9 @@ import { useAuthStore } from '@store/auth.store';
 import { canEditModule, canManageModule } from '../../utils/permissions';
 
 const editSchema = z.object({
-  firstName:         z.string().min(1, 'Required'),
-  lastName:          z.string().min(1, 'Required'),
-  phone:             z.string().min(1, 'Phone is required').regex(/^\d{10}$/, 'Mobile number must be exactly 10 digits'),
+  firstName:         z.string().trim().min(1, 'First Name is required (पहिले नाव आवश्यक आहे)'),
+  lastName:          z.string().trim().min(1, 'Last Name is required (आडनाव आवश्यक आहे)'),
+  phone:             z.string().trim().min(1, 'Phone is required (मोबाईल नंबर आवश्यक आहे)').regex(/^\d{10}$/, 'Mobile number must be exactly 10 digits (१० अंकी नंबर असावा)'),
   designation:       z.string().optional(),
   department:        z.string().optional(),
   dateOfJoining:     z.string().or(z.literal('')).optional(),
@@ -221,24 +221,38 @@ export default function Employees() {
 
       {/* Edit Modal */}
       <Modal open={!!editTarget} onClose={() => { setEditTarget(null); resetEdit(); }} title="Edit Employee" size="xl">
-        <form onSubmit={handleEditSubmit(body => updateEmployee.mutateAsync({ id: editTarget!.id, body }))} className="space-y-3">
+        <form
+          onSubmit={handleEditSubmit(
+            body => updateEmployee.mutateAsync({ id: editTarget!.id, body }),
+            () => toast.error('कृपया सर्व आवश्यक माहिती भरा (Please fill all required fields)')
+          )}
+          className="space-y-3"
+        >
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="label">First Name *</label>
-              <input {...regEdit('firstName')} className="input" />
-              {editErrors.firstName && <p className="text-xs text-red-500 mt-1">{editErrors.firstName.message}</p>}
+              <label className="label">First Name <span className="text-red-500 font-bold">*</span></label>
+              <input
+                {...regEdit('firstName')}
+                className={clsx('input', editErrors.firstName && 'border-red-500 focus:border-red-500 focus:ring-red-200')}
+                placeholder="First Name"
+              />
+              {editErrors.firstName && <p className="text-xs text-red-500 font-semibold mt-1">{editErrors.firstName.message}</p>}
             </div>
             <div>
-              <label className="label">Last Name *</label>
-              <input {...regEdit('lastName')} className="input" />
-              {editErrors.lastName && <p className="text-xs text-red-500 mt-1">{editErrors.lastName.message}</p>}
+              <label className="label">Last Name <span className="text-red-500 font-bold">*</span></label>
+              <input
+                {...regEdit('lastName')}
+                className={clsx('input', editErrors.lastName && 'border-red-500 focus:border-red-500 focus:ring-red-200')}
+                placeholder="Last Name"
+              />
+              {editErrors.lastName && <p className="text-xs text-red-500 font-semibold mt-1">{editErrors.lastName.message}</p>}
             </div>
             <div>
               <label className="label">Email</label>
               <input type="email" className="input bg-gray-50 text-gray-500 cursor-not-allowed" value={editTarget?.user?.email ?? ''} disabled readOnly />
             </div>
             <div>
-              <label className="label">Phone *</label>
+              <label className="label">Phone <span className="text-red-500 font-bold">*</span></label>
               <input
                 {...regEdit('phone', {
                   onChange: (e) => {
@@ -247,12 +261,12 @@ export default function Employees() {
                   }
                 })}
                 type="tel"
-                className="input"
+                className={clsx('input', editErrors.phone && 'border-red-500 focus:border-red-500 focus:ring-red-200')}
                 placeholder="10-digit mobile number"
                 maxLength={10}
                 inputMode="numeric"
               />
-              {editErrors.phone && <p className="text-xs text-red-500 mt-1">{editErrors.phone.message}</p>}
+              {editErrors.phone && <p className="text-xs text-red-500 font-semibold mt-1">{editErrors.phone.message}</p>}
             </div>
             <div>
               <label className="label">Designation</label>
