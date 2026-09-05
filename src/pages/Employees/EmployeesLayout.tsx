@@ -13,6 +13,7 @@ import clsx from 'clsx';
 import { DatePicker } from '@comps/common/DatePicker';
 
 import { canEditModule, canManageModule } from '../../utils/permissions';
+import { saveStoredEmployeePassword } from '../../utils/employeePasswordStorage';
 
 // ─── Shared Employee type (re-exported so sub-pages can import it) ────────────
 export interface Employee {
@@ -260,8 +261,20 @@ export default function EmployeesLayout() {
 
   const createEmployee = useMutation({
     mutationFn: (body: CreateForm) => employeesService.create(body),
-    onSuccess: () => {
+    onSuccess: (res: any, variables: CreateForm) => {
       qc.invalidateQueries({ queryKey: ['employees'] });
+      const newEmpId = res?.data?.id || res?.id;
+      if (variables.password) {
+        saveStoredEmployeePassword(
+          {
+            id: newEmpId,
+            email: variables.email,
+            phone: variables.phone,
+            firstName: variables.firstName,
+          },
+          variables.password
+        );
+      }
       setModalOpen(false);
       reset();
       toast.success('Employee created successfully');

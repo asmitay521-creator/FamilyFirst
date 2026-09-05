@@ -17,6 +17,7 @@ import { sortData } from '../../utils/sortUtils';
 
 import { useAuthStore } from '@store/auth.store';
 import { canEditModule, canManageModule } from '../../utils/permissions';
+import { getStoredEmployeePassword, saveStoredEmployeePassword } from '../../utils/employeePasswordStorage';
 
 const editSchema = z.object({
   firstName:         z.string().trim().min(1, 'First Name is required (पहिले नाव आवश्यक आहे)'),
@@ -89,8 +90,19 @@ export default function Employees() {
 
   const updateEmployee = useMutation({
     mutationFn: ({ id, body }: { id: string; body: any }) => employeesService.update(id, body),
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       qc.invalidateQueries({ queryKey: ['employees'] });
+      if (variables.body?.password) {
+        saveStoredEmployeePassword(
+          {
+            id: variables.id,
+            email: editTarget?.user?.email,
+            phone: variables.body.phone,
+            firstName: variables.body.firstName,
+          },
+          variables.body.password
+        );
+      }
       toast.success('Employee updated');
       setEditTarget(null);
     },
@@ -113,8 +125,10 @@ export default function Employees() {
     setEditVal('firstName',         emp.firstName);
     setEditVal('lastName',          emp.lastName);
     setEditVal('phone',             emp.phone ?? '');
-    const currentPass = (emp as any).password || (emp as any).user?.password || (emp as any).plainPassword || (emp as any).user?.plainPassword || '';
-    setEditVal('password',          currentPass);
+    
+    const pass = getStoredEmployeePassword(emp);
+    setEditVal('password',          pass);
+    
     setEditVal('designation',       emp.designation ?? '');
     setEditVal('department',        emp.department ?? '');
     setEditVal('dateOfJoining',     emp.dateOfJoining ? emp.dateOfJoining.slice(0, 10) : '');
@@ -135,9 +149,9 @@ export default function Employees() {
       const detailed = await employeesService.get(emp.id);
       const detailData = detailed?.data ?? detailed;
       if (detailData) {
-        const pass = detailData.password || detailData.user?.password || detailData.plainPassword || detailData.user?.plainPassword;
-        if (pass) {
-          setEditVal('password', pass);
+        const detailPass = getStoredEmployeePassword(detailData);
+        if (detailPass) {
+          setEditVal('password', detailPass);
         }
       }
     } catch {
