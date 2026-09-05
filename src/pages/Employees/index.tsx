@@ -216,7 +216,7 @@ export default function Employees() {
           if (sortKey === k) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
           else { setSortKey(k); setSortDir('asc'); }
         }}
-        onRowClick={r => navigate(`/employees/${r.id}`)}
+        onRowClick={r => openEdit(r)}
       />
 
       {/* Edit Modal */}
