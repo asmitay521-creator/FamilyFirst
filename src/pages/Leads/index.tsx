@@ -4607,6 +4607,7 @@ function KanbanCard({ card, employeesList, onEdit, onDelete, onOpen, onCall, onW
     ? `${card.contact?.firstName || ''} ${card.contact?.lastName || ''}`.trim()
     : (card.name || card.fullName || card.clientName || 'Lead').trim();
 
+  const phoneNum = card.contact?.phone || card.phone || card.mobile || '';
   const productName = card.plan?.name || (card.interests && card.interests.length > 0 ? card.interests.join(', ') : 'Mutual Funds');
   const premiumVal = Number(card.premiumBudget || card.expectedPremium || 0);
 
@@ -4676,10 +4677,16 @@ function KanbanCard({ card, employeesList, onEdit, onDelete, onOpen, onCall, onW
         </div>
       </div>
 
-      {/* Line 2: Created Date */}
-      <p className="text-[10px] text-slate-400 font-semibold leading-none">
-        Created {formattedDate}
-      </p>
+      {/* Line 2: Created Date (Left) + Client Phone Number (Right) */}
+      <div className="flex items-center justify-between gap-1 text-[10px] font-semibold leading-none">
+        <span className="text-slate-400">Created {formattedDate}</span>
+        {phoneNum && (
+          <span className="text-slate-700 font-bold flex items-center gap-1 bg-slate-50 border border-slate-200/70 px-1.5 py-0.5 rounded-md">
+            <Phone size={9} className="text-purple-600" />
+            {phoneNum}
+          </span>
+        )}
+      </div>
 
       {/* Line 3: Product Category (Left) + Expected Premium (Right) */}
       <div className="flex items-center justify-between gap-1.5 min-w-0 pt-0.5">
@@ -4712,10 +4719,10 @@ function KanbanCard({ card, employeesList, onEdit, onDelete, onOpen, onCall, onW
             <span className="text-[10px] text-slate-300 font-medium">—</span>
           )}
 
-          <button onClick={() => onCall(card.contact?.phone)} className="p-1 rounded bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-600 cursor-pointer" title="Call">
+          <button onClick={() => onCall(phoneNum)} className="p-1 rounded bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-600 cursor-pointer" title="Call">
             <Phone size={10} />
           </button>
-          <button onClick={() => onWhatsApp(card.contact?.phone)} className="p-1 rounded bg-green-50 border border-green-200 hover:bg-green-100 text-green-600 cursor-pointer" title="WhatsApp">
+          <button onClick={() => onWhatsApp(phoneNum)} className="p-1 rounded bg-green-50 border border-green-200 hover:bg-green-100 text-green-600 cursor-pointer" title="WhatsApp">
             <MessageCircle size={10} />
           </button>
         </div>
