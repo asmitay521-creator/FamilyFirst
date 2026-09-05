@@ -431,8 +431,7 @@ export default function Leads() {
   const [filterStages, setFilterStages] = useState<string[]>([]);
   const [filterTypes, setFilterTypes] = useState<string[]>([]);
   const [filterEmployee, setFilterEmployee] = useState('');
-  const [filterDateFrom, setFilterDateFrom] = useState('');
-  const [filterDateTo, setFilterDateTo] = useState('');
+  const [filterDate, setFilterDate] = useState('');
   const [search, setSearch] = useState('');
 
   const [planFilterOpen, setPlanFilterOpen] = useState(false);
@@ -1257,19 +1256,20 @@ export default function Leads() {
         if (!filterTypes.includes(lType)) return false;
       }
 
-      if (filterDateFrom) {
-        const fromDate = new Date(filterDateFrom); fromDate.setHours(0, 0, 0, 0);
+      if (filterDate) {
+        const targetDate = new Date(filterDate);
+        targetDate.setHours(0, 0, 0, 0);
         const lDate = lead.followUpDate ? new Date(lead.followUpDate) : (lead.createdAt ? new Date(lead.createdAt) : null);
-        if (!lDate || lDate < fromDate) return false;
-      }
-      if (filterDateTo) {
-        const toDate = new Date(filterDateTo); toDate.setHours(23, 59, 59, 999);
-        const lDate = lead.followUpDate ? new Date(lead.followUpDate) : (lead.createdAt ? new Date(lead.createdAt) : null);
-        if (!lDate || lDate > toDate) return false;
+        if (lDate) {
+          lDate.setHours(0, 0, 0, 0);
+          if (lDate.getTime() !== targetDate.getTime()) return false;
+        } else {
+          return false;
+        }
       }
       return true;
     });
-  }, [leadsFlat, search, selectedFilters, filterProducts, excludeProduct, filterPlans, filterEmployee, filterStatuses, filterStages, filterTypes, filterDateFrom, filterDateTo, user, employeesList]);
+  }, [leadsFlat, search, selectedFilters, filterProducts, excludeProduct, filterPlans, filterEmployee, filterStatuses, filterStages, filterTypes, filterDate, user, employeesList]);
 
   // Sorted leads for table
   const sortedLeads = useMemo(() => {
@@ -2317,22 +2317,25 @@ export default function Leads() {
               <span className="w-2 h-2 rounded-full bg-rose-400" /> Inactive
             </button>
 
-            {/* Date Range Selector */}
+            {/* Single Date Selector */}
             <div className="flex flex-nowrap items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 shadow-2xs shrink-0">
               <Calendar size={13} className="text-slate-400 shrink-0" />
               <DatePicker
-                value={filterDateFrom}
-                onChange={val => { setFilterDateFrom(val); }}
-                className="bg-transparent border-0 outline-none text-[11px] font-semibold text-slate-700 w-22 focus:ring-0 p-0 cursor-pointer"
-                title="From Date"
+                value={filterDate}
+                onChange={val => { setFilterDate(val); }}
+                className="bg-transparent border-0 outline-none text-[11px] font-semibold text-slate-700 w-24 focus:ring-0 p-0 cursor-pointer"
+                title="Filter Date"
               />
-              <span className="text-slate-300 font-bold">-</span>
-              <DatePicker
-                value={filterDateTo}
-                onChange={val => { setFilterDateTo(val); }}
-                className="bg-transparent border-0 outline-none text-[11px] font-semibold text-slate-700 w-22 focus:ring-0 p-0 cursor-pointer"
-                title="To Date"
-              />
+              {filterDate && (
+                <button
+                  type="button"
+                  onClick={() => setFilterDate('')}
+                  className="text-slate-400 hover:text-slate-600 font-bold text-xs px-0.5 cursor-pointer"
+                  title="Clear Date Filter"
+                >
+                  ×
+                </button>
+              )}
             </div>
 
             {/* Advanced Filters Toggle Button */}
@@ -4812,8 +4815,8 @@ function KanbanCard({ card, employeesList, onEdit, onDelete, onOpen, onCall, onW
   onCall: (phone?: string) => void;
   onWhatsApp: (phone?: string) => void;
 }) {
-  const formattedDate = card.createdAt ? format(new Date(card.createdAt), 'dd/MMM/yyyy') : '';
-  const followUp = card.followUpDate ? format(new Date(card.followUpDate), 'dd/MMM/yyyy') : null;
+  const formattedDate = card.createdAt ? format(new Date(card.createdAt), 'dd/MM/yyyy') : '';
+  const followUp = card.followUpDate ? format(new Date(card.followUpDate), 'dd/MM/yyyy') : null;
   const assigneeName = getAssigneeDisplayName(card, employeesList);
   const hotness = deriveHotness(card);
   const hotnessConf = HOTNESS_CONFIG[hotness];
@@ -5025,7 +5028,7 @@ function LeadsTable({ data, employeesList, loading, visibleColumns, sortKey, sor
         <div className={clsx('flex items-center gap-1 text-[11px] font-semibold',
           new Date(r.followUpDate) < new Date() ? 'text-red-600' : 'text-amber-700')}>
           <Calendar size={11} />
-          {format(new Date(r.followUpDate), 'dd/MMM/yyyy')}
+          {format(new Date(r.followUpDate), 'dd/MM/yyyy')}
         </div>
       ) : <span className="text-gray-400">—</span>,
     },
