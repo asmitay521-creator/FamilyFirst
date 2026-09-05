@@ -5198,30 +5198,11 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, isOwner, onEdit, o
             });
             localStorage.setItem(storageKey, JSON.stringify(updated));
           } catch {}
-        });
+        // Dispatch storage event / BroadcastChannel notification
+        try {
+          window.dispatchEvent(new Event('storage'));
+        } catch {}
       } catch (lsErr) {}
-
-      // Update webLeads state in memory immediately
-      setWebLeads(prev => prev.map(l => {
-        if (l.id === targetId || l.id === ('fs_' + targetId) || l.id === fsId) {
-          return {
-            ...l,
-            stage: updatedStage,
-            status: updatedStatus,
-            type: updatedType,
-            source: updatedSource,
-            assignedEmployeeId: assignedEmp,
-            assignedTo: assignedEmp,
-            assignedToName: assignedToName,
-            assignedEmployee: assignedToName ? { name: assignedToName, id: assignedEmp } : undefined,
-            followUpDate: validFollowUpStr,
-            premiumBudget: rawPremium,
-            expectedPremium: rawPremium,
-            notes: notesJsonStr,
-          };
-        }
-        return l;
-      }));
 
       // Invalidate queries & refetch
       qc.invalidateQueries({ queryKey: ['leads'] });
