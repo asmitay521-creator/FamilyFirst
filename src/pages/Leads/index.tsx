@@ -2401,8 +2401,8 @@ export default function Leads() {
       {/* Main View Container */}
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
         {viewMode === 'board' ? (
-          <div className="p-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 pb-4 flex-1 overflow-y-auto custom-scrollbar" style={{ maxHeight: 'calc(100vh - 180px)' }}>
+          <div className="p-3 sm:p-4 overflow-x-auto custom-scrollbar">
+            <div className="flex gap-3 pb-4 min-h-[550px] items-start">
               {UI_STAGES.map(stage => {
                 const cards = filteredBoard[stage] ?? [];
                 const totalBudget = expectedBusiness(stage);
@@ -2410,7 +2410,7 @@ export default function Leads() {
                 return (
                   <div
                     key={stage}
-                    className="flex flex-col min-w-0"
+                    className="flex flex-col min-w-[260px] max-w-[285px] w-[275px] shrink-0"
                     onDragEnter={e => {
                       e.preventDefault();
                       if (draggedOverStage !== stage) setDraggedOverStage(stage);
@@ -2439,38 +2439,37 @@ export default function Leads() {
                       }
                     }}
                   >
-                    <div className="flex items-center justify-between mb-2 px-1.5 py-1 select-none">
-                      <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-                        <span className={clsx('h-2 w-2 rounded-full shrink-0',
-                          stage === 'New' && 'bg-blue-500',
+                    <div className="flex items-center justify-between mb-2 px-1 py-1 select-none">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className={clsx('h-2.5 w-2.5 rounded-full shrink-0',
+                          stage === 'To Contact' && 'bg-blue-500',
                           stage === 'Contacted' && 'bg-indigo-500',
                           stage === 'Proposal Sent' && 'bg-purple-500',
-                          stage === 'In Discussion' && 'bg-amber-500',
                           stage === 'Login Progress' && 'bg-orange-500',
                           stage === 'Payment Done' && 'bg-emerald-500',
-                          stage === 'Lost' && 'bg-rose-500'
+                          stage === 'Process Completed' && 'bg-teal-500'
                         )} />
-                        <span className="text-xs font-bold text-slate-800 truncate">{stage}</span>
-                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 border border-slate-200/50 px-1 py-0.5 rounded-md shrink-0">{cards.length}</span>
+                        <span className="text-xs font-black text-slate-800 truncate">{stage}</span>
+                        <span className="text-[10px] font-black text-slate-500 bg-slate-100 border border-slate-200/80 px-1.5 py-0.5 rounded-md shrink-0">{cards.length}</span>
                       </div>
-                      <div className="flex flex-wrap items-center gap-1">
-                        <span className="text-[9px] text-slate-400 font-bold shrink-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-slate-500 font-black shrink-0">
                           ₹{totalBudget >= 100000 ? `${(totalBudget / 100000).toFixed(1)}L` : `${(totalBudget / 1000).toFixed(1)}K`}
                         </span>
                         <button
                           onClick={() => openCreate(backendStage)}
-                          className="p-0.5 rounded text-slate-400 hover:text-blue-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                          className="p-1 rounded-md text-slate-400 hover:text-purple-600 hover:bg-slate-100 transition-colors cursor-pointer"
                           title={`Add lead in ${stage}`}
                         >
-                          <Plus size={11} />
+                          <Plus size={12} strokeWidth={2.5} />
                         </button>
                       </div>
                     </div>
 
                     <div className={clsx(
-                      'flex-1 min-h-[350px] rounded-xl border p-1.5 space-y-1.5 transition-all duration-200 overflow-y-auto custom-scrollbar',
+                      'flex-1 min-h-[420px] rounded-2xl border p-2 space-y-2 transition-all duration-200 overflow-y-auto custom-scrollbar',
                       STAGE_COLORS[stage],
-                      draggedOverStage === stage ? 'ring-2 ring-blue-500 scale-[1.01] bg-slate-100' : 'bg-slate-50/50'
+                      draggedOverStage === stage ? 'ring-2 ring-purple-500 scale-[1.01] bg-purple-50/50' : 'bg-slate-50/60'
                     )}>
                       {cards.map(card => (
                         <KanbanCard
@@ -4601,30 +4600,40 @@ function KanbanCard({ card, employeesList, onEdit, onDelete, onOpen, onCall, onW
   const formattedDate = card.createdAt ? format(new Date(card.createdAt), 'dd/MMM/yyyy') : '';
   const followUp = card.followUpDate ? format(new Date(card.followUpDate), 'dd/MMM/yyyy') : null;
   const assigneeName = getAssigneeDisplayName(card, employeesList);
-  const initials = `${card.contact?.firstName?.[0] ?? ''}${card.contact?.lastName?.[0] ?? ''}`.toUpperCase() || 'LD';
   const hotness = deriveHotness(card);
   const hotnessConf = HOTNESS_CONFIG[hotness];
 
-  const AVATAR_BG: Record<string, string> = {
-    TO_CONTACT: 'bg-blue-500', CONTACTED: 'bg-indigo-500', PROPOSAL_SENT: 'bg-purple-500',
-    LOGIN_PROGRESS: 'bg-orange-500', PAYMENT_DONE: 'bg-green-500', PROCESS_COMPLETED: 'bg-emerald-500',
+  const clientFullName = (card.contact?.firstName || card.contact?.lastName)
+    ? `${card.contact?.firstName || ''} ${card.contact?.lastName || ''}`.trim()
+    : (card.name || card.fullName || card.clientName || 'Lead').trim();
+
+  const productName = card.plan?.name || (card.interests && card.interests.length > 0 ? card.interests.join(', ') : 'Mutual Funds');
+  const premiumVal = Number(card.premiumBudget || card.expectedPremium || 0);
+
+  const rawId = String(card.id || '');
+  const cleanDigits = rawId.replace(/\D/g, '');
+  const leadIdCode = card.leadNumber
+    ? `L${card.leadNumber}`
+    : cleanDigits.length >= 2
+      ? `L${cleanDigits.slice(-2)}`
+      : `L${rawId.slice(-2) || '1'}`;
+
+  const BORDER_STAGE: Record<string, string> = {
+    TO_CONTACT: 'border-slate-200 hover:border-blue-400',
+    CONTACTED: 'border-slate-200 hover:border-indigo-400',
+    PROPOSAL_SENT: 'border-slate-200 hover:border-purple-400',
+    LOGIN_PROGRESS: 'border-slate-200 hover:border-orange-400',
+    PAYMENT_DONE: 'border-slate-200 hover:border-emerald-400',
+    PROCESS_COMPLETED: 'border-slate-200 hover:border-teal-400',
   };
-  const BORDER_TOP: Record<string, string> = {
-    TO_CONTACT: 'border-t-4 border-t-blue-500', CONTACTED: 'border-t-4 border-t-indigo-500',
-    PROPOSAL_SENT: 'border-t-4 border-t-purple-500', LOGIN_PROGRESS: 'border-t-4 border-t-orange-500',
-    PAYMENT_DONE: 'border-t-4 border-t-green-500', PROCESS_COMPLETED: 'border-t-4 border-t-emerald-500',
-  };
-  const SHADOW_HOVER: Record<string, string> = {
-    TO_CONTACT: 'hover:shadow-md hover:shadow-blue-500/10 hover:border-blue-400',
-    CONTACTED: 'hover:shadow-md hover:shadow-indigo-500/10 hover:border-indigo-400',
-    PROPOSAL_SENT: 'hover:shadow-md hover:shadow-purple-500/10 hover:border-purple-400',
-    LOGIN_PROGRESS: 'hover:shadow-md hover:shadow-orange-500/10 hover:border-orange-400',
-    PAYMENT_DONE: 'hover:shadow-md hover:shadow-green-500/10 hover:border-green-400',
-    PROCESS_COMPLETED: 'hover:shadow-md hover:shadow-emerald-500/10 hover:border-emerald-400',
-  };
-  const RING_COLOR: Record<string, string> = {
-    TO_CONTACT: 'ring-blue-500/20', CONTACTED: 'ring-indigo-500/20', PROPOSAL_SENT: 'ring-purple-500/20',
-    LOGIN_PROGRESS: 'ring-orange-500/20', PAYMENT_DONE: 'ring-green-500/20', PROCESS_COMPLETED: 'ring-emerald-500/20',
+
+  const STAGE_TOP_ACCENT: Record<string, string> = {
+    TO_CONTACT: 'border-t-2 border-t-blue-500',
+    CONTACTED: 'border-t-2 border-t-indigo-500',
+    PROPOSAL_SENT: 'border-t-2 border-t-purple-500',
+    LOGIN_PROGRESS: 'border-t-2 border-t-orange-500',
+    PAYMENT_DONE: 'border-t-2 border-t-emerald-500',
+    PROCESS_COMPLETED: 'border-t-2 border-t-teal-500',
   };
 
   return (
@@ -4633,87 +4642,81 @@ function KanbanCard({ card, employeesList, onEdit, onDelete, onOpen, onCall, onW
       onDragStart={e => e.dataTransfer.setData('cardId', card.id)}
       onClick={() => onOpen(card)}
       className={clsx(
-        'bg-white rounded-2xl p-4 shadow-sm border border-slate-100 cursor-grab active:cursor-grabbing hover:-translate-y-0.5 transition-[transform,box-shadow,border-color] duration-150 flex flex-col gap-3 group relative overflow-hidden',
-        BORDER_TOP[card.stage] ?? 'border-t-4 border-t-slate-300',
-        SHADOW_HOVER[card.stage] ?? 'hover:shadow-slate-500/10'
+        'bg-white rounded-xl p-2.5 sm:p-3 border shadow-2xs hover:shadow-md transition-all duration-150 flex flex-col gap-1.5 group relative cursor-grab active:cursor-grabbing select-none',
+        BORDER_STAGE[card.stage] ?? 'border-slate-200',
+        STAGE_TOP_ACCENT[card.stage] ?? 'border-t-2 border-t-blue-500'
       )}
     >
-      <div className="flex items-center justify-between min-w-0">
-        <div className="flex flex-wrap items-center gap-2 min-w-0">
-          <div className={clsx('h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-sm ring-4',
-            AVATAR_BG[card.stage] ?? 'bg-slate-500', RING_COLOR[card.stage] ?? 'ring-slate-500/20')}>
-            {initials}
+      {/* Line 1: Lead ID Badge + Client Name + (Hover Actions & Hotness Badge) */}
+      <div className="flex items-center justify-between gap-1.5 min-w-0">
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-200/80 shrink-0">
+            {leadIdCode}
+          </span>
+          <h4 className="text-xs font-black text-slate-800 truncate" title={clientFullName}>
+            {clientFullName}
+          </h4>
+        </div>
+
+        <div className="flex items-center gap-1 shrink-0">
+          {/* Action icons visible on hover */}
+          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+            <button onClick={() => onEdit(card)} className="p-0.5 rounded text-slate-400 hover:text-blue-600 transition-colors" title="Edit">
+              <Pencil size={11} />
+            </button>
+            <button onClick={() => onDelete(card)} className="p-0.5 rounded text-slate-400 hover:text-red-500 transition-colors" title="Delete">
+              <Trash2 size={11} />
+            </button>
           </div>
-          <span className={clsx('flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[9px] font-bold', hotnessConf.cls)}>
+
+          {/* Hotness Badge */}
+          <span className={clsx('flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold border shrink-0', hotnessConf.cls)}>
             <HotnessIcon level={hotness} /> {hotnessConf.label}
           </span>
         </div>
-        <div className="flex flex-wrap items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white pl-1.5" onClick={e => e.stopPropagation()}>
-          <button onClick={() => onEdit(card)} className="p-1 rounded text-gray-400 hover:text-blue-600 hover:bg-slate-50 transition-colors">
-            <Pencil size={11} />
-          </button>
-          <button onClick={() => onDelete(card)} className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-slate-50 transition-colors">
-            <Trash2 size={11} />
-          </button>
-        </div>
       </div>
 
-      <div className="min-w-0">
-        <h4 className="text-[13px] font-bold text-slate-900 leading-snug hover:text-blue-600 transition-colors truncate">
-          {card.contact?.firstName} {card.contact?.lastName}
-        </h4>
-        <p className="text-[10px] text-slate-500 font-medium mt-0.5">Created {formattedDate}</p>
-      </div>
+      {/* Line 2: Created Date */}
+      <p className="text-[10px] text-slate-400 font-semibold leading-none">
+        Created {formattedDate}
+      </p>
 
-      <div className="border-t border-slate-100/80 my-0.5" />
-
-      <div className="space-y-1.5 text-xs text-slate-700 font-medium">
-        {card.contact?.phone && (
-          <div className="flex flex-wrap items-center gap-2">
-            <Phone size={12} className="text-slate-500 shrink-0" />
-            <span className="truncate">{card.contact.phone}</span>
-          </div>
-        )}
-        {card.contact?.email && (
-          <div className="flex flex-wrap items-center gap-2">
-            <Mail size={12} className="text-slate-500 shrink-0" />
-            <span className="truncate">{card.contact.email}</span>
-          </div>
-        )}
-        <div className="flex flex-wrap items-center gap-2 min-w-0">
-          <Shield size={12} className="text-slate-500 shrink-0" />
-          <span className="truncate font-semibold text-slate-800">{card.plan?.name || (card.interests && card.interests.length > 0 ? card.interests.join(', ') : 'No Product')}</span>
-        </div>
-
-        {/* Expected Premium in Card View */}
-        <div className="flex items-center justify-between bg-emerald-50/80 border border-emerald-200/80 rounded-lg px-2.5 py-1 text-xs font-semibold text-emerald-900 mt-1">
-          <span className="text-[11px] text-emerald-700 font-medium">Expected Premium</span>
-          <span className="font-bold text-emerald-800 text-xs">
-            ₹{Number(card.premiumBudget || card.expectedPremium || 0).toLocaleString('en-IN')}
+      {/* Line 3: Product Category (Left) + Expected Premium (Right) */}
+      <div className="flex items-center justify-between gap-1.5 min-w-0 pt-0.5">
+        <div className="flex items-center gap-1.5 min-w-0 max-w-[58%] text-xs font-bold text-slate-700">
+          <span className="w-1.5 h-1.5 rounded-full border border-slate-400 shrink-0" />
+          <span className="truncate text-[11px] font-semibold text-slate-700" title={productName}>
+            {productName}
           </span>
         </div>
 
-        {followUp && (
-          <div className="flex flex-wrap items-center gap-1 text-[10px] text-amber-700 bg-amber-50 border border-amber-200/60 rounded px-2 py-0.5 w-fit font-bold mt-1">
-            <Calendar size={10} className="shrink-0 text-amber-600" />
-            <span>Follow-up: {followUp}</span>
-          </div>
-        )}
+        <span className="text-xs font-black text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-lg shrink-0">
+          ₹{premiumVal > 0 ? premiumVal.toLocaleString('en-IN') : '0'}
+        </span>
       </div>
 
-      <div className="flex items-center justify-between border-t border-slate-100 pt-2.5 mt-0.5 gap-2" onClick={e => e.stopPropagation()}>
-        <div className="flex flex-wrap items-center gap-1 text-slate-500 text-[9px] font-semibold truncate" title={`Assigned to: ${assigneeName}`}>
-          <UserCircle2 size={11} className="text-purple-600 shrink-0" />
-          <span className="truncate font-bold text-slate-700">{assigneeName}</span>
+      {/* Line 4: Assignee (Left) + Follow-up Date & Call/WhatsApp (Right) */}
+      <div className="flex items-center justify-between border-t border-slate-100 pt-2 mt-0.5 gap-1.5" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-1 text-[10px] text-slate-600 font-bold truncate max-w-[48%]" title={`Assigned to: ${assigneeName}`}>
+          <UserCircle2 size={12} className="text-purple-600 shrink-0" />
+          <span className="truncate">{assigneeName}</span>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button onClick={() => onCall(card.contact?.phone)}
-            className="p-1.5 rounded-lg bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-600 cursor-pointer" title="Call">
-            <Phone size={11} />
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          {followUp ? (
+            <span className="text-[10px] font-bold text-amber-700 bg-amber-50/80 border border-amber-200/70 px-1.5 py-0.5 rounded flex items-center gap-1">
+              <Calendar size={10} className="text-amber-600 shrink-0" />
+              {followUp}
+            </span>
+          ) : (
+            <span className="text-[10px] text-slate-300 font-medium">—</span>
+          )}
+
+          <button onClick={() => onCall(card.contact?.phone)} className="p-1 rounded bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-600 cursor-pointer" title="Call">
+            <Phone size={10} />
           </button>
-          <button onClick={() => onWhatsApp(card.contact?.phone)}
-            className="p-1.5 rounded-lg bg-green-50 border border-green-200 hover:bg-green-100 text-green-600 cursor-pointer" title="WhatsApp">
-            <MessageCircle size={11} />
+          <button onClick={() => onWhatsApp(card.contact?.phone)} className="p-1 rounded bg-green-50 border border-green-200 hover:bg-green-100 text-green-600 cursor-pointer" title="WhatsApp">
+            <MessageCircle size={10} />
           </button>
         </div>
       </div>
