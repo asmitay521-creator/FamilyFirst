@@ -621,39 +621,28 @@ export default function Seminars() {
     <div className="space-y-4 font-sans text-slate-800 animate-fadeIn">
       <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImport} />
 
-      {/* Floating Right Action Panel */}
-      <div className="fixed right-2 sm:right-3.5 top-60 sm:top-64 z-40 flex flex-col gap-2 bg-white/95 backdrop-blur-xl p-1.5 rounded-xl shadow-xl border border-slate-200/80 animate-fadeIn">
-        {/* Register Attendee */}
-        <button
-          type="button"
-          onClick={openCreate}
-          className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-tr from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white flex items-center justify-center transition-all hover:scale-105 shadow-xs cursor-pointer group relative"
-          title="Register Attendee"
-        >
-          <UserPlus size={14} strokeWidth={2.2} />
-          <span className="absolute right-full mr-2.5 px-2.5 py-1 rounded-lg bg-slate-900/90 backdrop-blur-md text-white text-[10px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-all pointer-events-none shadow-lg border border-slate-800">
-            Register Attendee
-          </span>
-        </button>
-
-        {/* Change Live Website Seminar Price */}
-        {isSuperAdmin && (
+      {/* Floating Right Action Panel (Live Seminar Price Quick Control) */}
+      {isSuperAdmin && (
+        <div className="fixed right-2 sm:right-3.5 top-60 sm:top-64 z-40 bg-white/95 backdrop-blur-xl p-1 rounded-2xl shadow-xl border border-slate-200/90 animate-fadeIn">
           <button
             type="button"
             onClick={() => {
               setConfigFormData(seminarConfig);
               setSuperAdminConfigModalOpen(true);
             }}
-            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-tr from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white flex items-center justify-center transition-all hover:scale-105 shadow-xs cursor-pointer group relative"
+            className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white flex flex-col items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-md shadow-amber-500/25 cursor-pointer group relative"
             title={`Website Seminar Price: ₹${seminarConfig.price}/- (Click to change)`}
           >
-            <IndianRupee size={14} strokeWidth={2.2} />
-            <span className="absolute right-full mr-2.5 px-2.5 py-1 rounded-lg bg-slate-900/90 backdrop-blur-md text-white text-[10px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-all pointer-events-none shadow-lg border border-slate-800">
-              Website Price: ₹{seminarConfig.price}/-
+            <IndianRupee size={15} strokeWidth={2.6} />
+            <span className="text-[8px] font-black leading-none mt-0.5 tracking-tight">₹{seminarConfig.price}</span>
+            <span className="absolute right-full mr-2.5 px-3 py-1.5 rounded-xl bg-slate-900/95 backdrop-blur-md text-white text-xs font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-all pointer-events-none shadow-xl border border-slate-800 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              Website Price: <strong className="text-amber-300">₹{seminarConfig.price}/-</strong>
+              <span className="text-[10px] text-slate-400 font-normal">(Click to edit)</span>
             </span>
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Header Banner & Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
