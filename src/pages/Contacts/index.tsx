@@ -850,17 +850,23 @@ export default function Contacts() {
       entries: p.entries.map((e, j) => j !== eIdx ? e : { ...e, [field]: value })
     }));
 
-  // Fetch employees lookup to map assignee name
+  // Fetch employees lookup to map assignee name and sync into contacts
   const { employees, plans: dbPlans, loadEmployees } = useLookupStore();
 
   useEffect(() => {
     loadEmployees();
   }, [loadEmployees]);
 
+  const { data: empQueryRes } = useQuery({
+    queryKey: ['employees', 'all-for-contacts'],
+    queryFn: () => employeesService.list({ page: 1, limit: 500 }),
+    staleTime: 60_000,
+  });
+
   const employeesList = useMemo(() => {
-    const raw = (employees as any)?.data || employees;
+    const raw = empQueryRes?.data ?? empQueryRes ?? (employees as any)?.data ?? employees;
     return Array.isArray(raw) ? raw : [];
-  }, [employees]);
+  }, [empQueryRes, employees]);
 
   const { data: contactsRes, isLoading: contactsLoading, refetch: refetchContacts } = useContacts({
     page,
@@ -1912,13 +1918,74 @@ export default function Contacts() {
 
   // Local filtering on paginated records based on quick filters
   const filteredData = useMemo(() => {
-    const fetchedList = (contactsRes?.data && contactsRes.data.length > 0)
-      ? contactsRes.data
-      : DEFAULT_SAMPLE_CONTACTS;
+    const rawContacts = contactsRes?.data ?? [];
+    const baseList: any[] = (rawContacts && rawContacts.length > 0)
+      ? [...rawContacts]
+      : (activeTab === 'birthdays' ? [] : [...DEFAULT_SAMPLE_CONTACTS]);
+
+    // Merge registered employees into Contacts list
+    const cleanPhone = (p?: string) => String(p || '').replace(/\D/g, '').slice(-10);
+    const cleanEmail = (e?: string) => String(e || '').toLowerCase().trim();
+
+    employeesList.forEach((emp: any) => {
+      const empPhone = cleanPhone(emp.phone || emp.user?.phone);
+      const empEmail = cleanEmail(emp.email || emp.user?.email);
+      const empId = String(emp.id || emp.userId || emp.user?.id || '');
+      const empFn = (emp.firstName || emp.user?.firstName || emp.employeeProfile?.firstName || '').trim();
+      const empLn = (emp.lastName || emp.user?.lastName || emp.employeeProfile?.lastName || '').trim();
+      const empFullName = `${empFn} ${empLn}`.trim().toLowerCase();
+
+      const existingIndex = baseList.findIndex((c: any) => {
+        const cPhone = cleanPhone(c.phone || c.alternatePhone || c.contact?.phone);
+        const cEmail = cleanEmail(c.email || c.contact?.email);
+        const cId = String(c.id || c.contactId || '');
+        const cFn = (c.firstName || c.contact?.firstName || '').trim().toLowerCase();
+        const cLn = (c.lastName || c.contact?.lastName || '').trim().toLowerCase();
+        const cFullName = `${cFn} ${cLn}`.trim();
+
+        if (cId && empId && cId === empId) return true;
+        if (empPhone && cPhone && empPhone === cPhone) return true;
+        if (empEmail && cEmail && empEmail === cEmail) return true;
+        if (empFullName && cFullName && empFullName === cFullName) return true;
+        return false;
+      });
+
+      if (existingIndex >= 0) {
+        const existing = baseList[existingIndex];
+        const currentTags = existing.tags || [];
+        if (!currentTags.includes('employee') && !currentTags.includes('Employee')) {
+          existing.tags = [...currentTags, 'employee', 'contact'];
+        }
+        if (!existing.designation) existing.designation = emp.designation || 'Employee';
+        if (!existing.role) existing.role = emp.role || emp.user?.role || 'EMPLOYEE';
+      } else {
+        baseList.unshift({
+          id: emp.id || emp.userId || `emp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          contactId: emp.id || emp.userId,
+          firstName: empFn || 'Employee',
+          lastName: empLn || '',
+          phone: emp.phone || emp.user?.phone || '',
+          email: emp.email || emp.user?.email || '',
+          gender: emp.gender || '',
+          dateOfBirth: emp.dateOfBirth || '',
+          aadhaarNumber: emp.aadhaarNumber || '',
+          leadStage: 'Contacted',
+          leadStatus: 'Interested',
+          isActive: emp.isActive !== false,
+          tags: ['contact', 'employee', emp.role || emp.user?.role || 'EMPLOYEE'],
+          source: 'Employee Directory',
+          assignedEmployeeId: emp.userId || emp.id,
+          isEmployee: true,
+          role: emp.role || emp.user?.role || 'EMPLOYEE',
+          designation: emp.designation || 'Employee',
+          createdAt: emp.createdAt || new Date().toISOString(),
+        });
+      }
+    });
 
     const list = activeTab === 'birthdays'
-      ? (birthdayRes?.data && birthdayRes.data.length > 0 ? birthdayRes.data : DEFAULT_SAMPLE_CONTACTS)
-      : fetchedList;
+      ? (birthdayRes?.data && birthdayRes.data.length > 0 ? birthdayRes.data : baseList)
+      : baseList;
 
     return list.filter((item: any) => {
       // Employee role data isolation safeguard: only see self-assigned, unassigned, or contacts with self-assigned sub-resources
