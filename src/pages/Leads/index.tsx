@@ -2205,7 +2205,7 @@ export default function Leads() {
 
   const activeFilterCount =
     filterPlans.length + filterStatuses.length + filterStages.length + filterTypes.length +
-    (filterEmployee ? 1 : 0) + (filterDateFrom ? 1 : 0) + (filterDateTo ? 1 : 0);
+    (filterEmployee ? 1 : 0) + (filterDate ? 1 : 0);
 
   if (isLoading) return <div className="flex h-48 items-center justify-center text-gray-400">Loading pipeline…</div>;
 
