@@ -6,7 +6,7 @@ import {
   Plus, Search, Pencil, Trash2, Shield, Upload, Phone, Calendar,
   MessageCircle, LayoutGrid, List, Filter, X, UserPlus, Users,
   UserCircle2, Mail, ChevronDown, Flame, Thermometer, Snowflake,
-  Columns, ArrowUpDown, ChevronUp, ChevronRight, Send, RefreshCw, Save, FileText, History, Lock, Settings
+  Columns, ArrowUpDown, ChevronUp, ChevronRight, Send, RefreshCw, Save, FileText, History, Lock, Settings, Check
 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -4581,31 +4581,9 @@ export default function Leads() {
   );
 }
 
-// ── Standard Agency Advisors & Staff ──────────────────────────────────────────
-export const DEFAULT_AGENCY_STAFF = [
-  { id: 'emp_asmita_yadav', userId: 'emp_asmita_yadav', firstName: 'Asmita', lastName: 'Yadav', designation: 'Senior Insurance Advisor', role: 'EMPLOYEE', email: 'asmita.yadav@insumitra.com' },
-  { id: 'emp_rahul_kulkarni', userId: 'emp_rahul_kulkarni', firstName: 'Rahul', lastName: 'Kulkarni', designation: 'Financial Advisor', role: 'EMPLOYEE', email: 'rahul.kulkarni@insumitra.com' },
-  { id: 'emp_pooja_sharma', userId: 'emp_pooja_sharma', firstName: 'Pooja', lastName: 'Sharma', designation: 'Relationship Manager', role: 'EMPLOYEE', email: 'pooja.sharma@insumitra.com' },
-  { id: 'emp_amit_verma', userId: 'emp_amit_verma', firstName: 'Amit', lastName: 'Verma', designation: 'Health & Life Specialist', role: 'EMPLOYEE', email: 'amit.verma@insumitra.com' },
-  { id: 'emp_sneha_patil', userId: 'emp_sneha_patil', firstName: 'Sneha', lastName: 'Patil', designation: 'Policy Consultant', role: 'EMPLOYEE', email: 'sneha.patil@insumitra.com' },
-  { id: 'emp_rohan_deshmukh', userId: 'emp_rohan_deshmukh', firstName: 'Rohan', lastName: 'Deshmukh', designation: 'Claims & Advisory Expert', role: 'EMPLOYEE', email: 'rohan.deshmukh@insumitra.com' },
-];
-
 // ── Helper to filter assignable employees (excludes clients, customers, Super Admin / Owner) ──
 export function getAssignableEmployees(empList: any[] = [], currentLeadOrContact?: any): any[] {
   const rawList = Array.isArray(empList) ? empList : [];
-  // Merge backend employees with default agency staff (backend takes precedence)
-  const mergedPool: any[] = [...rawList];
-  DEFAULT_AGENCY_STAFF.forEach(def => {
-    const exists = mergedPool.some(e => {
-      const eFn = (e.firstName || e.user?.firstName || e.employeeProfile?.firstName || '').toLowerCase().trim();
-      const eLn = (e.lastName || e.user?.lastName || e.employeeProfile?.lastName || '').toLowerCase().trim();
-      return (eFn === def.firstName.toLowerCase() && eLn === def.lastName.toLowerCase()) || (e.email && e.email.toLowerCase() === def.email.toLowerCase());
-    });
-    if (!exists) {
-      mergedPool.push(def);
-    }
-  });
 
   const leadFirst = String(currentLeadOrContact?.contact?.firstName || currentLeadOrContact?.firstName || '').toLowerCase().trim();
   const leadLast = String(currentLeadOrContact?.contact?.lastName || currentLeadOrContact?.lastName || '').toLowerCase().trim();
@@ -4638,7 +4616,7 @@ export function getAssignableEmployees(empList: any[] = [], currentLeadOrContact
   const seenIds = new Set<string>();
   const seenNames = new Set<string>();
 
-  return mergedPool.filter((emp: any) => {
+  return rawList.filter((emp: any) => {
     if (!emp) return false;
 
     const id = String(emp.userId || emp.user?.id || emp.id || emp._id || '');
@@ -5187,6 +5165,18 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, isOwner, onEdit, o
   const [editFollowUp, setEditFollowUp] = useState(fullLead.followUpDate ? fullLead.followUpDate.slice(0, 10) : '');
   const [editPremium, setEditPremium] = useState<string | number>(fullLead.premiumBudget || fullLead.expectedPremium || '');
   const [savingLeadDetails, setSavingLeadDetails] = useState(false);
+  const [isAssigneeDropdownOpen, setIsAssigneeDropdownOpen] = useState(false);
+
+  const assignableEmployeesList = useMemo(() => {
+    return getAssignableEmployees(employees, fullLead || lead);
+  }, [employees, fullLead, lead]);
+
+  const currentAssigneeObj = assignableEmployeesList.find((e: any) => (e.userId && e.userId === editAssignee) || (e.id && e.id === editAssignee) || (e.user?.id && e.user?.id === editAssignee)) ||
+    employees.find((e: any) => (e.userId && e.userId === editAssignee) || (e.id && e.id === editAssignee) || (e.user?.id && e.user?.id === editAssignee));
+
+  const currentAssigneeName = currentAssigneeObj
+    ? `${currentAssigneeObj.firstName || currentAssigneeObj.employeeProfile?.firstName || currentAssigneeObj.user?.firstName || ''} ${currentAssigneeObj.lastName || currentAssigneeObj.employeeProfile?.lastName || currentAssigneeObj.user?.lastName || ''}`.trim() || currentAssigneeObj.name || currentAssigneeObj.email
+    : (editAssignee ? editAssignee : '');
 
   useEffect(() => {
     if (fullLead) {
@@ -5471,10 +5461,10 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, isOwner, onEdit, o
       </div>
 
       {/* Fixed height tab content container so popup size remains constant when switching tabs */}
-      <div className="h-[400px] min-h-[400px] max-h-[400px] overflow-y-auto custom-scrollbar pr-1">
+      <div className="h-[430px] min-h-[430px] max-h-[460px] overflow-y-auto custom-scrollbar pr-1 pb-24">
         {/* Overview */}
       {tab === 'overview' && (
-        <div className="space-y-4">
+        <div className="space-y-4 pb-12">
           {/* Non-Editable Product Interest Data Cards */}
           {(() => {
             const backendInterests: any[] = contactData?.data?.productInterests || [];
@@ -5761,24 +5751,63 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, isOwner, onEdit, o
               </div>
 
               {/* Assigned Employee */}
-              <div>
+              <div className="relative">
                 <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block mb-1">Assigned Employee</label>
-                <select
-                  value={editAssignee}
-                  onChange={e => setEditAssignee(e.target.value)}
-                  className="input text-xs font-semibold bg-slate-50/50 border-slate-200 focus:bg-white"
-                >
-                  <option value="">Unassigned</option>
-                  {getAssignableEmployees(employees, fullLead || lead).map((emp: any) => {
-                    const empUserId = emp.userId || emp.user?.id || emp.id;
-                    const empName = `${emp.firstName || emp.employeeProfile?.firstName || emp.user?.firstName || ''} ${emp.lastName || emp.employeeProfile?.lastName || emp.user?.lastName || ''}`.trim() || emp.name || emp.email || 'Employee';
-                    return (
-                      <option key={emp.id || empUserId} value={empUserId}>
-                        {empName}
-                      </option>
-                    );
-                  })}
-                </select>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setIsAssigneeDropdownOpen(prev => !prev)}
+                    className="input text-xs font-semibold bg-slate-50/50 border-slate-200 focus:bg-white w-full flex items-center justify-between text-left cursor-pointer transition-all shadow-2xs hover:border-slate-300"
+                  >
+                    <span className={currentAssigneeName ? 'text-slate-900 font-semibold truncate' : 'text-slate-400'}>
+                      {currentAssigneeName || 'Unassigned'}
+                    </span>
+                    <ChevronDown size={14} className={`text-slate-400 transition-transform duration-200 shrink-0 ${isAssigneeDropdownOpen ? 'rotate-180 text-purple-600' : ''}`} />
+                  </button>
+
+                  {isAssigneeDropdownOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setIsAssigneeDropdownOpen(false)} />
+                      <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 py-1 max-h-48 overflow-y-auto custom-scrollbar divide-y divide-slate-50 animate-fadeIn">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditAssignee('');
+                            setIsAssigneeDropdownOpen(false);
+                          }}
+                          className={`w-full text-left px-3.5 py-2 text-xs transition-colors flex items-center justify-between cursor-pointer ${!editAssignee ? 'bg-purple-50 text-purple-700 font-bold' : 'text-slate-700 hover:bg-slate-50'}`}
+                        >
+                          <span>Unassigned</span>
+                          {!editAssignee && <Check size={13} className="text-purple-600 shrink-0" />}
+                        </button>
+                        {assignableEmployeesList.map((emp: any) => {
+                          const empUserId = emp.userId || emp.user?.id || emp.id;
+                          const empName = `${emp.firstName || emp.employeeProfile?.firstName || emp.user?.firstName || ''} ${emp.lastName || emp.employeeProfile?.lastName || emp.user?.lastName || ''}`.trim() || emp.name || emp.email || 'Employee';
+                          const isSelected = editAssignee === empUserId || editAssignee === emp.id;
+                          return (
+                            <button
+                              key={emp.id || empUserId}
+                              type="button"
+                              onClick={() => {
+                                setEditAssignee(empUserId);
+                                setIsAssigneeDropdownOpen(false);
+                              }}
+                              className={`w-full text-left px-3.5 py-2 text-xs transition-colors flex items-center justify-between cursor-pointer ${isSelected ? 'bg-purple-50 text-purple-700 font-bold' : 'text-slate-700 hover:bg-slate-50'}`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <div className="w-5 h-5 rounded-full bg-purple-100 text-purple-700 text-[10px] font-bold flex items-center justify-center shrink-0">
+                                  {empName.charAt(0).toUpperCase()}
+                                </div>
+                                <span className="truncate">{empName}</span>
+                              </div>
+                              {isSelected && <Check size={13} className="text-purple-600 shrink-0" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
 
               {/* Follow-up Date */}
