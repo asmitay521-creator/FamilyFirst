@@ -256,10 +256,54 @@ export default function Employees() {
         <form
           onSubmit={handleEditSubmit(
             body => {
-              const payload: any = { ...body };
-              if (!payload.password) {
-                delete payload.password;
+              // Store updated password persistently
+              if (body.password) {
+                saveStoredEmployeePassword(
+                  {
+                    id: editTarget!.id,
+                    email: editTarget?.user?.email,
+                    phone: body.phone,
+                    firstName: body.firstName,
+                  },
+                  body.password
+                );
               }
+
+              // Build clean profile payload for backend
+              const payload: any = {
+                firstName: body.firstName.trim(),
+                lastName: body.lastName.trim(),
+                phone: body.phone.trim(),
+              };
+
+              if (body.designation) payload.designation = body.designation.trim();
+              if (body.department) payload.department = body.department.trim();
+              if (body.gender) payload.gender = body.gender;
+              if (body.dateOfJoining) payload.dateOfJoining = body.dateOfJoining;
+              if (body.dateOfBirth) payload.dateOfBirth = body.dateOfBirth;
+
+              if (body.baseSalary !== '' && body.baseSalary != null && !isNaN(Number(body.baseSalary))) {
+                payload.baseSalary = Number(body.baseSalary);
+              }
+              if (body.bonusPlanned !== '' && body.bonusPlanned != null && !isNaN(Number(body.bonusPlanned))) {
+                payload.bonusPlanned = Number(body.bonusPlanned);
+              }
+              if (body.monthlyTarget !== '' && body.monthlyTarget != null && !isNaN(Number(body.monthlyTarget))) {
+                payload.monthlyTarget = Number(body.monthlyTarget);
+              }
+              if (body.callsTarget !== '' && body.callsTarget != null && !isNaN(Number(body.callsTarget))) {
+                payload.callsTarget = Number(body.callsTarget);
+              }
+              if (body.visitsTarget !== '' && body.visitsTarget != null && !isNaN(Number(body.visitsTarget))) {
+                payload.visitsTarget = Number(body.visitsTarget);
+              }
+
+              if (body.bankName) payload.bankName = body.bankName.trim();
+              if (body.bankAccountNumber) payload.bankAccountNumber = body.bankAccountNumber.trim();
+              if (body.bankIfscCode) payload.bankIfscCode = body.bankIfscCode.trim();
+              if (body.bankBranch) payload.bankBranch = body.bankBranch.trim();
+              if (body.bankAccountType) payload.bankAccountType = body.bankAccountType;
+
               return updateEmployee.mutateAsync({ id: editTarget!.id, body: payload });
             },
             () => toast.error('कृपया सर्व आवश्यक माहिती भरा (Please fill all required fields)')
