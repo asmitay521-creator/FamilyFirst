@@ -100,10 +100,11 @@ export default function Customers() {
   const stats = useMemo(() => {
     const total = rawContacts.length;
     const active = rawContacts.filter((c) => c.status === 'ACTIVE').length;
-    const totalPremiumSum = rawContacts.reduce((acc, c) => acc + (c.totalPremium || 0), 0);
+    const individualCount = rawContacts.filter((c) => c.customerType === 'INDIVIDUAL' || !c.customerType).length;
+    const corporateCount = rawContacts.filter((c) => c.customerType === 'CORPORATE').length;
     const vipCount = rawContacts.filter((c) => c.customerType === 'VIP').length;
 
-    return { total, active, totalPremiumSum, vipCount };
+    return { total, active, individualCount, corporateCount, vipCount };
   }, [rawContacts]);
 
   const handleCreateSubmit = async (data: CustomerForm) => {
@@ -190,11 +191,16 @@ export default function Customers() {
       )
     },
     {
-      key: 'totalPremium',
-      label: 'Annual Premium',
+      key: 'status',
+      label: 'Status',
       render: (row) => (
-        <span className="font-extrabold text-slate-800 text-xs tracking-tight">
-          ₹{(row.totalPremium || 0).toLocaleString('en-IN')}
+        <span className={clsx(
+          "inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide uppercase",
+          row.status === 'ACTIVE'
+            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+            : "bg-slate-100 text-slate-600 border border-slate-200"
+        )}>
+          {row.status || 'ACTIVE'}
         </span>
       )
     },
@@ -273,11 +279,11 @@ export default function Customers() {
 
         <div className="bg-white p-4 rounded-2xl border border-[#E9E7F2] shadow-sm flex items-center justify-between">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-wider text-[#68708A]">Total Annual Premium</p>
-            <p className="text-xl font-black text-[#1D2035] mt-1">₹{stats.totalPremiumSum.toLocaleString('en-IN')}</p>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-[#68708A]">Corporate Clients</p>
+            <p className="text-2xl font-black text-indigo-600 mt-1">{stats.corporateCount}</p>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-[#F0EAFF] text-[#7C4DFF] flex items-center justify-center font-bold">
-            <TrendingUp size={18} />
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+            <Building2 size={18} />
           </div>
         </div>
 
