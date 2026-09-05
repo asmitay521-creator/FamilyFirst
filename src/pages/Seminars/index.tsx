@@ -621,6 +621,40 @@ export default function Seminars() {
     <div className="space-y-4 font-sans text-slate-800 animate-fadeIn">
       <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImport} />
 
+      {/* Floating Right Action Panel */}
+      <div className="fixed right-2 sm:right-3.5 top-60 sm:top-64 z-40 flex flex-col gap-2 bg-white/95 backdrop-blur-xl p-1.5 rounded-xl shadow-xl border border-slate-200/80 animate-fadeIn">
+        {/* Register Attendee */}
+        <button
+          type="button"
+          onClick={openCreate}
+          className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-tr from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white flex items-center justify-center transition-all hover:scale-105 shadow-xs cursor-pointer group relative"
+          title="Register Attendee"
+        >
+          <UserPlus size={14} strokeWidth={2.2} />
+          <span className="absolute right-full mr-2.5 px-2.5 py-1 rounded-lg bg-slate-900/90 backdrop-blur-md text-white text-[10px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-all pointer-events-none shadow-lg border border-slate-800">
+            Register Attendee
+          </span>
+        </button>
+
+        {/* Change Live Website Seminar Price */}
+        {isSuperAdmin && (
+          <button
+            type="button"
+            onClick={() => {
+              setConfigFormData(seminarConfig);
+              setSuperAdminConfigModalOpen(true);
+            }}
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-tr from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white flex items-center justify-center transition-all hover:scale-105 shadow-xs cursor-pointer group relative"
+            title={`Website Seminar Price: ₹${seminarConfig.price}/- (Click to change)`}
+          >
+            <IndianRupee size={14} strokeWidth={2.2} />
+            <span className="absolute right-full mr-2.5 px-2.5 py-1 rounded-lg bg-slate-900/90 backdrop-blur-md text-white text-[10px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-all pointer-events-none shadow-lg border border-slate-800">
+              Website Price: ₹{seminarConfig.price}/-
+            </span>
+          </button>
+        )}
+      </div>
+
       {/* Header Banner & Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
         {/* Total Attendees */}
@@ -858,18 +892,6 @@ export default function Seminars() {
                           >
                             <Pencil size={12} />
                           </button>
-                          {isSuperAdmin && (
-                            <button
-                              title={`Edit Website Seminar Price (Live: ₹${seminarConfig.price}/-)`}
-                              className="p-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold flex items-center justify-center cursor-pointer shadow-sm shadow-amber-500/20 hover:shadow-md hover:scale-105 transition-all"
-                              onClick={() => {
-                                setConfigFormData(seminarConfig);
-                                setSuperAdminConfigModalOpen(true);
-                              }}
-                            >
-                              <Tag size={12} />
-                            </button>
-                          )}
                           <button
                             title="Delete Entry"
                             className="p-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white font-bold flex items-center justify-center cursor-pointer shadow-sm shadow-rose-500/20 hover:shadow-md hover:scale-105 transition-all"
