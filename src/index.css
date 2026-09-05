@@ -1,0 +1,356 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Design tokens ─────────────────────────────────────────────────────────── */
+:root {
+  --primary:       #5B2BA8;
+  --primary-dark:  #4A228A;
+  --primary-light: #F4EFFF;
+  --accent:        #7C3AED;
+  --success:       #35C978;
+  --success-bg:    #ebfbf2;
+  --warning:       #FF6B6B;
+  --warning-bg:    #fff0f0;
+  --danger:        #FF5C7A;
+  --danger-bg:     #fff0f3;
+  --bg-body:       #FCF6FA;
+  --bg-card:       #ffffff;
+  --text-main:     #211A2E;
+  --text-muted:    #777080;
+  --border:        #EDE5F0;
+  --border-light:  #F7F3F8;
+  --radius:        1rem;
+  --app-font-size: 0.84375rem;
+  --shadow-xs:     0 1px 2px rgba(33,26,46,0.03);
+  --shadow-sm:     0 2px 8px rgba(33,26,46,0.04), 0 1px 3px rgba(33,26,46,0.02);
+  --shadow:        0 4px 16px rgba(33,26,46,0.05), 0 2px 6px rgba(33,26,46,0.02);
+  --shadow-md:     0 8px 24px rgba(33,26,46,0.06), 0 3px 8px rgba(33,26,46,0.02);
+  --shadow-lg:     0 12px 32px rgba(33,26,46,0.08), 0 4px 12px rgba(33,26,46,0.03);
+}
+
+/* ── Base ──────────────────────────────────────────────────────────────────── */
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html {
+    @apply antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+    scroll-behavior: smooth;
+    font-size: 16px;
+  }
+
+  @media (max-width: 639px) {
+    html {
+      font-size: 12.8px;
+    }
+  }
+
+  @media (min-width: 640px) and (max-width: 1023px) {
+    html {
+      font-size: 14.4px;
+    }
+  }
+
+  body {
+    background: var(--bg-body);
+    color: var(--text-main);
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: var(--app-font-size, 0.84375rem);
+    letter-spacing: -0.01em;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3, h4 {
+    @apply font-bold;
+    letter-spacing: -0.022em;
+  }
+
+  /* Remove number spinners */
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type='number'] { appearance: textfield; -moz-appearance: textfield; }
+  /* Global Table Styles */
+  table {
+    @apply w-full border-collapse border border-[#EDE5F0];
+  }
+  th, td {
+    @apply border border-[#EDE5F0];
+  }
+  tbody tr:nth-child(even) {
+    @apply bg-[#FCF6FA]/60;
+  }
+  tbody tr:nth-child(odd) {
+    @apply bg-white;
+  }
+}
+
+/* ── Component layer ───────────────────────────────────────────────────────── */
+@layer components {
+
+  /* ──────────────────────────── Buttons ──────────────────────────────────── */
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-1.5
+           px-4 py-2 sm:px-3.5 sm:py-[7px] rounded-lg text-sm sm:text-[13px] font-semibold
+           text-white
+           disabled:opacity-50 disabled:cursor-not-allowed
+           transition-all duration-150 select-none;
+    background: linear-gradient(135deg, #5B2BA8 0%, #743BC4 100%);
+    box-shadow: 0 4px 12px rgba(91, 43, 168, 0.25);
+  }
+  .btn-primary:hover:not(:disabled) {
+    opacity: 0.95;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(91, 43, 168, 0.35);
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-1.5
+           px-4 py-2 sm:px-3.5 sm:py-[7px] rounded-lg text-sm sm:text-[13px] font-medium
+           bg-white text-gray-700
+           border border-gray-200
+           hover:bg-gray-50 hover:border-gray-300
+           disabled:opacity-50 disabled:cursor-not-allowed
+           transition-all duration-150 select-none;
+    box-shadow: var(--shadow-xs);
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-1.5
+           px-4 py-2 sm:px-3.5 sm:py-[7px] rounded-lg text-sm sm:text-[13px] font-semibold
+           bg-red-600 text-white
+           hover:bg-red-700 active:bg-red-800
+           disabled:opacity-50 disabled:cursor-not-allowed
+           transition-all duration-150 select-none;
+    box-shadow: 0 1px 2px rgba(220,38,38,0.2);
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-1.5
+           px-4 py-2 sm:px-3 sm:py-[7px] rounded-lg text-sm sm:text-[13px] font-medium
+           text-gray-600 hover:bg-gray-100 hover:text-gray-900
+           disabled:opacity-50 disabled:cursor-not-allowed
+           transition-all duration-150 select-none;
+  }
+
+  /* ──────────────────────────── Cards ─────────────────────────────────────── */
+
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    padding: 20px 24px;
+  }
+
+  .card-sm {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: var(--shadow-xs);
+    padding: 14px 16px;
+  }
+
+  .card-panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    padding: 24px;
+  }
+
+  /* ──────────────────────────── Inputs ────────────────────────────────────── */
+
+  .input {
+    @apply w-full rounded-lg border bg-white px-3.5 py-2.5 sm:px-3 sm:py-[7px]
+           text-sm sm:text-[13px] text-gray-900 placeholder-gray-400
+           outline-none transition-all duration-150
+           disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed;
+    border-color: var(--border);
+    box-shadow: var(--shadow-xs);
+  }
+  .input:hover:not(:disabled) { border-color: #d1d5db; }
+  .input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(91,43,168,0.15), var(--shadow-xs);
+    outline: none;
+  }
+
+  .label {
+    @apply block text-xs sm:text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5;
+  }
+
+  /* ──────────────────────────── Badges ────────────────────────────────────── */
+
+  .badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full
+           text-[11px] font-semibold border tracking-wide;
+  }
+  .badge-blue   { @apply badge bg-blue-50   text-blue-700   border-blue-200/80;   }
+  .badge-green  { @apply badge bg-emerald-50 text-emerald-700 border-emerald-200/80; }
+  .badge-red    { @apply badge bg-red-50    text-red-700    border-red-200/80;    }
+  .badge-yellow { @apply badge bg-amber-50  text-amber-700  border-amber-200/80;  }
+  .badge-purple { @apply badge bg-purple-50 text-purple-700 border-purple-200/80; }
+  .badge-orange { @apply badge bg-orange-50 text-orange-700 border-orange-200/80; }
+  .badge-gray   { @apply badge bg-gray-100  text-gray-600   border-gray-200;      }
+  .badge-teal   { @apply badge bg-teal-50   text-teal-700   border-teal-200/80;   }
+  .badge-indigo { @apply badge bg-indigo-50 text-indigo-700 border-indigo-200/80; }
+
+  /* ──────────────────────────── Toggle group ──────────────────────────────── */
+
+  .toggle-group {
+    @apply inline-flex rounded-lg p-0.5;
+    background: #f3f4f6;
+    border: 1px solid #e5e7eb;
+  }
+  .toggle-group button {
+    @apply px-3.5 py-1.5 text-[12px] font-semibold text-gray-500
+           rounded-md transition-all duration-150 whitespace-nowrap;
+  }
+  .toggle-group button.active {
+    @apply bg-white text-blue-600;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+  }
+
+  /* ──────────────────────────── Page anatomy ──────────────────────────────── */
+
+  .page-header {
+    @apply flex items-center justify-between mb-5;
+  }
+
+  .page-title {
+    @apply text-[20px] font-bold text-gray-900 tracking-tight;
+  }
+
+  .page-subtitle {
+    @apply text-[13px] text-gray-400 mt-0.5;
+  }
+
+  .section-label {
+    @apply text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-3;
+  }
+
+  /* ──────────────────────────── Misc helpers ──────────────────────────────── */
+
+  .divider { @apply border-t border-gray-100 my-4; }
+
+  .icon-btn {
+    @apply p-1.5 rounded-lg transition-colors duration-150
+           text-gray-400 hover:text-gray-700 hover:bg-gray-100;
+  }
+
+  .form-section {
+    @apply rounded-xl border border-gray-100 bg-gray-50/50 p-4 space-y-3;
+  }
+
+  .form-section-title {
+    @apply text-[11px] font-bold uppercase tracking-widest text-gray-400 mb-1;
+  }
+
+  /* ──────────────────────────── Scrollbar ─────────────────────────────────── */
+
+  .custom-scrollbar::-webkit-scrollbar        { width: 5px; height: 5px; }
+  .custom-scrollbar::-webkit-scrollbar-track  { background: transparent; }
+  .custom-scrollbar::-webkit-scrollbar-thumb  { background: #d1d5db; border-radius: 10px; }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+
+  /* ──────────────────────────── Tables (legacy) ───────────────────────────── */
+
+  .modern-table { @apply w-full border-collapse; }
+  .modern-table th {
+    @apply px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider
+           text-gray-400 border-b border-gray-100 bg-gray-50/70;
+  }
+  .modern-table td {
+    @apply px-4 py-3 text-[13px] text-gray-700 border-b border-gray-50;
+  }
+  .hover-row { @apply transition-colors duration-100 cursor-pointer; }
+  .hover-row:hover { @apply bg-blue-50/30; }
+
+  /* ──────────────────────────── Assign badge ──────────────────────────────── */
+
+  .badge-assign {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full
+           text-[11px] font-semibold bg-gray-100 text-gray-500;
+  }
+
+  /* ──────────────────────────── Stat highlight ────────────────────────────── */
+
+  .stat-ring { @apply rounded-xl p-4 border; }
+}
+
+/* ── Animations ────────────────────────────────────────────────────────────── */
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(6px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.animate-fade-in   { animation: fade-in 0.18s ease-out both; }
+.animate-slide-in  { animation: slide-in-right 0.2s ease-out both; }
+.animate-pulse-dot { animation: pulse-dot 1.5s ease-in-out infinite; }
+
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(0); }
+}
+.animate-slideInLeft {
+  animation: slideInLeft 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ── Focus visible ─────────────────────────────────────────────────────────── */
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* ── Print ─────────────────────────────────────────────────────────────────── */
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: white; }
+}
+
+/* ── Tailwind primary color shim (used via primary-600 etc.) ───────────────── */
+
+.bg-primary-100 { background-color: #dbeafe; }
+.bg-primary-600 { background-color: #2563eb; }
+.bg-primary-700 { background-color: #1d4ed8; }
+.text-primary-600 { color: #2563eb; }
+.text-primary-700 { color: #1d4ed8; }
+.border-primary-500 { border-color: #3b82f6; }
+.ring-primary-500 { --tw-ring-color: #3b82f6; }
+.focus\:ring-primary-500:focus { --tw-ring-color: #3b82f6; }
+
+/* ── Accessibility & Readability Enhancements ───────────────────────────── */
+.text-gray-400 { color: #6b7280 !important; }
+.text-slate-400 { color: #6b7280 !important; }
+.text-gray-500 { color: #4b5563 !important; }
+.text-slate-500 { color: #4b5563 !important; }
+.text-gray-600 { color: #374151 !important; }
+.text-slate-600 { color: #374151 !important; }
+.label { color: #4b5563 !important; }
+.page-subtitle { color: #4b5563 !important; }
+
+/* ── Sidebar specific overrides (keeps them crisp on dark bg) ────────────── */
+aside .text-slate-400 { color: #cbd5e1 !important; }
+aside .text-slate-500 { color: #94a3b8 !important; }
+aside .text-blue-400 { color: #38bdf8 !important; }
+aside .text-slate-200 { color: #f8fafc !important; }
+aside .text-slate-100 { color: #f1f5f9 !important; }
+aside .text-slate-300 { color: #e2e8f0 !important; }
+aside .text-slate-500 { color: #94a3b8 !important; }
+aside .text-slate-600 { color: #64748b !important; }
+
+
