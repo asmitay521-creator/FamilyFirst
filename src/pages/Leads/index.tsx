@@ -2257,40 +2257,8 @@ export default function Leads() {
             />
           </div>
 
-          {/* Right Side: View Mode Toggle, Active/Inactive Badges, Date Range Selector & Filters */}
+          {/* Right Side: Active/Inactive Badges, Date Range Selector, Filters & View Mode Toggle */}
           <div className="flex items-center gap-2 shrink-0 ml-auto">
-            {/* View Mode Toggle: Table / Kanban Board */}
-            <div className="flex items-center bg-slate-100/90 p-0.5 rounded-xl border border-slate-200/80 shadow-2xs shrink-0">
-              <button
-                type="button"
-                onClick={() => setViewMode('table')}
-                className={clsx(
-                  'flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer',
-                  viewMode === 'table'
-                    ? 'bg-white text-purple-700 shadow-xs border border-purple-100'
-                    : 'text-slate-500 hover:text-slate-800'
-                )}
-                title="Table View (टेबल व्ह्यू)"
-              >
-                <List size={13} strokeWidth={2.5} />
-                <span>Table</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('board')}
-                className={clsx(
-                  'flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer',
-                  viewMode === 'board'
-                    ? 'bg-purple-600 text-white shadow-xs'
-                    : 'text-slate-500 hover:text-slate-800'
-                )}
-                title="Kanban Cards View (कानबान कार्ड्स व्ह्यू)"
-              >
-                <Columns size={13} strokeWidth={2.5} />
-                <span>Kanban</span>
-              </button>
-            </div>
-
             {/* Active / Inactive Status Badges */}
             <button
               type="button"
@@ -2350,6 +2318,38 @@ export default function Leads() {
             >
               <Filter size={14} />
             </button>
+
+            {/* View Mode Toggle: Table / Kanban Board (Moved to end) */}
+            <div className="flex items-center bg-slate-100/90 p-0.5 rounded-xl border border-slate-200/80 shadow-2xs shrink-0">
+              <button
+                type="button"
+                onClick={() => setViewMode('table')}
+                className={clsx(
+                  'flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer',
+                  viewMode === 'table'
+                    ? 'bg-white text-purple-700 shadow-xs border border-purple-100'
+                    : 'text-slate-500 hover:text-slate-800'
+                )}
+                title="Table View (टेबल व्ह्यू)"
+              >
+                <List size={13} strokeWidth={2.5} />
+                <span>Table</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('board')}
+                className={clsx(
+                  'flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer',
+                  viewMode === 'board'
+                    ? 'bg-purple-600 text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                )}
+                title="Kanban Cards View (कानबान कार्ड्स व्ह्यू)"
+              >
+                <Columns size={13} strokeWidth={2.5} />
+                <span>Kanban</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
