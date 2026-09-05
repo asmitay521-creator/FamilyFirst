@@ -25,6 +25,7 @@ import ContactDetailModal from './ContactDetailModal';
 import * as XLSX from 'xlsx';
 import { CountryPhoneInput } from '@comps/common/CountryPhoneInput';
 import { DatalistInput } from '@comps/common/DatalistInput';
+import { getAssignableEmployees } from '../Leads';
 
 const EDUCATION_OPTIONS = [
   'Metric',
@@ -3275,9 +3276,9 @@ export default function Contacts() {
                                 onChange={e => updateProductInterest(card.id, 'assignedEmployeeId', e.target.value)}
                               >
                                 <option value="">Unassigned</option>
-                                {employeesList.map((emp: any) => {
+                                {getAssignableEmployees(employeesList, editTarget || personalFields).map((emp: any) => {
                                   const empUserId = emp.userId || emp.user?.id || emp.id;
-                                  const empName = `${emp.firstName || emp.user?.firstName || ''} ${emp.lastName || emp.user?.lastName || ''}`.trim() || emp.email || 'Employee';
+                                  const empName = `${emp.firstName || emp.employeeProfile?.firstName || emp.user?.firstName || ''} ${emp.lastName || emp.employeeProfile?.lastName || emp.user?.lastName || ''}`.trim() || emp.name || emp.email || 'Employee';
                                   return (
                                     <option key={emp.id || empUserId} value={empUserId}>
                                       {empName}

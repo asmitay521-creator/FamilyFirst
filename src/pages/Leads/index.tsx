@@ -2360,9 +2360,9 @@ export default function Leads() {
               className="input text-xs font-semibold"
             >
               <option value="">All Agents</option>
-              {employeesList.map((emp: any) => {
+              {getAssignableEmployees(employeesList).map((emp: any) => {
                 const empUserId = emp.userId || emp.user?.id || emp.id;
-                const empName = `${emp.firstName || emp.user?.firstName || ''} ${emp.lastName || emp.user?.lastName || ''}`.trim() || emp.email || 'Employee';
+                const empName = `${emp.firstName || emp.employeeProfile?.firstName || emp.user?.firstName || ''} ${emp.lastName || emp.employeeProfile?.lastName || emp.user?.lastName || ''}`.trim() || emp.name || emp.email || 'Employee';
                 return (
                   <option key={emp.id || empUserId} value={empUserId}>
                     {empName}
@@ -2891,9 +2891,9 @@ export default function Leads() {
                                 onChange={e => updateProductInterest(card.id, 'assignedEmployeeId', e.target.value)}
                               >
                                 <option value="">Unassigned</option>
-                                {employeesList.map((emp: any) => {
+                                {getAssignableEmployees(employeesList, editTarget || personalFields).map((emp: any) => {
                                   const empUserId = emp.userId || emp.user?.id || emp.id;
-                                  const empName = `${emp.firstName || emp.user?.firstName || ''} ${emp.lastName || emp.user?.lastName || ''}`.trim() || emp.email || 'Employee';
+                                  const empName = `${emp.firstName || emp.employeeProfile?.firstName || emp.user?.firstName || ''} ${emp.lastName || emp.employeeProfile?.lastName || emp.user?.lastName || ''}`.trim() || emp.name || emp.email || 'Employee';
                                   return (
                                     <option key={emp.id || empUserId} value={empUserId}>
                                       {empName}
@@ -4579,28 +4579,134 @@ export default function Leads() {
   );
 }
 
+// ── Helper to filter assignable employees (excludes clients, customers, Super Admin / Owner) ──
+export function getAssignableEmployees(empList: any[] = [], currentLeadOrContact?: any): any[] {
+  if (!Array.isArray(empList)) return [];
+
+  const leadName = (
+    currentLeadOrContact?.contact?.fullName ||
+    currentLeadOrContact?.fullName ||
+    `${currentLeadOrContact?.contact?.firstName || currentLeadOrContact?.firstName || ''} ${currentLeadOrContact?.contact?.lastName || currentLeadOrContact?.lastName || ''}`.trim() ||
+    currentLeadOrContact?.name ||
+    ''
+  ).toLowerCase().trim();
+
+  const leadPhone = String(
+    currentLeadOrContact?.contact?.phone ||
+    currentLeadOrContact?.phone ||
+    currentLeadOrContact?.mobile ||
+    ''
+  ).replace(/\D/g, '').slice(-10);
+
+  const leadEmail = String(
+    currentLeadOrContact?.contact?.email ||
+    currentLeadOrContact?.email ||
+    ''
+  ).toLowerCase().trim();
+
+  const seenIds = new Set<string>();
+
+  return empList.filter((emp: any) => {
+    if (!emp) return false;
+
+    const id = String(emp.userId || emp.user?.id || emp.id || emp._id || '');
+    if (seenIds.has(id)) return false;
+
+    const role = String(emp.role || emp.user?.role || '').toUpperCase();
+    const designation = String(emp.designation || '').toLowerCase();
+    const fn = emp.firstName || emp.user?.firstName || emp.employeeProfile?.firstName || '';
+    const ln = emp.lastName || emp.user?.lastName || emp.employeeProfile?.lastName || '';
+    const empName = `${fn} ${ln}`.trim().toLowerCase();
+    const email = String(emp.email || emp.user?.email || '').toLowerCase();
+    const phone = String(emp.phone || emp.mobile || emp.user?.phone || '').replace(/\D/g, '').slice(-10);
+
+    // 1. Exclude Super Admin / Owner / System Admins (the assigners)
+    if (
+      role === 'SUPER_ADMIN' ||
+      role === 'OWNER' ||
+      role === 'ADMIN' ||
+      empName.includes('super admin') ||
+      empName.includes('superadmin') ||
+      empName === 'owner' ||
+      empName === 'administrator' ||
+      designation.includes('super admin') ||
+      designation.includes('owner') ||
+      email.includes('superadmin') ||
+      email.startsWith('admin@')
+    ) {
+      return false;
+    }
+
+    // 2. Exclude Clients / Customers / Non-Staff
+    if (
+      role === 'CLIENT' ||
+      role === 'CUSTOMER' ||
+      role === 'LEAD' ||
+      emp.isClient ||
+      emp.type === 'CLIENT' ||
+      emp.type === 'CUSTOMER' ||
+      designation.includes('client') ||
+      designation.includes('customer')
+    ) {
+      return false;
+    }
+
+    // 3. Exclude the current Lead / Client themselves
+    if (leadName && empName && (empName === leadName || empName.includes(leadName) || leadName.includes(empName))) {
+      return false;
+    }
+    if (leadPhone && phone && leadPhone === phone) {
+      return false;
+    }
+    if (leadEmail && email && leadEmail === email) {
+      return false;
+    }
+
+    if (id) seenIds.add(id);
+    return true;
+  });
+}
+
 // ── Helper to resolve assignee display name ─────────────────────────────────────
 function getAssigneeDisplayName(item: any, empList?: any[]) {
   if (!item) return 'Unassigned';
 
+  const clientName = (
+    item.contact?.fullName ||
+    `${item.contact?.firstName || ''} ${item.contact?.lastName || ''}`.trim() ||
+    item.name ||
+    item.fullName ||
+    ''
+  ).toLowerCase().trim();
+
+  const isInvalidAssigneeName = (name?: string) => {
+    if (!name) return true;
+    const n = name.trim().toLowerCase();
+    if (!n || n === 'unassigned' || n === 'super admin' || n === 'superadmin' || n === 'owner' || n === 'administrator') return true;
+    if (clientName && (n === clientName || n.includes(clientName) || clientName.includes(n))) return true;
+    return false;
+  };
+
   // 1. Direct name properties
-  if (item.assignedToName && String(item.assignedToName).trim() && item.assignedToName !== 'Unassigned') {
+  if (item.assignedToName && !isInvalidAssigneeName(item.assignedToName)) {
     return String(item.assignedToName).trim();
   }
-  if (item.assignedEmployeeName && String(item.assignedEmployeeName).trim() && item.assignedEmployeeName !== 'Unassigned') {
+  if (item.assignedEmployeeName && !isInvalidAssigneeName(item.assignedEmployeeName)) {
     return String(item.assignedEmployeeName).trim();
   }
-  if (item.assignedEmployee?.name && String(item.assignedEmployee.name).trim() && item.assignedEmployee.name !== 'Unassigned') {
+  if (item.assignedEmployee?.name && !isInvalidAssigneeName(item.assignedEmployee.name)) {
     return String(item.assignedEmployee.name).trim();
   }
   if (item.assignedEmployee?.employeeProfile) {
     const ep = item.assignedEmployee.employeeProfile;
     const fn = ep.firstName || '';
     const ln = ep.lastName || '';
-    if (fn || ln) return `${fn} ${ln}`.trim();
+    const full = `${fn} ${ln}`.trim();
+    if (full && !isInvalidAssigneeName(full)) return full;
   }
   if (item.assignedEmployee?.firstName || item.assignedEmployee?.lastName) {
-    return `${item.assignedEmployee.firstName || ''} ${item.assignedEmployee.lastName || ''}`.trim();
+    const full = `${item.assignedEmployee.firstName || ''} ${item.assignedEmployee.lastName || ''}`.trim();
+    if (full && !isInvalidAssigneeName(full)) return full;
   }
 
   // 2. Lookup by ID in empList
@@ -4617,9 +4723,8 @@ function getAssigneeDisplayName(item: any, empList?: any[]) {
       const p = found.employeeProfile || found;
       const fn = p.firstName || found.firstName || found.user?.firstName || '';
       const ln = p.lastName || found.lastName || found.user?.lastName || '';
-      if (fn || ln) return `${fn} ${ln}`.trim();
-      if (found.name) return found.name;
-      if (found.email) return found.email;
+      const name = `${fn} ${ln}`.trim() || found.name || '';
+      if (name && !isInvalidAssigneeName(name)) return name;
     }
   }
 
@@ -4627,10 +4732,10 @@ function getAssigneeDisplayName(item: any, empList?: any[]) {
   try {
     if (item.notes && typeof item.notes === 'string') {
       const parsed = JSON.parse(item.notes);
-      if (parsed.assignedEmployeeName && parsed.assignedEmployeeName !== 'Unassigned') {
+      if (parsed.assignedEmployeeName && !isInvalidAssigneeName(parsed.assignedEmployeeName)) {
         return parsed.assignedEmployeeName;
       }
-      if (parsed.assignedToName && parsed.assignedToName !== 'Unassigned') {
+      if (parsed.assignedToName && !isInvalidAssigneeName(parsed.assignedToName)) {
         return parsed.assignedToName;
       }
       if (parsed.assignedEmployeeId && empList) {
@@ -4642,7 +4747,8 @@ function getAssigneeDisplayName(item: any, empList?: any[]) {
         if (found) {
           const fn = found.firstName || found.user?.firstName || '';
           const ln = found.lastName || found.user?.lastName || '';
-          if (fn || ln) return `${fn} ${ln}`.trim();
+          const name = `${fn} ${ln}`.trim();
+          if (name && !isInvalidAssigneeName(name)) return name;
         }
       }
     }
@@ -5615,11 +5721,15 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, isOwner, onEdit, o
                   className="input text-xs font-semibold bg-slate-50/50 border-slate-200 focus:bg-white"
                 >
                   <option value="">Unassigned</option>
-                  {employees.map((emp: any) => (
-                    <option key={emp.id} value={emp.userId || emp.id}>
-                      {emp.firstName || emp.employeeProfile?.firstName} {emp.lastName || emp.employeeProfile?.lastName}
-                    </option>
-                  ))}
+                  {getAssignableEmployees(employees, fullLead || lead).map((emp: any) => {
+                    const empUserId = emp.userId || emp.user?.id || emp.id;
+                    const empName = `${emp.firstName || emp.employeeProfile?.firstName || emp.user?.firstName || ''} ${emp.lastName || emp.employeeProfile?.lastName || emp.user?.lastName || ''}`.trim() || emp.name || emp.email || 'Employee';
+                    return (
+                      <option key={emp.id || empUserId} value={empUserId}>
+                        {empName}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
 
