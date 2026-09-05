@@ -712,24 +712,6 @@ export default function Seminars() {
 
         {/* Filter Tabs */}
         <div className="flex items-center gap-2 shrink-0 ml-auto">
-          {/* Super Admin Website Seminar Price Button */}
-          {isSuperAdmin && (
-            <button
-              type="button"
-              onClick={() => {
-                setConfigFormData(seminarConfig);
-                setSuperAdminConfigModalOpen(true);
-              }}
-              className="px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm shrink-0 whitespace-nowrap bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white flex items-center gap-2 shadow-purple-500/20 hover:shadow-md hover:scale-105 active:scale-95"
-              title="Super Admin: Click to change live website seminar price"
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-              <span>Website Price:</span>
-              <strong className="text-amber-300 font-extrabold text-xs">₹{seminarConfig.price}/-</strong>
-              <Pencil size={11} className="text-white/80" />
-            </button>
-          )}
-
           {[
             { id: 'ALL', label: 'All Seminars', type: 'status' },
             { id: 'REGISTERED', label: 'Registered', type: 'status' },
@@ -1206,12 +1188,13 @@ export default function Seminars() {
         onClose={() => setSuperAdminConfigModalOpen(false)}
         title="Website Seminar Price (वेबसाइट फी)"
         subtitle="Super Admin can change the live price displayed on the website."
-        size="sm"
-        actions={
-          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+        size="md"
+        icon={<IndianRupee size={20} />}
+        footerActions={
+          <div className="flex justify-end gap-2.5 w-full">
             <button
               type="button"
-              className="px-3.5 py-1.5 text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 cursor-pointer"
+              className="px-4 py-2 text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 cursor-pointer transition-all"
               onClick={() => setSuperAdminConfigModalOpen(false)}
             >
               Cancel
@@ -1219,22 +1202,22 @@ export default function Seminars() {
             <button
               type="button"
               disabled={savingConfig}
-              className="px-4 py-1.5 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+              className="px-5 py-2 text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-2"
               onClick={handleSaveSeminarConfig}
             >
-              {savingConfig ? <RefreshCw size={13} className="animate-spin" /> : <Save size={13} />}
+              {savingConfig ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
               Save Price
             </button>
           </div>
         }
       >
-        <form onSubmit={handleSaveSeminarConfig} className="space-y-3.5 py-1">
+        <form onSubmit={handleSaveSeminarConfig} className="space-y-4 py-2">
           {/* Quick Pricing Presets */}
           <div>
-            <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block mb-1.5">
+            <label className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider block mb-2">
               Quick Price Presets (किंमत निवडा)
             </label>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-2">
               {['0', '99', '149', '199', '299', '499', '999'].map((p) => {
                 const isSelected = String(configFormData.price) === p;
                 return (
@@ -1243,10 +1226,10 @@ export default function Seminars() {
                     type="button"
                     onClick={() => setConfigFormData((prev) => ({ ...prev, price: p }))}
                     className={clsx(
-                      'px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer border',
+                      'px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border shadow-2xs',
                       isSelected
-                        ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        ? 'bg-purple-600 text-white border-purple-600 shadow-purple-500/20 scale-105'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
                     )}
                   >
                     {p === '0' ? 'FREE' : `₹${p}`}
@@ -1258,11 +1241,11 @@ export default function Seminars() {
 
           {/* Custom Price Input */}
           <div>
-            <label className="text-[10px] font-extrabold text-slate-600 uppercase tracking-wider block mb-1">
+            <label className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider block mb-1.5">
               Website Seminar Price (₹) <span className="text-red-500 font-bold">*</span>
             </label>
             <div className="relative">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">₹</span>
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-black text-base">₹</span>
               <input
                 type="number"
                 required
@@ -1270,10 +1253,10 @@ export default function Seminars() {
                 value={configFormData.price}
                 onChange={(e) => setConfigFormData((prev) => ({ ...prev, price: e.target.value }))}
                 placeholder="199"
-                className="input w-full pl-8 font-black text-emerald-700 text-base rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-purple-500/20"
+                className="input w-full pl-9 py-2.5 font-black text-emerald-700 text-lg rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-purple-500/20"
               />
             </div>
-            <p className="text-[10px] text-slate-400 mt-1">
+            <p className="text-[11px] text-slate-500 mt-1.5 font-medium">
               * ही किंमत सेव्ह केल्यावर पब्लिक वेबसाइटवर सेमिनार फी (₹{configFormData.price || '0'}) लगेच अपडेट होईल.
             </p>
           </div>
