@@ -5198,6 +5198,8 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, isOwner, onEdit, o
             });
             localStorage.setItem(storageKey, JSON.stringify(updated));
           } catch {}
+        });
+
         // Dispatch storage event / BroadcastChannel notification
         try {
           window.dispatchEvent(new Event('storage'));
