@@ -4391,6 +4391,7 @@ export default function Leads() {
             tab={detailTab}
             onTabChange={setDetailTab}
             employees={employeesList}
+            allLeads={leadsFlat}
             isOwner={isOwner}
             onEdit={() => { setDetailOpen(false); openEdit(detailTarget); }}
             onTriggerPolicyCreation={triggerPolicyCreationForLead}
@@ -4581,9 +4582,39 @@ export default function Leads() {
   );
 }
 
-// ── Helper to filter assignable employees (excludes clients, customers, Super Admin / Owner) ──
-export function getAssignableEmployees(empList: any[] = [], currentLeadOrContact?: any): any[] {
-  const rawList = Array.isArray(empList) ? empList : [];
+// ── Helper to filter assignable employees (excludes current client, Super Admin / Owner) ──
+export function getAssignableEmployees(empList: any[] = [], currentLeadOrContact?: any, otherLeadsOrContacts: any[] = []): any[] {
+  const rawList = Array.isArray(empList) ? [...empList] : [];
+  const contactsPool = Array.isArray(otherLeadsOrContacts) ? otherLeadsOrContacts : [];
+
+  // Add other client/lead names from the system so they can be assigned if needed
+  contactsPool.forEach((item: any) => {
+    if (!item) return;
+    const c = item.contact || item;
+    const fn = (c.firstName || item.firstName || '').trim();
+    const ln = (c.lastName || item.lastName || '').trim();
+    const rawName = (item.fullName || item.name || c.fullName || c.name || `${fn} ${ln}`).trim();
+    const nameParts = rawName.split(/\s+/);
+    const parsedFn = fn || nameParts[0] || '';
+    const parsedLn = ln || nameParts.slice(1).join(' ') || '';
+    const full = `${parsedFn} ${parsedLn}`.trim();
+    if (!full || full.toLowerCase() === 'website lead' || full.toLowerCase() === 'lead') return;
+
+    const id = String(item.id || item._id || c.id || `lead_contact_${parsedFn}_${parsedLn}`);
+    const phone = c.phone || item.phone || item.mobile || '';
+    const email = c.email || item.email || '';
+
+    rawList.push({
+      id,
+      userId: id,
+      firstName: parsedFn,
+      lastName: parsedLn,
+      phone,
+      email,
+      name: full,
+      role: 'CONTACT'
+    });
+  });
 
   const leadFirst = String(currentLeadOrContact?.contact?.firstName || currentLeadOrContact?.firstName || '').toLowerCase().trim();
   const leadLast = String(currentLeadOrContact?.contact?.lastName || currentLeadOrContact?.lastName || '').toLowerCase().trim();
@@ -4613,6 +4644,8 @@ export function getAssignableEmployees(empList: any[] = [], currentLeadOrContact
     ''
   ).toLowerCase().trim();
 
+  const currentLeadId = String(currentLeadOrContact?.id || currentLeadOrContact?._id || currentLeadOrContact?.contactId || '').toLowerCase().trim();
+
   const seenIds = new Set<string>();
   const seenNames = new Set<string>();
 
@@ -4638,7 +4671,6 @@ export function getAssignableEmployees(empList: any[] = [], currentLeadOrContact
     if (
       role === 'SUPER_ADMIN' ||
       role === 'OWNER' ||
-      role === 'ADMIN' ||
       empName.includes('super admin') ||
       empName.includes('superadmin') ||
       empName === 'owner' ||
@@ -4651,21 +4683,10 @@ export function getAssignableEmployees(empList: any[] = [], currentLeadOrContact
       return false;
     }
 
-    // 2. Exclude Clients / Customers / Non-Staff
-    if (
-      role === 'CLIENT' ||
-      role === 'CUSTOMER' ||
-      role === 'LEAD' ||
-      emp.isClient ||
-      emp.type === 'CLIENT' ||
-      emp.type === 'CUSTOMER' ||
-      designation.includes('client') ||
-      designation.includes('customer')
-    ) {
+    // 2. Exclude the current Lead / Client themselves (match ID, first name, last name, normalized name, phone, or email)
+    if (currentLeadId && (id.toLowerCase() === currentLeadId || (currentLeadId.startsWith('fs_') && id.toLowerCase() === currentLeadId.replace('fs_', '')))) {
       return false;
     }
-
-    // 3. Exclude the current Lead / Client themselves (match first name, last name, normalized name, phone, or email)
     if (leadFirst && (fnLow === leadFirst || fnLow.includes(leadFirst) || leadFirst.includes(fnLow))) {
       return false;
     }
@@ -5126,11 +5147,12 @@ function LeadsTable({ data, employeesList, loading, visibleColumns, sortKey, sor
 }
 
 // ── Lead Detail Popup ─────────────────────────────────────────────────────────
-function LeadDetailPopup({ lead, tab, onTabChange, employees, isOwner, onEdit, onTriggerPolicyCreation }: {
+function LeadDetailPopup({ lead, tab, onTabChange, employees, allLeads, isOwner, onEdit, onTriggerPolicyCreation }: {
   lead: any;
   tab: 'overview' | 'comments' | 'stage';
   onTabChange: (t: 'overview' | 'comments' | 'stage') => void;
   employees: any[];
+  allLeads?: any[];
   isOwner: boolean;
   onEdit: () => void;
   onTriggerPolicyCreation?: (lead: any) => void;
@@ -5168,8 +5190,8 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, isOwner, onEdit, o
   const [isAssigneeDropdownOpen, setIsAssigneeDropdownOpen] = useState(false);
 
   const assignableEmployeesList = useMemo(() => {
-    return getAssignableEmployees(employees, fullLead || lead);
-  }, [employees, fullLead, lead]);
+    return getAssignableEmployees(employees, fullLead || lead, allLeads || []);
+  }, [employees, fullLead, lead, allLeads]);
 
   const currentAssigneeObj = assignableEmployeesList.find((e: any) => (e.userId && e.userId === editAssignee) || (e.id && e.id === editAssignee) || (e.user?.id && e.user?.id === editAssignee)) ||
     employees.find((e: any) => (e.userId && e.userId === editAssignee) || (e.id && e.id === editAssignee) || (e.user?.id && e.user?.id === editAssignee));
