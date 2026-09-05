@@ -196,22 +196,13 @@ export default function Login() {
         <div className="bg-white flex flex-col justify-between p-6 sm:p-8">
           <div className="space-y-4 my-auto">
 
-            {/* Logo + Welcome */}
+            {/* Logo */}
             <div className="text-center">
               <div className="inline-flex flex-col items-center mb-3">
                 <div className="w-20 h-20 rounded-2xl bg-white shadow-lg border border-purple-100 flex items-center justify-center mb-2">
                   <img src="/FamilyFirstLogo.png" alt="Family First Insurance" className="w-16 h-16 object-contain" />
                 </div>
                 <p className="text-[9px] font-black tracking-widest text-purple-500 uppercase">FAMILY FIRST</p>
-              </div>
-
-              {/* Welcome Back with decorative stars */}
-              <div className="flex items-center justify-center gap-2 mb-1">
-                <span className="text-amber-400 text-sm">✦</span>
-                <p className="text-base font-bold text-amber-500" style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic' }}>
-                  Welcome Back!
-                </p>
-                <span className="text-amber-400 text-sm">✦</span>
               </div>
               <h2 className="text-2xl font-black text-slate-900 tracking-tight">Sign in to your account</h2>
               <p className="text-xs text-slate-400 font-medium mt-1">Access your dashboard and manage everything seamlessly.</p>
