@@ -107,13 +107,14 @@ export default function Employees() {
     onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to update employee status'),
   });
 
-  const openEdit = (emp: Employee) => {
+  const openEdit = async (emp: Employee) => {
     setEditTarget(emp);
     setShowPassword(false);
     setEditVal('firstName',         emp.firstName);
     setEditVal('lastName',          emp.lastName);
     setEditVal('phone',             emp.phone ?? '');
-    setEditVal('password',          '');
+    const currentPass = (emp as any).password || (emp as any).user?.password || (emp as any).plainPassword || (emp as any).user?.plainPassword || '';
+    setEditVal('password',          currentPass);
     setEditVal('designation',       emp.designation ?? '');
     setEditVal('department',        emp.department ?? '');
     setEditVal('dateOfJoining',     emp.dateOfJoining ? emp.dateOfJoining.slice(0, 10) : '');
@@ -129,6 +130,19 @@ export default function Employees() {
     setEditVal('bankIfscCode',      emp.bankIfscCode ?? '');
     setEditVal('bankBranch',        emp.bankBranch ?? '');
     setEditVal('bankAccountType',   emp.bankAccountType ?? '');
+
+    try {
+      const detailed = await employeesService.get(emp.id);
+      const detailData = detailed?.data ?? detailed;
+      if (detailData) {
+        const pass = detailData.password || detailData.user?.password || detailData.plainPassword || detailData.user?.plainPassword;
+        if (pass) {
+          setEditVal('password', pass);
+        }
+      }
+    } catch {
+      // ignore
+    }
   };
 
   const cols: Column<Employee>[] = [
@@ -279,16 +293,13 @@ export default function Employees() {
               {editErrors.phone && <p className="text-xs text-red-500 font-semibold mt-1">{editErrors.phone.message}</p>}
             </div>
             <div>
-              <label className="label flex items-center justify-between">
-                <span>Password</span>
-                <span className="text-[10px] text-slate-400 font-normal">(Leave blank to keep unchanged)</span>
-              </label>
+              <label className="label">Password</label>
               <div className="relative">
                 <input
                   {...regEdit('password')}
                   type={showPassword ? 'text' : 'password'}
                   className={clsx('input pr-10', editErrors.password && 'border-red-500 focus:border-red-500 focus:ring-red-200')}
-                  placeholder="Enter new password (min 8 chars)"
+                  placeholder="Password"
                   autoComplete="new-password"
                 />
                 <button
