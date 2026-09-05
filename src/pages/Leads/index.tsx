@@ -1091,10 +1091,18 @@ export default function Leads() {
               uiStage: 'To Contact',
               createdAt: createdAtDate,
               followUpDate: data.followUpDate || new Date().toISOString().split('T')[0],
+              assignedEmployeeId: data.assignedEmployeeId || data.assignedTo || '',
+              assignedTo: data.assignedTo || data.assignedEmployeeId || '',
+              assignedToName: data.assignedToName || data.assignedEmployeeName || data.assignedEmployee?.name || '',
+              assignedEmployee: data.assignedEmployee || (data.assignedToName ? { name: data.assignedToName, id: data.assignedEmployeeId || data.assignedTo } : undefined),
+              premiumBudget: data.premiumBudget || data.expectedPremium || data.amount || undefined,
+              expectedPremium: data.expectedPremium || data.premiumBudget || data.amount || undefined,
               notes: JSON.stringify({
-                leadStatus: 'INTERESTED',
-                leadSource: data.leadSource || 'Website Consultation',
-                leadType: 'FRESH',
+                leadStatus: data.status || 'INTERESTED',
+                leadSource: data.leadSource || data.source || 'Website Consultation',
+                leadType: data.leadType || 'FRESH',
+                assignedEmployeeId: data.assignedEmployeeId || data.assignedTo || '',
+                assignedEmployeeName: data.assignedToName || data.assignedEmployeeName || '',
                 descriptionDetails
               }),
               interests: [service],
@@ -1413,6 +1421,11 @@ export default function Leads() {
         const updatedFollowUp = firstInterestCard?.followUpDate || editTarget.followUpDate || '';
         const updatedPremium = Number(firstInterestCard?.expectedPremium) || editTarget.premiumBudget || 0;
         const updatedNotes = firstInterestCard?.descriptionDetails || editTarget.notes || '';
+        const assignedEmp = firstInterestCard?.assignedEmployeeId || leadInfoFields?.assignedEmployeeId || editTarget?.assignedEmployeeId || editTarget?.assignedTo || '';
+        const foundEmp = employeesList.find((e: any) => e.id === assignedEmp || e.userId === assignedEmp || e.user?.id === assignedEmp);
+        const assignedToName = foundEmp
+          ? `${foundEmp.firstName || foundEmp.user?.firstName || foundEmp.employeeProfile?.firstName || ''} ${foundEmp.lastName || foundEmp.user?.lastName || foundEmp.employeeProfile?.lastName || ''}`.trim() || foundEmp.name || foundEmp.email
+          : (editTarget?.assignedToName || '');
 
         // A. Update Firestore lead if applicable
         if (targetId.startsWith('fs_') || !/^[0-9a-fA-F]{24}$/.test(targetId)) {
@@ -1428,8 +1441,13 @@ export default function Leads() {
               email: personalFields.email || '',
               stage: updatedStage,
               interests: updatedInterests,
+              assignedEmployeeId: assignedEmp || '',
+              assignedTo: assignedEmp || '',
+              assignedToName: assignedToName || '',
+              assignedEmployee: assignedToName ? { name: assignedToName, id: assignedEmp } : null,
               followUpDate: updatedFollowUp,
               premiumBudget: updatedPremium,
+              expectedPremium: updatedPremium,
               notes: updatedNotes,
               updatedAt: new Date().toISOString(),
             });
@@ -4563,27 +4581,73 @@ export default function Leads() {
 
 // ── Helper to resolve assignee display name ─────────────────────────────────────
 function getAssigneeDisplayName(item: any, empList?: any[]) {
-  if (item?.assignedEmployee?.employeeProfile) {
+  if (!item) return 'Unassigned';
+
+  // 1. Direct name properties
+  if (item.assignedToName && String(item.assignedToName).trim() && item.assignedToName !== 'Unassigned') {
+    return String(item.assignedToName).trim();
+  }
+  if (item.assignedEmployeeName && String(item.assignedEmployeeName).trim() && item.assignedEmployeeName !== 'Unassigned') {
+    return String(item.assignedEmployeeName).trim();
+  }
+  if (item.assignedEmployee?.name && String(item.assignedEmployee.name).trim() && item.assignedEmployee.name !== 'Unassigned') {
+    return String(item.assignedEmployee.name).trim();
+  }
+  if (item.assignedEmployee?.employeeProfile) {
     const ep = item.assignedEmployee.employeeProfile;
     const fn = ep.firstName || '';
     const ln = ep.lastName || '';
     if (fn || ln) return `${fn} ${ln}`.trim();
   }
-  if (item?.assignedEmployee?.name) {
-    return item.assignedEmployee.name;
+  if (item.assignedEmployee?.firstName || item.assignedEmployee?.lastName) {
+    return `${item.assignedEmployee.firstName || ''} ${item.assignedEmployee.lastName || ''}`.trim();
   }
-  const empId = item?.assignedEmployeeId || item?.assignedEmployee?.id || item?.assignedEmployee?.userId;
+
+  // 2. Lookup by ID in empList
+  const empId = item.assignedEmployeeId || item.assignedEmployee?.id || item.assignedEmployee?.userId || item.assignedTo;
   if (empId && empList && empList.length > 0) {
-    const found = empList.find((e: any) => e.id === empId || e.userId === empId || e.user?.id === empId);
+    const found = empList.find((e: any) =>
+      String(e.id) === String(empId) ||
+      String(e.userId) === String(empId) ||
+      String(e.user?.id) === String(empId) ||
+      String(e._id) === String(empId) ||
+      (e.email && e.email.toLowerCase() === String(empId).toLowerCase())
+    );
     if (found) {
       const p = found.employeeProfile || found;
-      const fn = p.firstName || found.firstName || '';
-      const ln = p.lastName || found.lastName || '';
+      const fn = p.firstName || found.firstName || found.user?.firstName || '';
+      const ln = p.lastName || found.lastName || found.user?.lastName || '';
       if (fn || ln) return `${fn} ${ln}`.trim();
       if (found.name) return found.name;
       if (found.email) return found.email;
     }
   }
+
+  // 3. Fallback to parsing notes JSON
+  try {
+    if (item.notes && typeof item.notes === 'string') {
+      const parsed = JSON.parse(item.notes);
+      if (parsed.assignedEmployeeName && parsed.assignedEmployeeName !== 'Unassigned') {
+        return parsed.assignedEmployeeName;
+      }
+      if (parsed.assignedToName && parsed.assignedToName !== 'Unassigned') {
+        return parsed.assignedToName;
+      }
+      if (parsed.assignedEmployeeId && empList) {
+        const found = empList.find((e: any) =>
+          String(e.id) === String(parsed.assignedEmployeeId) ||
+          String(e.userId) === String(parsed.assignedEmployeeId) ||
+          String(e.user?.id) === String(parsed.assignedEmployeeId)
+        );
+        if (found) {
+          const fn = found.firstName || found.user?.firstName || '';
+          const ln = found.lastName || found.user?.lastName || '';
+          if (fn || ln) return `${fn} ${ln}`.trim();
+        }
+      }
+    }
+  } catch {}
+
   return 'Unassigned';
 }
 
@@ -5050,6 +5114,12 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, isOwner, onEdit, o
         }
       }
 
+      // Find assignee display name from employees list
+      const foundEmp = employees.find((e: any) => e.id === assignedEmp || e.userId === assignedEmp || e.user?.id === assignedEmp);
+      const assignedToName = foundEmp
+        ? `${foundEmp.firstName || foundEmp.user?.firstName || foundEmp.employeeProfile?.firstName || ''} ${foundEmp.lastName || foundEmp.user?.lastName || foundEmp.employeeProfile?.lastName || ''}`.trim() || foundEmp.name || foundEmp.email
+        : '';
+
       // B. Update Firestore if applicable
       if (targetId.startsWith('fs_') || fsId) {
         try {
@@ -5062,6 +5132,10 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, isOwner, onEdit, o
                 status: updatedStatus,
                 leadType: updatedType,
                 source: updatedSource,
+                assignedEmployeeId: assignedEmp || '',
+                assignedTo: assignedEmp || '',
+                assignedToName: assignedToName || '',
+                assignedEmployee: assignedToName ? { name: assignedToName, id: assignedEmp } : null,
                 followUpDate: validFollowUpStr || validFollowUpIso || '',
                 premiumBudget: rawPremium || '',
                 expectedPremium: rawPremium || '',
@@ -5088,6 +5162,9 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, isOwner, onEdit, o
               type: updatedType,
               source: updatedSource,
               assignedEmployeeId: assignedEmp,
+              assignedTo: assignedEmp,
+              assignedToName: assignedToName,
+              assignedEmployee: assignedToName ? { name: assignedToName, id: assignedEmp } : undefined,
               followUpDate: validFollowUpStr,
               premiumBudget: rawPremium,
               expectedPremium: rawPremium,
@@ -5108,6 +5185,10 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, isOwner, onEdit, o
                   ...item,
                   stage: updatedStage,
                   status: updatedStatus,
+                  assignedEmployeeId: assignedEmp,
+                  assignedTo: assignedEmp,
+                  assignedToName: assignedToName,
+                  assignedEmployee: assignedToName ? { name: assignedToName, id: assignedEmp } : undefined,
                   followUpDate: validFollowUpStr,
                   amount: rawPremium || item.amount,
                   notes: notesJsonStr,
@@ -5119,6 +5200,28 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, isOwner, onEdit, o
           } catch {}
         });
       } catch (lsErr) {}
+
+      // Update webLeads state in memory immediately
+      setWebLeads(prev => prev.map(l => {
+        if (l.id === targetId || l.id === ('fs_' + targetId) || l.id === fsId) {
+          return {
+            ...l,
+            stage: updatedStage,
+            status: updatedStatus,
+            type: updatedType,
+            source: updatedSource,
+            assignedEmployeeId: assignedEmp,
+            assignedTo: assignedEmp,
+            assignedToName: assignedToName,
+            assignedEmployee: assignedToName ? { name: assignedToName, id: assignedEmp } : undefined,
+            followUpDate: validFollowUpStr,
+            premiumBudget: rawPremium,
+            expectedPremium: rawPremium,
+            notes: notesJsonStr,
+          };
+        }
+        return l;
+      }));
 
       // Invalidate queries & refetch
       qc.invalidateQueries({ queryKey: ['leads'] });
