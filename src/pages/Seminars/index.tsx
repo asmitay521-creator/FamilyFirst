@@ -622,7 +622,7 @@ export default function Seminars() {
       <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImport} />
 
       {/* Header Banner & Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
         {/* Total Attendees */}
         <div 
           onClick={() => { setSelectedStatusFilter('ALL'); setSelectedModeFilter('ALL'); }}
@@ -674,24 +674,6 @@ export default function Seminars() {
           </div>
           <div className="w-11 h-11 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center border border-sky-100">
             <Video size={22} />
-          </div>
-        </div>
-
-        {/* Offline Seminars */}
-        <div 
-          onClick={() => setSelectedModeFilter(selectedModeFilter === 'OFFLINE' ? 'ALL' : 'OFFLINE')}
-          className={clsx(
-            "bg-white rounded-2xl p-4 border shadow-2xs flex items-center justify-between cursor-pointer transition-all hover:shadow-xs",
-            selectedModeFilter === 'OFFLINE' ? 'border-emerald-400 ring-2 ring-emerald-500/20 bg-emerald-50/20' : 'border-slate-200/80'
-          )}
-          title="Filter Offline Seminars"
-        >
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Offline Seminars</p>
-            <h3 className="text-2xl font-black text-emerald-600 mt-1">{stats.offline}</h3>
-          </div>
-          <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
-            <MapPin size={22} />
           </div>
         </div>
       </div>
