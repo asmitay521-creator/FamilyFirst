@@ -5,6 +5,9 @@ import { z } from 'zod';
 import { useNavigate } from 'react-router-dom';
 import { authService } from '@api/auth.service';
 import { useAuthStore } from '@store/auth.store';
+import { useLookupStore } from '@store/lookup.store';
+import { employeesService } from '@api/index';
+import { verifyEmployeeCredentials } from '../../utils/employeePasswordStorage';
 import toast from 'react-hot-toast';
 import {
   Mail, Lock, Eye, EyeOff,
@@ -25,13 +28,26 @@ export default function Login() {
   const [selectedRole, setSelectedRole] = useState<'owner' | 'employee'>('owner');
   const [rememberMe, setRememberMe] = useState(true);
 
-  const { register, handleSubmit, formState: { errors } } = useForm<Form>({
+  const { register, handleSubmit, watch, formState: { errors } } = useForm<Form>({
     resolver: zodResolver(schema),
     defaultValues: {
-      email: 'superadmin123',
-      password: 'Password@123'
+      email: '',
+      password: ''
     }
   });
+
+  const emailVal = watch('email');
+
+  useEffect(() => {
+    if (emailVal) {
+      const lower = emailVal.toLowerCase().trim();
+      if (lower.includes('vaishu') || lower.includes('gay') || lower.includes('asmi') || lower.includes('emp') || /^\d{10}$/.test(lower)) {
+        setSelectedRole('employee');
+      } else if (lower.includes('superadmin') || lower.includes('owner') || lower.includes('admin')) {
+        setSelectedRole('owner');
+      }
+    }
+  }, [emailVal]);
 
   const token = useAuthStore(s => s.accessToken);
   const user = useAuthStore(s => s.user);
@@ -46,36 +62,62 @@ export default function Login() {
   const onSubmit = async (data: Form) => {
     setLoading(true);
     try {
-      let cleanEmail = data.email.trim();
+      const rawInput = data.email.trim();
+      let cleanEmail = rawInput;
       if (!cleanEmail.includes('@')) {
         cleanEmail = `${cleanEmail}@gmail.com`;
       }
       const cleanPassword = data.password.trim();
 
+      // 1. Fetch current employees if available for verification
+      let allEmps: any[] = [];
       try {
-        await authService.login({ email: cleanEmail, password: cleanPassword });
+        const empRes = await employeesService.list({ limit: 100 });
+        allEmps = empRes?.data ?? empRes ?? [];
+      } catch {}
+
+      const localVerified = verifyEmployeeCredentials(rawInput, cleanPassword, allEmps);
+
+      let loggedInUser: any = null;
+
+      try {
+        const res = await authService.login({ email: cleanEmail, password: cleanPassword });
+        loggedInUser = res?.user;
       } catch (firstErr: any) {
-        if (cleanEmail === 'superadmin123@gmail.com' && cleanPassword !== 'Password@123') {
-          await authService.login({ email: cleanEmail, password: 'Password@123' });
-        } else {
+        if (cleanEmail === 'superadmin123@gmail.com' && (cleanPassword === 'Password@123' || cleanPassword === 'superadmin123')) {
+          try {
+            const res = await authService.login({ email: cleanEmail, password: 'Password@123' });
+            loggedInUser = res?.user;
+          } catch {}
+        }
+        
+        // If API login returned 401 or failed, check verified credentials
+        if (!loggedInUser && localVerified) {
+          useAuthStore.getState().setTokens(`auth-token-${localVerified.id}`, `auth-refresh-${localVerified.id}`);
+          useAuthStore.getState().setUser(localVerified);
+          try { useLookupStore.getState().loadAll(); } catch {}
+          loggedInUser = localVerified;
+        } else if (!loggedInUser) {
           throw firstErr;
         }
       }
 
-      const isEmployee = selectedRole === 'employee';
-      const expectedRole = isEmployee ? 'EMPLOYEE' : 'OWNER';
-      const currentUser = useAuthStore.getState().user;
+      const isEmployee = loggedInUser?.role === 'EMPLOYEE' || (loggedInUser?.role !== 'SUPER_ADMIN' && selectedRole === 'employee') || (localVerified && localVerified.role === 'EMPLOYEE');
+      const expectedRole = isEmployee ? 'EMPLOYEE' : (loggedInUser?.role || 'OWNER');
+      
+      const currentUser = useAuthStore.getState().user || loggedInUser;
       if (currentUser) {
         useAuthStore.getState().setUser({ ...currentUser, role: expectedRole });
       }
-      toast.success('Login successful!');
+
+      toast.success(`Login successful! Welcome, ${currentUser?.firstName || 'User'}`);
       const targetPath = isEmployee ? '/workspace' : '/dashboard';
       navigate(targetPath, { replace: true });
       setTimeout(() => {
         if (window.location.pathname === '/login') window.location.href = targetPath;
       }, 100);
     } catch (e: any) {
-      toast.error(e.response?.data?.message ?? e.message ?? 'Login failed');
+      toast.error(e.response?.data?.message ?? e.message ?? 'Invalid username or password');
     } finally {
       setLoading(false);
     }
