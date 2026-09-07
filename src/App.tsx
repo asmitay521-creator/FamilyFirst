@@ -84,14 +84,16 @@ function OwnerRoute({ children }: { children: React.ReactNode }) {
   const user = useAuthStore(s => s.user);
   if (!user) return <Navigate to="/login" replace />;
   if (user.role === 'EMPLOYEE') return <Navigate to="/workspace" replace />;
-  if (user.role !== 'OWNER' && user.role !== 'SUPERADMIN') return <Navigate to="/login" replace />;
+  const isOwnerLike = user.role === 'OWNER' || user.role === 'SUPERADMIN' || user.role === 'SUPER_ADMIN' || user.role === 'ADMIN';
+  if (!isOwnerLike) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
 
 function AdminOrAuthorizedRoute({ children, permission }: { children: React.ReactNode; permission?: string }) {
   const user = useAuthStore(s => s.user);
   if (!user) return <Navigate to="/login" replace />;
-  if (user.role === 'OWNER' || user.role === 'SUPERADMIN') return <>{children}</>;
+  const isOwnerLike = user.role === 'OWNER' || user.role === 'SUPERADMIN' || user.role === 'SUPER_ADMIN' || user.role === 'ADMIN';
+  if (isOwnerLike) return <>{children}</>;
   if (user.role === 'EMPLOYEE' && permission && (user as any).permissions?.includes(permission)) {
     return <>{children}</>;
   }
@@ -163,26 +165,7 @@ function Loader() {
 function IndexRedirect() {
   const user = useAuthStore(s => s.user);
 
-  const { data: subRes, isLoading } = useQuery({
-    queryKey: ['subscription', 'current'],
-    queryFn: () => subscriptionsService.current().catch(() => ({ data: { plan: { name: 'Enterprise' } } })),
-    staleTime: 5 * 60_000,
-    enabled: !!user,
-  });
-
   if (!user) return <Navigate to="/login" replace />;
-
-  if (user.role === 'SUPERADMIN') {
-    return <Navigate to="/superadmin" replace />;
-  }
-
-  if (isLoading) {
-    return <Loader />;
-  }
-
-  if (user.role === 'OWNER' || user.role === 'ADMIN') {
-    return <Navigate to="/dashboard" replace />;
-  }
 
   if (user.role === 'EMPLOYEE') {
     return <Navigate to="/workspace" replace />;
