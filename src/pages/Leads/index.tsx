@@ -5007,12 +5007,9 @@ function LeadsTable({ data, employeesList, loading, visibleColumns, sortKey, sor
       render: (r: any) => {
         const name = getAssigneeDisplayName(r, employeesList);
         return (
-          <div className="flex flex-wrap items-center gap-1.5">
-            <div className="w-6 h-6 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-[10px] font-bold">
-              {name !== 'Unassigned' && name !== '—' ? name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) : '—'}
-            </div>
-            <span className="text-[12px] font-medium text-gray-700">{name}</span>
-          </div>
+          <span className={clsx("text-[12.5px]", name === 'Unassigned' || name === '—' ? 'text-slate-400' : 'text-slate-700 font-medium')}>
+            {name}
+          </span>
         );
       },
     },
