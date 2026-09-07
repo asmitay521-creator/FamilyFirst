@@ -621,29 +621,6 @@ export default function Seminars() {
     <div className="space-y-4 font-sans text-slate-800 animate-fadeIn">
       <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImport} />
 
-      {/* Floating Right Action Panel (Live Seminar Price Quick Control) */}
-      {isSuperAdmin && (
-        <div className="fixed right-2 sm:right-3.5 top-60 sm:top-64 z-40 bg-white/95 backdrop-blur-xl p-1 rounded-2xl shadow-xl border border-slate-200/90 animate-fadeIn">
-          <button
-            type="button"
-            onClick={() => {
-              setConfigFormData(seminarConfig);
-              setSuperAdminConfigModalOpen(true);
-            }}
-            className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white flex flex-col items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-md shadow-amber-500/25 cursor-pointer group relative"
-            title={`Website Seminar Price: ₹${seminarConfig.price}/- (Click to change)`}
-          >
-            <IndianRupee size={15} strokeWidth={2.6} />
-            <span className="text-[8px] font-black leading-none mt-0.5 tracking-tight">₹{seminarConfig.price}</span>
-            <span className="absolute right-full mr-2.5 px-3 py-1.5 rounded-xl bg-slate-900/95 backdrop-blur-md text-white text-xs font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-all pointer-events-none shadow-xl border border-slate-800 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              Website Price: <strong className="text-amber-300">₹{seminarConfig.price}/-</strong>
-              <span className="text-[10px] text-slate-400 font-normal">(Click to edit)</span>
-            </span>
-          </button>
-        </div>
-      )}
-
       {/* Header Banner & Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
         {/* Total Attendees */}
@@ -700,6 +677,47 @@ export default function Seminars() {
           </div>
         </div>
       </div>
+
+      {/* Seminar Fee & Price Control Row (Positioned in the gap between top stat cards and search bar) */}
+      {isSuperAdmin && (
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-purple-500/10 border border-amber-200/80 rounded-2xl px-4 py-2.5 shadow-2xs backdrop-blur-xs">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-500 text-white flex items-center justify-center shadow-xs">
+              <IndianRupee size={16} strokeWidth={2.6} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black text-slate-800 tracking-tight">Seminar Registration Fee</span>
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-full">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Live Active
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 font-medium">
+                Current registration fee configured for upcoming seminars & webinars
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="flex items-center bg-white px-3 py-1.5 rounded-xl border border-amber-300/80 shadow-xs">
+              <span className="text-xs font-bold text-slate-500 mr-1.5">Fee:</span>
+              <span className="text-sm font-black text-amber-600 font-mono">₹{seminarConfig.price}/-</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setConfigFormData(seminarConfig);
+                setSuperAdminConfigModalOpen(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-xs font-bold shadow-sm shadow-purple-500/25 hover:shadow-md transition-all cursor-pointer hover:scale-[1.02] active:scale-95"
+              title="Change Seminar Registration Fee"
+            >
+              <Pencil size={12} strokeWidth={2.4} />
+              <span>Change Fee</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Search and Filters Hub */}
       <div className="bg-white rounded-2xl border border-slate-200/80 p-2.5 sm:p-3 shadow-2xs flex items-center gap-2.5 w-full overflow-x-auto custom-scrollbar">
@@ -1175,12 +1193,12 @@ export default function Seminars() {
           This attendee record will be permanently removed from your Seminars list.
         </p>
       </Modal>
-      {/* Super Admin Live Website Seminar Price Modal (Simple & Compact) */}
+      {/* Super Admin Live Seminar Fee Modal (Simple & Compact) */}
       <Modal
         open={superAdminConfigModalOpen}
         onClose={() => setSuperAdminConfigModalOpen(false)}
-        title="Website Seminar Price (वेबसाइट फी)"
-        subtitle="Super Admin can change the live price displayed on the website."
+        title="Seminar Registration Fee (सेमिनार फी)"
+        subtitle="Manage and update the registration fee for upcoming seminars and webinars."
         size="md"
         icon={<IndianRupee size={20} />}
         footerActions={
@@ -1199,7 +1217,7 @@ export default function Seminars() {
               onClick={handleSaveSeminarConfig}
             >
               {savingConfig ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
-              Save Price
+              Save Fee
             </button>
           </div>
         }
@@ -1235,7 +1253,7 @@ export default function Seminars() {
           {/* Custom Price Input */}
           <div>
             <label className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider block mb-1.5">
-              Website Seminar Price (₹) <span className="text-red-500 font-bold">*</span>
+              Seminar Registration Fee (₹) <span className="text-red-500 font-bold">*</span>
             </label>
             <div className="relative">
               <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-black text-base">₹</span>
@@ -1250,7 +1268,7 @@ export default function Seminars() {
               />
             </div>
             <p className="text-[11px] text-slate-500 mt-1.5 font-medium">
-              * ही किंमत सेव्ह केल्यावर पब्लिक वेबसाइटवर सेमिनार फी (₹{configFormData.price || '0'}) लगेच अपडेट होईल.
+              * ही किंमत सेव्ह केल्यावर सेमिनार फी (₹{configFormData.price || '0'}) लगेच अपडेट होईल.
             </p>
           </div>
         </form>
