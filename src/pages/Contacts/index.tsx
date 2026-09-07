@@ -220,144 +220,7 @@ function MultiSelectBox({
 
 import { canEditModule, canManageModule } from '../../utils/permissions';
 
-const DEFAULT_SAMPLE_CONTACTS = [
-  {
-    id: 'cnt-101',
-    firstName: 'Rahul',
-    lastName: 'Sharma',
-    phone: '9876543210',
-    email: 'rahul.sharma@gmail.com',
-    leadStage: 'Contacted',
-    leadStatus: 'Hot',
-    leadType: 'Fresh',
-    followUpDate: '2026-08-25',
-    source: 'Walk-in',
-    tags: ['contact'],
-    isActive: true,
-    createdAt: '2026-08-10T10:00:00Z',
-    dateOfBirth: '1992-06-15',
-    interests: ['Health']
-  },
-  {
-    id: 'cnt-102',
-    firstName: 'Priya',
-    lastName: 'Patil',
-    phone: '9823456789',
-    email: 'priya.patil@gmail.com',
-    leadStage: 'Proposal Sent',
-    leadStatus: 'Very Hot',
-    leadType: 'Fresh',
-    followUpDate: '2026-08-24',
-    source: 'Referral',
-    tags: ['contact'],
-    isActive: true,
-    createdAt: '2026-08-12T11:30:00Z',
-    dateOfBirth: '1994-09-20',
-    interests: ['Term']
-  },
-  {
-    id: 'cnt-103',
-    firstName: 'Amit',
-    lastName: 'Deshmukh',
-    phone: '9765432109',
-    email: 'amit.deshmukh@yahoo.com',
-    leadStage: 'To Contact',
-    leadStatus: 'Interested',
-    leadType: 'Fresh',
-    followUpDate: '2026-08-26',
-    source: 'Online',
-    tags: ['contact'],
-    isActive: true,
-    createdAt: '2026-08-14T09:15:00Z',
-    dateOfBirth: '1988-12-05',
-    interests: ['Health', 'Mutual Funds']
-  },
-  {
-    id: 'cnt-104',
-    firstName: 'Sneha',
-    lastName: 'Kulkarni',
-    phone: '9988776655',
-    email: 'sneha.k@gmail.com',
-    leadStage: 'Login in Progress',
-    leadStatus: 'Hot',
-    leadType: 'Fresh',
-    followUpDate: '2026-08-27',
-    source: 'By Agent',
-    tags: ['contact'],
-    isActive: true,
-    createdAt: '2026-08-15T14:20:00Z',
-    dateOfBirth: '1995-03-18',
-    interests: ['Health']
-  },
-  {
-    id: 'cnt-105',
-    firstName: 'Vikram',
-    lastName: 'Joshi',
-    phone: '9811223344',
-    email: 'vikram.j@gmail.com',
-    leadStage: 'Payment Done',
-    leadStatus: 'Interested',
-    leadType: 'Fresh',
-    followUpDate: '2026-08-30',
-    source: 'Walk-in',
-    tags: ['contact'],
-    isActive: true,
-    createdAt: '2026-08-16T16:00:00Z',
-    dateOfBirth: '1985-07-22',
-    interests: ['Term']
-  },
-  {
-    id: 'cnt-106',
-    firstName: 'Aniket',
-    lastName: 'More',
-    phone: '9730123456',
-    email: 'aniket.more@gmail.com',
-    leadStage: 'Contacted',
-    leadStatus: 'Warm',
-    leadType: 'Fresh',
-    followUpDate: '2026-08-28',
-    source: 'Online',
-    tags: ['contact'],
-    isActive: true,
-    createdAt: '2026-08-18T10:45:00Z',
-    dateOfBirth: '1991-11-30',
-    interests: ['Health']
-  },
-  {
-    id: 'cnt-107',
-    firstName: 'Pooja',
-    lastName: 'Chavan',
-    phone: '9654321876',
-    email: 'pooja.chavan@gmail.com',
-    leadStage: 'To Contact',
-    leadStatus: 'Interested',
-    leadType: 'Fresh',
-    followUpDate: '2026-08-29',
-    source: 'Referral',
-    tags: ['contact'],
-    isActive: true,
-    createdAt: '2026-08-19T12:00:00Z',
-    dateOfBirth: '1996-04-12',
-    interests: ['Health', 'Term']
-  },
-  {
-    id: 'cnt-108',
-    firstName: 'Siddharth',
-    lastName: 'Pawar',
-    phone: '9543218765',
-    email: 'sid.pawar@gmail.com',
-    leadStage: 'Proposal Sent',
-    leadStatus: 'Hot',
-    leadType: 'Fresh',
-    followUpDate: '2026-08-26',
-    source: 'Walk-in',
-    tags: ['contact'],
-    isActive: true,
-    createdAt: '2026-08-20T15:30:00Z',
-    dateOfBirth: '1989-08-25',
-    interests: ['Term']
-  }
-];
+const DEFAULT_SAMPLE_CONTACTS: any[] = [];
 
 export default function Contacts() {
   const user = useAuthStore(s => s.user);
@@ -1933,67 +1796,69 @@ export default function Contacts() {
     const rawContacts = contactsRes?.data ?? [];
     const baseList: any[] = (rawContacts && rawContacts.length > 0)
       ? [...rawContacts]
-      : (activeTab === 'birthdays' ? [] : [...DEFAULT_SAMPLE_CONTACTS]);
+      : [];
 
-    // Merge registered employees into Contacts list
-    const cleanPhone = (p?: string) => String(p || '').replace(/\D/g, '').slice(-10);
-    const cleanEmail = (e?: string) => String(e || '').toLowerCase().trim();
+    // Merge registered employees into Contacts list ONLY for owner or admin
+    if (user?.role === 'OWNER' || user?.role === 'SUPERADMIN' || user?.role === 'SUPER_ADMIN') {
+      const cleanPhone = (p?: string) => String(p || '').replace(/\D/g, '').slice(-10);
+      const cleanEmail = (e?: string) => String(e || '').toLowerCase().trim();
 
-    employeesList.forEach((emp: any) => {
-      const empPhone = cleanPhone(emp.phone || emp.user?.phone);
-      const empEmail = cleanEmail(emp.email || emp.user?.email);
-      const empId = String(emp.id || emp.userId || emp.user?.id || '');
-      const empFn = (emp.firstName || emp.user?.firstName || emp.employeeProfile?.firstName || '').trim();
-      const empLn = (emp.lastName || emp.user?.lastName || emp.employeeProfile?.lastName || '').trim();
-      const empFullName = `${empFn} ${empLn}`.trim().toLowerCase();
+      employeesList.forEach((emp: any) => {
+        const empPhone = cleanPhone(emp.phone || emp.user?.phone);
+        const empEmail = cleanEmail(emp.email || emp.user?.email);
+        const empId = String(emp.id || emp.userId || emp.user?.id || '');
+        const empFn = (emp.firstName || emp.user?.firstName || emp.employeeProfile?.firstName || '').trim();
+        const empLn = (emp.lastName || emp.user?.lastName || emp.employeeProfile?.lastName || '').trim();
+        const empFullName = `${empFn} ${empLn}`.trim().toLowerCase();
 
-      const existingIndex = baseList.findIndex((c: any) => {
-        const cPhone = cleanPhone(c.phone || c.alternatePhone || c.contact?.phone);
-        const cEmail = cleanEmail(c.email || c.contact?.email);
-        const cId = String(c.id || c.contactId || '');
-        const cFn = (c.firstName || c.contact?.firstName || '').trim().toLowerCase();
-        const cLn = (c.lastName || c.contact?.lastName || '').trim().toLowerCase();
-        const cFullName = `${cFn} ${cLn}`.trim();
+        const existingIndex = baseList.findIndex((c: any) => {
+          const cPhone = cleanPhone(c.phone || c.alternatePhone || c.contact?.phone);
+          const cEmail = cleanEmail(c.email || c.contact?.email);
+          const cId = String(c.id || c.contactId || '');
+          const cFn = (c.firstName || c.contact?.firstName || '').trim().toLowerCase();
+          const cLn = (c.lastName || c.contact?.lastName || '').trim().toLowerCase();
+          const cFullName = `${cFn} ${cLn}`.trim();
 
-        if (cId && empId && cId === empId) return true;
-        if (empPhone && cPhone && empPhone === cPhone) return true;
-        if (empEmail && cEmail && empEmail === cEmail) return true;
-        if (empFullName && cFullName && empFullName === cFullName) return true;
-        return false;
-      });
-
-      if (existingIndex >= 0) {
-        const existing = baseList[existingIndex];
-        const currentTags = existing.tags || [];
-        if (!currentTags.includes('employee') && !currentTags.includes('Employee')) {
-          existing.tags = [...currentTags, 'employee', 'contact'];
-        }
-        if (!existing.designation) existing.designation = emp.designation || 'Employee';
-        if (!existing.role) existing.role = emp.role || emp.user?.role || 'EMPLOYEE';
-      } else {
-        baseList.unshift({
-          id: emp.id || emp.userId || `emp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-          contactId: emp.id || emp.userId,
-          firstName: empFn || 'Employee',
-          lastName: empLn || '',
-          phone: emp.phone || emp.user?.phone || '',
-          email: emp.email || emp.user?.email || '',
-          gender: emp.gender || '',
-          dateOfBirth: emp.dateOfBirth || '',
-          aadhaarNumber: emp.aadhaarNumber || '',
-          leadStage: 'Contacted',
-          leadStatus: 'Interested',
-          isActive: emp.isActive !== false,
-          tags: ['contact', 'employee', emp.role || emp.user?.role || 'EMPLOYEE'],
-          source: 'Employee Directory',
-          assignedEmployeeId: emp.userId || emp.id,
-          isEmployee: true,
-          role: emp.role || emp.user?.role || 'EMPLOYEE',
-          designation: emp.designation || 'Employee',
-          createdAt: emp.createdAt || new Date().toISOString(),
+          if (cId && empId && cId === empId) return true;
+          if (empPhone && cPhone && empPhone === cPhone) return true;
+          if (empEmail && cEmail && empEmail === cEmail) return true;
+          if (empFullName && cFullName && empFullName === cFullName) return true;
+          return false;
         });
-      }
-    });
+
+        if (existingIndex >= 0) {
+          const existing = baseList[existingIndex];
+          const currentTags = existing.tags || [];
+          if (!currentTags.includes('employee') && !currentTags.includes('Employee')) {
+            existing.tags = [...currentTags, 'employee', 'contact'];
+          }
+          if (!existing.designation) existing.designation = emp.designation || 'Employee';
+          if (!existing.role) existing.role = emp.role || emp.user?.role || 'EMPLOYEE';
+        } else {
+          baseList.unshift({
+            id: emp.id || emp.userId || `emp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            contactId: emp.id || emp.userId,
+            firstName: empFn || 'Employee',
+            lastName: empLn || '',
+            phone: emp.phone || emp.user?.phone || '',
+            email: emp.email || emp.user?.email || '',
+            gender: emp.gender || '',
+            dateOfBirth: emp.dateOfBirth || '',
+            aadhaarNumber: emp.aadhaarNumber || '',
+            leadStage: 'Contacted',
+            leadStatus: 'Interested',
+            isActive: emp.isActive !== false,
+            tags: ['contact', 'employee', emp.role || emp.user?.role || 'EMPLOYEE'],
+            source: 'Employee Directory',
+            assignedEmployeeId: emp.userId || emp.id,
+            isEmployee: true,
+            role: emp.role || emp.user?.role || 'EMPLOYEE',
+            designation: emp.designation || 'Employee',
+            createdAt: emp.createdAt || new Date().toISOString(),
+          });
+        }
+      });
+    }
 
     const list = activeTab === 'birthdays'
       ? (birthdayRes?.data && birthdayRes.data.length > 0 ? birthdayRes.data : baseList)
@@ -2002,7 +1867,7 @@ export default function Contacts() {
     return list.filter((item: any) => {
       // Employee role data isolation safeguard:
       // An employee sees:
-      // 1. Contacts assigned to them (or unassigned)
+      // 1. Contacts assigned to them
       // 2. Contacts with sub-resources assigned to them
       // 3. Contacts assigned BY them
       // 4. Contacts created BY them
@@ -2034,11 +1899,11 @@ export default function Contacts() {
           (item.productInterests && item.productInterests.some((pi: any) => pi.assignedEmployeeId && validMyIds.includes(pi.assignedEmployeeId))) ||
           (item.claims && item.claims.some((c: any) => c.assignedEmployeeId && validMyIds.includes(c.assignedEmployeeId)));
 
-        const isAssignedToMe = assignedEmpId ? validMyIds.includes(assignedEmpId) : true;
+        const isAssignedToMe = assignedEmpId ? validMyIds.includes(assignedEmpId) : false;
         const isAssignedByMe = (assignedById && validMyIds.includes(assignedById)) || (assignedByName && myNames.some((mn: string) => assignedByName.includes(mn) || mn.includes(assignedByName)));
         const isCreatedByMe = (createdById && validMyIds.includes(createdById)) || (createdByName && myNames.some((mn: string) => createdByName.includes(mn) || mn.includes(createdByName)));
 
-        if (assignedEmpId && !isAssignedToMe && !hasMySubResource && !isAssignedByMe && !isCreatedByMe) {
+        if (!isAssignedToMe && !hasMySubResource && !isAssignedByMe && !isCreatedByMe) {
           return false;
         }
       }

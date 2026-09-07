@@ -1232,11 +1232,11 @@ export default function Leads() {
         const createdById = lead.createdById || extra?.createdById;
         const createdByName = (lead.createdByName || extra?.createdByName || '').toLowerCase().trim();
 
-        const isAssignedToMe = assignedEmpId ? validMyIds.includes(assignedEmpId) : true;
+        const isAssignedToMe = assignedEmpId ? validMyIds.includes(assignedEmpId) : false;
         const isAssignedByMe = (assignedById && validMyIds.includes(assignedById)) || (assignedByName && myNames.some((mn: string) => assignedByName.includes(mn) || mn.includes(assignedByName)));
         const isCreatedByMe = (createdById && validMyIds.includes(createdById)) || (createdByName && myNames.some((mn: string) => createdByName.includes(mn) || mn.includes(createdByName)));
 
-        if (assignedEmpId && !isAssignedToMe && !isAssignedByMe && !isCreatedByMe) {
+        if (!isAssignedToMe && !isAssignedByMe && !isCreatedByMe) {
           return false;
         }
       }

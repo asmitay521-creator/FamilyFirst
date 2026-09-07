@@ -42,6 +42,15 @@ function formatTotalDuration(checkIn: string | Date, checkOut: string | Date) {
   return `${mins}m`;
 }
 
+function parseLeadNotes(notes?: string): any {
+  if (!notes) return {};
+  try {
+    const parsed = JSON.parse(notes);
+    if (typeof parsed === 'object' && parsed !== null) return parsed;
+  } catch {}
+  return { cleanNotes: notes };
+}
+
 type TabType = 'overview' | 'tasks' | 'daily_log' | 'targets';
 
 export default function Workspace() {
@@ -271,44 +280,85 @@ export default function Workspace() {
   }, [leadsRes, firestoreLeads]);
 
   // Contextual filtering based on selected employee (or role)
-  const isOwnerOrAdmin = user?.role === 'OWNER' || user?.role === 'SUPERADMIN';
+  const isOwnerOrAdmin = user?.role === 'OWNER' || user?.role === 'SUPERADMIN' || user?.role === 'SUPER_ADMIN';
+  const myEmp = employeesList.find((e: any) => e.userId === user?.id || e.user?.id === user?.id || e.id === user?.id);
+  const myValidIds = useMemo(() => {
+    const ids = [user?.id].filter(Boolean) as string[];
+    if (myEmp?.id) ids.push(String(myEmp.id));
+    if (myEmp?.userId) ids.push(String(myEmp.userId));
+    if (myEmp?.user?.id) ids.push(String(myEmp.user.id));
+    return ids;
+  }, [user, myEmp]);
+
+  const myNames = useMemo(() => {
+    return [
+      (user as any)?.name,
+      user?.firstName,
+      `${user?.firstName || ''} ${user?.lastName || ''}`.trim(),
+      myEmp?.name,
+      `${myEmp?.firstName || ''} ${myEmp?.lastName || ''}`.trim(),
+    ].filter(Boolean).map((n: string) => n.toLowerCase().trim());
+  }, [user, myEmp]);
+
   const effectiveUserId = selectedEmployeeUserId || (!isOwnerOrAdmin ? user?.id : null);
 
   const filteredContacts = useMemo(() => {
-    if (!effectiveUserId) return rawContacts;
-    return rawContacts.filter((c: any) => 
-      c.assignedEmployeeId === effectiveUserId || 
-      c.createdById === effectiveUserId ||
-      c.assignedToId === effectiveUserId
-    );
-  }, [rawContacts, effectiveUserId]);
+    if (isOwnerOrAdmin && !selectedEmployeeUserId) return rawContacts;
+    const targetIds = selectedEmployeeUserId ? [selectedEmployeeUserId] : myValidIds;
+    return rawContacts.filter((c: any) => {
+      const extra: any = parseLeadNotes(c.notes);
+      const assignedEmpId = c.assignedEmployeeId || c.assignedToId || extra?.assignedEmployeeId;
+      const assignedById = c.assignedById || extra?.assignedById;
+      const assignedByName = (c.assignedByName || extra?.assignedByName || '').toLowerCase().trim();
+      const createdById = c.createdById || extra?.createdById;
+      const createdByName = (c.createdByName || extra?.createdByName || '').toLowerCase().trim();
+
+      const isAssignedTo = assignedEmpId ? targetIds.includes(String(assignedEmpId)) : false;
+      const isAssignedBy = (assignedById && targetIds.includes(String(assignedById))) || (assignedByName && myNames.some((mn: string) => assignedByName.includes(mn) || mn.includes(assignedByName)));
+      const isCreatedBy = (createdById && targetIds.includes(String(createdById))) || (createdByName && myNames.some((mn: string) => createdByName.includes(mn) || mn.includes(createdByName)));
+
+      return isAssignedTo || isAssignedBy || isCreatedBy;
+    });
+  }, [rawContacts, isOwnerOrAdmin, selectedEmployeeUserId, myValidIds, myNames]);
 
   const filteredPolicies = useMemo(() => {
-    if (!effectiveUserId) return rawPolicies;
+    if (isOwnerOrAdmin && !selectedEmployeeUserId) return rawPolicies;
+    const targetIds = selectedEmployeeUserId ? [selectedEmployeeUserId] : myValidIds;
     return rawPolicies.filter((p: any) => 
-      p.assignedEmployeeId === effectiveUserId || 
-      p.createdById === effectiveUserId ||
-      p.agentId === effectiveUserId
+      (p.assignedEmployeeId && targetIds.includes(String(p.assignedEmployeeId))) || 
+      (p.createdById && targetIds.includes(String(p.createdById))) ||
+      (p.agentId && targetIds.includes(String(p.agentId)))
     );
-  }, [rawPolicies, effectiveUserId]);
+  }, [rawPolicies, isOwnerOrAdmin, selectedEmployeeUserId, myValidIds]);
 
   const filteredClaims = useMemo(() => {
-    if (!effectiveUserId) return rawClaims;
+    if (isOwnerOrAdmin && !selectedEmployeeUserId) return rawClaims;
+    const targetIds = selectedEmployeeUserId ? [selectedEmployeeUserId] : myValidIds;
     return rawClaims.filter((c: any) => 
-      c.assignedEmployeeId === effectiveUserId || 
-      c.createdById === effectiveUserId ||
-      c.handledById === effectiveUserId
+      (c.assignedEmployeeId && targetIds.includes(String(c.assignedEmployeeId))) || 
+      (c.createdById && targetIds.includes(String(c.createdById))) ||
+      (c.handledById && targetIds.includes(String(c.handledById)))
     );
-  }, [rawClaims, effectiveUserId]);
+  }, [rawClaims, isOwnerOrAdmin, selectedEmployeeUserId, myValidIds]);
 
   const filteredLeads = useMemo(() => {
-    if (!effectiveUserId) return combinedLeads;
-    return combinedLeads.filter((l: any) => 
-      l.assignedEmployeeId === effectiveUserId || 
-      l.assignedToId === effectiveUserId ||
-      l.createdById === effectiveUserId
-    );
-  }, [combinedLeads, effectiveUserId]);
+    if (isOwnerOrAdmin && !selectedEmployeeUserId) return combinedLeads;
+    const targetIds = selectedEmployeeUserId ? [selectedEmployeeUserId] : myValidIds;
+    return combinedLeads.filter((l: any) => {
+      const extra: any = parseLeadNotes(l.notes);
+      const assignedEmpId = l.assignedEmployeeId || l.assignedToId || extra?.assignedEmployeeId;
+      const assignedById = l.assignedById || extra?.assignedById;
+      const assignedByName = (l.assignedByName || extra?.assignedByName || '').toLowerCase().trim();
+      const createdById = l.createdById || extra?.createdById;
+      const createdByName = (l.createdByName || extra?.createdByName || '').toLowerCase().trim();
+
+      const isAssignedTo = assignedEmpId ? targetIds.includes(String(assignedEmpId)) : false;
+      const isAssignedBy = (assignedById && targetIds.includes(String(assignedById))) || (assignedByName && myNames.some((mn: string) => assignedByName.includes(mn) || mn.includes(assignedByName)));
+      const isCreatedBy = (createdById && targetIds.includes(String(createdById))) || (createdByName && myNames.some((mn: string) => createdByName.includes(mn) || mn.includes(createdByName)));
+
+      return isAssignedTo || isAssignedBy || isCreatedBy;
+    });
+  }, [combinedLeads, isOwnerOrAdmin, selectedEmployeeUserId, myValidIds, myNames]);
 
   const activeWorkspaceData = selectedEmployeeUserId ? (selectedEmpWsRes?.data || selectedEmpWsRes) : workspaceData;
 
