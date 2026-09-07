@@ -69,14 +69,7 @@ export default function Login() {
       }
       const cleanPassword = data.password.trim();
 
-      // 1. Fetch current employees if available for verification
-      let allEmps: any[] = [];
-      try {
-        const empRes = await employeesService.list({ limit: 100 });
-        allEmps = empRes?.data ?? empRes ?? [];
-      } catch {}
-
-      const localVerified = verifyEmployeeCredentials(rawInput, cleanPassword, allEmps);
+      const localVerified = verifyEmployeeCredentials(rawInput, cleanPassword);
 
       let loggedInUser: any = null;
 

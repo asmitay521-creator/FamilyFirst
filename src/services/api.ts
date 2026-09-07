@@ -48,7 +48,11 @@ api.interceptors.response.use(
     }
 
     const original = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
-    if (error.response?.status !== 401 || original._retry) {
+    const reqUrl = original?.url || '';
+    const isAuthRoute = reqUrl.includes('/auth/login') || reqUrl.includes('/auth/register') || reqUrl.includes('/auth/refresh');
+    const isLoginPage = typeof window !== 'undefined' && window.location.pathname === '/login';
+
+    if (error.response?.status !== 401 || original._retry || isAuthRoute || isLoginPage) {
       return Promise.reject(error);
     }
 
@@ -63,19 +67,32 @@ api.interceptors.response.use(
       });
     }
 
-    isRefreshing = true;
     const { refreshToken, setTokens, logout } = useAuthStore.getState();
+    if (!refreshToken) {
+      if (!isLoginPage && typeof window !== 'undefined') {
+        logout();
+        window.location.href = '/login';
+      }
+      return Promise.reject(error);
+    }
+
+    isRefreshing = true;
 
     try {
       const { data } = await axios.post(`${BASE_URL}/auth/refresh`, { refreshToken });
-      const newAccess = data.data.accessToken;
-      setTokens(newAccess, data.data.refreshToken ?? refreshToken!);
-      flushQueue(newAccess);
-      original.headers.Authorization = `Bearer ${newAccess}`;
-      return api(original);
+      const newAccess = data?.data?.accessToken;
+      if (newAccess) {
+        setTokens(newAccess, data?.data?.refreshToken ?? refreshToken);
+        flushQueue(newAccess);
+        original.headers.Authorization = `Bearer ${newAccess}`;
+        return api(original);
+      }
+      throw new Error('No access token returned');
     } catch {
       logout();
-      window.location.href = '/login';
+      if (!isLoginPage && typeof window !== 'undefined') {
+        window.location.href = '/login';
+      }
       return Promise.reject(error);
     } finally {
       isRefreshing = false;
