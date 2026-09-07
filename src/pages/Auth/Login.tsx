@@ -68,12 +68,7 @@ export default function Login() {
           useAuthStore.getState().setUser(empSession);
           try { useLookupStore.getState().loadAll(); } catch {}
           toast.success(`Login successful! Welcome, ${empSession.firstName}`);
-          navigate('/workspace', { replace: true });
-          setTimeout(() => {
-            if (window.location.pathname === '/login') {
-              window.location.href = '/workspace';
-            }
-          }, 150);
+          window.location.replace('/workspace');
           return;
         }
 
@@ -90,12 +85,7 @@ export default function Login() {
           };
           useAuthStore.getState().setUser(userObj);
           toast.success(`Login successful! Welcome, ${userObj.firstName || 'Employee'}`);
-          navigate('/workspace', { replace: true });
-          setTimeout(() => {
-            if (window.location.pathname === '/login') {
-              window.location.href = '/workspace';
-            }
-          }, 150);
+          window.location.replace('/workspace');
           return;
         } catch (backendErr: any) {
           throw new Error('Invalid employee username or password. Please check your credentials.');
@@ -121,12 +111,7 @@ export default function Login() {
           useAuthStore.getState().setUser(ownerSession);
           try { useLookupStore.getState().loadAll(); } catch {}
           toast.success(`Login successful! Welcome, Super Admin`);
-          navigate('/dashboard', { replace: true });
-          setTimeout(() => {
-            if (window.location.pathname === '/login') {
-              window.location.href = '/dashboard';
-            }
-          }, 150);
+          window.location.replace('/dashboard');
           return;
         }
 
@@ -140,12 +125,7 @@ export default function Login() {
           useAuthStore.getState().setUser(empSession);
           try { useLookupStore.getState().loadAll(); } catch {}
           toast.success(`Welcome, ${empSession.firstName}! Logged in to Workspace.`);
-          navigate('/workspace', { replace: true });
-          setTimeout(() => {
-            if (window.location.pathname === '/login') {
-              window.location.href = '/workspace';
-            }
-          }, 150);
+          window.location.replace('/workspace');
           return;
         }
 
@@ -156,12 +136,7 @@ export default function Login() {
             useAuthStore.getState().setUser(userObj);
           }
           toast.success(`Login successful! Welcome, ${userObj?.firstName || 'Owner'}`);
-          navigate('/dashboard', { replace: true });
-          setTimeout(() => {
-            if (window.location.pathname === '/login') {
-              window.location.href = '/dashboard';
-            }
-          }, 150);
+          window.location.replace('/dashboard');
           return;
         } catch (err: any) {
           throw new Error('Invalid owner username or password. Please check your credentials.');
