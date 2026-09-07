@@ -690,9 +690,6 @@ export default function Seminars() {
             className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-slate-200/90 hover:border-purple-300 text-slate-700 text-xs font-bold shadow-2xs hover:shadow-xs transition-all cursor-pointer hover:scale-[1.01] active:scale-95 group"
             title="Click to edit Seminar Fee"
           >
-            <span className="w-5 h-5 rounded-md bg-gradient-to-tr from-amber-500 to-orange-500 text-white flex items-center justify-center font-bold shadow-xs">
-              <IndianRupee size={12} strokeWidth={2.8} />
-            </span>
             <span className="text-slate-600 font-semibold text-[11.5px]">Seminar Fee:</span>
             <span className="font-black text-amber-600 font-mono text-xs">₹{seminarConfig.price}/-</span>
             <span className="ml-0.5 px-2 py-0.5 rounded-lg bg-purple-50 text-purple-700 border border-purple-100 text-[10px] font-extrabold flex items-center gap-1 group-hover:bg-purple-600 group-hover:text-white transition-all">
