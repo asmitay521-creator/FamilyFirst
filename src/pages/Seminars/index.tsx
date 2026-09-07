@@ -678,44 +678,27 @@ export default function Seminars() {
         </div>
       </div>
 
-      {/* Seminar Fee & Price Control Row (Positioned in the gap between top stat cards and search bar) */}
+      {/* Compact Seminar Fee Control in gap */}
       {isSuperAdmin && (
-        <div className="flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-purple-500/10 border border-amber-200/80 rounded-2xl px-4 py-2.5 shadow-2xs backdrop-blur-xs">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-500 text-white flex items-center justify-center shadow-xs">
-              <IndianRupee size={16} strokeWidth={2.6} />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-black text-slate-800 tracking-tight">Seminar Registration Fee</span>
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-full">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Live Active
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500 font-medium">
-                Current registration fee configured for upcoming seminars & webinars
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <div className="flex items-center bg-white px-3 py-1.5 rounded-xl border border-amber-300/80 shadow-xs">
-              <span className="text-xs font-bold text-slate-500 mr-1.5">Fee:</span>
-              <span className="text-sm font-black text-amber-600 font-mono">₹{seminarConfig.price}/-</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setConfigFormData(seminarConfig);
-                setSuperAdminConfigModalOpen(true);
-              }}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-xs font-bold shadow-sm shadow-purple-500/25 hover:shadow-md transition-all cursor-pointer hover:scale-[1.02] active:scale-95"
-              title="Change Seminar Registration Fee"
-            >
-              <Pencil size={12} strokeWidth={2.4} />
-              <span>Change Fee</span>
-            </button>
-          </div>
+        <div className="flex items-center justify-end -my-1">
+          <button
+            type="button"
+            onClick={() => {
+              setConfigFormData(seminarConfig);
+              setSuperAdminConfigModalOpen(true);
+            }}
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-slate-200/90 hover:border-purple-300 text-slate-700 text-xs font-bold shadow-2xs hover:shadow-xs transition-all cursor-pointer hover:scale-[1.01] active:scale-95 group"
+            title="Click to edit Seminar Fee"
+          >
+            <span className="w-5 h-5 rounded-md bg-gradient-to-tr from-amber-500 to-orange-500 text-white flex items-center justify-center font-bold shadow-xs">
+              <IndianRupee size={12} strokeWidth={2.8} />
+            </span>
+            <span className="text-slate-600 font-semibold text-[11.5px]">Seminar Fee:</span>
+            <span className="font-black text-amber-600 font-mono text-xs">₹{seminarConfig.price}/-</span>
+            <span className="ml-0.5 px-2 py-0.5 rounded-lg bg-purple-50 text-purple-700 border border-purple-100 text-[10px] font-extrabold flex items-center gap-1 group-hover:bg-purple-600 group-hover:text-white transition-all">
+              <Pencil size={10} /> Change
+            </span>
+          </button>
         </div>
       )}
 
