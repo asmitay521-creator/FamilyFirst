@@ -7,7 +7,7 @@ import {
 import { useContacts, useCreateContact, useUpdateContact, useDeleteContact, useUpcomingBirthdays } from '@hooks/useContacts';
 import { deletionRequestsService } from '@api/deletionRequestsService';
 import { useLookupStore } from '@store/lookup.store';
-import { contactsService, policiesService, claimsService, leadsService } from '@api/index';
+import { contactsService, policiesService, claimsService, leadsService, employeesService } from '@api/index';
 import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
 import DataTable, { Column } from '@comps/common/DataTable';
 import Modal from '@comps/common/Modal';
@@ -557,7 +557,7 @@ export default function Contacts() {
 
   function serializeLeadNotes(card: ProductInterestCard) {
     const currentUser = useAuthStore.getState().user;
-    const currentUserName = currentUser?.firstName ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim() : (currentUser?.name || currentUser?.email || 'User');
+    const currentUserName = currentUser?.firstName ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim() : ((currentUser as any)?.name || currentUser?.email || 'User');
     const assignedEmp = employeesList.find((e: any) => e.id === card.assignedEmployeeId || e.userId === card.assignedEmployeeId || e.user?.id === card.assignedEmployeeId);
     const assignedEmpName = assignedEmp ? `${assignedEmp.firstName || assignedEmp.user?.firstName || ''} ${assignedEmp.lastName || assignedEmp.user?.lastName || ''}`.trim() : '';
 
@@ -1034,7 +1034,7 @@ export default function Contacts() {
     });
 
     const currentUser = useAuthStore.getState().user;
-    const curEmp = employees.find(e => e.userId === currentUser?.id || e.id === currentUser?.id);
+    const curEmp = employees.find((e: any) => e.userId === currentUser?.id || e.id === currentUser?.id);
 
     setLeadInfoFields({
       profileType: 'Client Profile',
@@ -1879,7 +1879,7 @@ export default function Contacts() {
     });
 
     const currentUser = useAuthStore.getState().user;
-    const curEmp = employees.find(e => e.userId === currentUser?.id || e.id === currentUser?.id);
+    const curEmp = employees.find((e: any) => e.userId === currentUser?.id || e.id === currentUser?.id);
 
     setLeadInfoFields({
       profileType: 'Contact Profile',
@@ -2016,18 +2016,18 @@ export default function Contacts() {
         if (myEmp?.user?.id) validMyIds.push(myEmp.user.id);
 
         const myNames = [
-          user.name,
+          (user as any)?.name,
           user.firstName,
           `${user.firstName || ''} ${user.lastName || ''}`.trim(),
           myEmp?.name,
           `${myEmp?.firstName || ''} ${myEmp?.lastName || ''}`.trim(),
         ].filter(Boolean).map((n: string) => n.toLowerCase().trim());
 
-        const extra = parseLeadNotes(item.notes);
-        const assignedById = item.assignedById || extra.assignedById;
-        const assignedByName = (item.assignedByName || extra.assignedByName || '').toLowerCase().trim();
-        const createdById = item.createdById || extra.createdById;
-        const createdByName = (item.createdByName || extra.createdByName || '').toLowerCase().trim();
+        const extra: any = parseLeadNotes(item.notes);
+        const assignedById = item.assignedById || extra?.assignedById;
+        const assignedByName = (item.assignedByName || extra?.assignedByName || '').toLowerCase().trim();
+        const createdById = item.createdById || extra?.createdById;
+        const createdByName = (item.createdByName || extra?.createdByName || '').toLowerCase().trim();
 
         const hasMySubResource =
           (item.policies && item.policies.some((p: any) => p.assignedEmployeeId && validMyIds.includes(p.assignedEmployeeId))) ||
@@ -2251,8 +2251,8 @@ export default function Contacts() {
       sortable: true,
       render: r => {
         const empName = getEmployeeName(r.assignedEmployeeId, r.assignedEmployee, r);
-        const extra = parseLeadNotes(r.notes);
-        const assignerName = r.assignedByName || extra.assignedByName || r.createdByName || extra.createdByName;
+        const extra: any = parseLeadNotes(r.notes);
+        const assignerName = r.assignedByName || extra?.assignedByName || r.createdByName || extra?.createdByName;
 
         if (empName === 'Unassigned') {
           return (

@@ -726,7 +726,7 @@ export default function Leads() {
 
   function serializeLeadNotes(card: ProductInterestCard) {
     const currentUser = useAuthStore.getState().user;
-    const currentUserName = currentUser?.firstName ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim() : (currentUser?.name || currentUser?.email || 'User');
+    const currentUserName = currentUser?.firstName ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim() : ((currentUser as any)?.name || currentUser?.email || 'User');
     const assignedEmp = employeesList.find((e: any) => e.id === card.assignedEmployeeId || e.userId === card.assignedEmployeeId || e.user?.id === card.assignedEmployeeId);
     const assignedEmpName = assignedEmp ? `${assignedEmp.firstName || assignedEmp.user?.firstName || ''} ${assignedEmp.lastName || assignedEmp.user?.lastName || ''}`.trim() : '';
 
@@ -1219,18 +1219,18 @@ export default function Leads() {
         if (myEmp?.user?.id) validMyIds.push(myEmp.user.id);
 
         const myNames = [
-          user.name,
+          (user as any)?.name,
           user.firstName,
           `${user.firstName || ''} ${user.lastName || ''}`.trim(),
           myEmp?.name,
           `${myEmp?.firstName || ''} ${myEmp?.lastName || ''}`.trim(),
         ].filter(Boolean).map((n: string) => n.toLowerCase().trim());
 
-        const extra = parseLeadNotes(lead.notes);
-        const assignedById = lead.assignedById || extra.assignedById;
-        const assignedByName = (lead.assignedByName || extra.assignedByName || '').toLowerCase().trim();
-        const createdById = lead.createdById || extra.createdById;
-        const createdByName = (lead.createdByName || extra.createdByName || '').toLowerCase().trim();
+        const extra: any = parseLeadNotes(lead.notes);
+        const assignedById = lead.assignedById || extra?.assignedById;
+        const assignedByName = (lead.assignedByName || extra?.assignedByName || '').toLowerCase().trim();
+        const createdById = lead.createdById || extra?.createdById;
+        const createdByName = (lead.createdByName || extra?.createdByName || '').toLowerCase().trim();
 
         const isAssignedToMe = assignedEmpId ? validMyIds.includes(assignedEmpId) : true;
         const isAssignedByMe = (assignedById && validMyIds.includes(assignedById)) || (assignedByName && myNames.some((mn: string) => assignedByName.includes(mn) || mn.includes(assignedByName)));
@@ -5341,7 +5341,15 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, allLeads, isOwner,
       }
 
       const currentUser = useAuthStore.getState().user;
-      const currentUserName = currentUser?.firstName ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim() : (currentUser?.name || currentUser?.email || 'Admin');
+      const currentUserName = currentUser?.firstName ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim() : ((currentUser as any)?.name || currentUser?.email || 'Admin');
+      
+      // Find assignee display name from employees list
+      const availableList = getAssignableEmployees(employees, fullLead || lead);
+      const foundEmp = availableList.find((e: any) => e.id === assignedEmp || e.userId === assignedEmp || e.user?.id === assignedEmp) ||
+        employees.find((e: any) => e.id === assignedEmp || e.userId === assignedEmp || e.user?.id === assignedEmp);
+      const assignedToName = foundEmp
+        ? `${foundEmp.firstName || foundEmp.user?.firstName || foundEmp.employeeProfile?.firstName || ''} ${foundEmp.lastName || foundEmp.user?.lastName || foundEmp.employeeProfile?.lastName || ''}`.trim() || foundEmp.name || foundEmp.email
+        : '';
 
       const newParsedNotes = {
         ...currentParsed,
@@ -5382,14 +5390,6 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, allLeads, isOwner,
           console.warn('[Backend Lead Update Warning]:', apiErr);
         }
       }
-
-      // Find assignee display name from employees list
-      const availableList = getAssignableEmployees(employees, fullLead || lead);
-      const foundEmp = availableList.find((e: any) => e.id === assignedEmp || e.userId === assignedEmp || e.user?.id === assignedEmp) ||
-        employees.find((e: any) => e.id === assignedEmp || e.userId === assignedEmp || e.user?.id === assignedEmp);
-      const assignedToName = foundEmp
-        ? `${foundEmp.firstName || foundEmp.user?.firstName || foundEmp.employeeProfile?.firstName || ''} ${foundEmp.lastName || foundEmp.user?.lastName || foundEmp.employeeProfile?.lastName || ''}`.trim() || foundEmp.name || foundEmp.email
-        : '';
 
       // B. Update Firestore if applicable
       if (targetId.startsWith('fs_') || fsId) {
