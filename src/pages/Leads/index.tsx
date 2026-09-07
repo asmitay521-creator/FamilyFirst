@@ -725,6 +725,11 @@ export default function Leads() {
   }
 
   function serializeLeadNotes(card: ProductInterestCard) {
+    const currentUser = useAuthStore.getState().user;
+    const currentUserName = currentUser?.firstName ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim() : (currentUser?.name || currentUser?.email || 'User');
+    const assignedEmp = employeesList.find((e: any) => e.id === card.assignedEmployeeId || e.userId === card.assignedEmployeeId || e.user?.id === card.assignedEmployeeId);
+    const assignedEmpName = assignedEmp ? `${assignedEmp.firstName || assignedEmp.user?.firstName || ''} ${assignedEmp.lastName || assignedEmp.user?.lastName || ''}`.trim() : '';
+
     return JSON.stringify({
       leadStatus: card.leadStatus,
       leadType: card.leadType,
@@ -732,6 +737,13 @@ export default function Leads() {
       dependentDetails: card.dependencyType === 'DEPENDENT' ? (card.dependentDetails || '') : '',
       descriptionDetails: card.descriptionDetails || '',
       cleanNotes: card.otherProduct ? `Other Product: ${card.otherProduct}` : '',
+      assignedEmployeeId: card.assignedEmployeeId || '',
+      assignedEmployeeName: assignedEmpName,
+      assignedToName: assignedEmpName,
+      assignedById: currentUser?.id,
+      assignedByName: currentUserName,
+      createdById: currentUser?.id,
+      createdByName: currentUserName,
     });
   }
 
@@ -1192,19 +1204,40 @@ export default function Leads() {
   const filteredLeads = useMemo(() => {
     const sTerm = search.toLowerCase();
     return leadsFlat.filter(lead => {
-      // Employee role data isolation safeguard: only see self-assigned or unassigned
+      // Employee role data isolation safeguard:
+      // An employee sees:
+      // 1. Leads assigned to them (or unassigned)
+      // 2. Leads assigned BY them (e.g. Vaishnavi assigned lead to Asmita)
+      // 3. Leads created BY them
       if (user?.role === 'EMPLOYEE') {
         const currentUserId = user.id;
         const assignedEmpId = lead.assignedEmployeeId || lead.assignedEmployee?.id || lead.assignedEmployee?.userId;
-        if (assignedEmpId) {
-          const myEmp = employeesList.find((e: any) => e.userId === currentUserId || e.user?.id === currentUserId || e.id === currentUserId);
-          const validMyIds = [currentUserId];
-          if (myEmp?.id) validMyIds.push(myEmp.id);
-          if (myEmp?.userId) validMyIds.push(myEmp.userId);
-          if (myEmp?.user?.id) validMyIds.push(myEmp.user.id);
-          if (!validMyIds.includes(assignedEmpId)) {
-            return false;
-          }
+        const myEmp = employeesList.find((e: any) => e.userId === currentUserId || e.user?.id === currentUserId || e.id === currentUserId);
+        const validMyIds = [currentUserId];
+        if (myEmp?.id) validMyIds.push(myEmp.id);
+        if (myEmp?.userId) validMyIds.push(myEmp.userId);
+        if (myEmp?.user?.id) validMyIds.push(myEmp.user.id);
+
+        const myNames = [
+          user.name,
+          user.firstName,
+          `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+          myEmp?.name,
+          `${myEmp?.firstName || ''} ${myEmp?.lastName || ''}`.trim(),
+        ].filter(Boolean).map((n: string) => n.toLowerCase().trim());
+
+        const extra = parseLeadNotes(lead.notes);
+        const assignedById = lead.assignedById || extra.assignedById;
+        const assignedByName = (lead.assignedByName || extra.assignedByName || '').toLowerCase().trim();
+        const createdById = lead.createdById || extra.createdById;
+        const createdByName = (lead.createdByName || extra.createdByName || '').toLowerCase().trim();
+
+        const isAssignedToMe = assignedEmpId ? validMyIds.includes(assignedEmpId) : true;
+        const isAssignedByMe = (assignedById && validMyIds.includes(assignedById)) || (assignedByName && myNames.some((mn: string) => assignedByName.includes(mn) || mn.includes(assignedByName)));
+        const isCreatedByMe = (createdById && validMyIds.includes(createdById)) || (createdByName && myNames.some((mn: string) => createdByName.includes(mn) || mn.includes(createdByName)));
+
+        if (assignedEmpId && !isAssignedToMe && !isAssignedByMe && !isCreatedByMe) {
+          return false;
         }
       }
       const fullName = `${lead.contact?.firstName || ''} ${lead.contact?.lastName || ''}`.toLowerCase();
@@ -4805,6 +4838,60 @@ function getAssigneeDisplayName(item: any, empList?: any[]) {
   return 'Unassigned';
 }
 
+export function getAssignerDisplayName(item: any, empList?: any[]): string | null {
+  if (!item) return null;
+
+  // 1. Direct assigner properties
+  if (item.assignedByName) return String(item.assignedByName).trim();
+  if (item.assignedBy?.name) return String(item.assignedBy.name).trim();
+  if (item.assignedBy?.firstName || item.assignedBy?.lastName) {
+    const full = `${item.assignedBy.firstName || ''} ${item.assignedBy.lastName || ''}`.trim();
+    if (full) return full;
+  }
+  if (item.createdByName) return String(item.createdByName).trim();
+  if (item.createdBy?.name) return String(item.createdBy.name).trim();
+
+  // 2. From parsed notes
+  try {
+    if (item.notes && typeof item.notes === 'string') {
+      const parsed = JSON.parse(item.notes);
+      if (parsed.assignedByName) return String(parsed.assignedByName).trim();
+      if (parsed.createdByName) return String(parsed.createdByName).trim();
+      if (parsed.assignedById && empList) {
+        const found = empList.find((e: any) =>
+          String(e.id) === String(parsed.assignedById) ||
+          String(e.userId) === String(parsed.assignedById) ||
+          String(e.user?.id) === String(parsed.assignedById)
+        );
+        if (found) {
+          const fn = found.firstName || found.user?.firstName || '';
+          const ln = found.lastName || found.user?.lastName || '';
+          const name = `${fn} ${ln}`.trim();
+          if (name) return name;
+        }
+      }
+    }
+  } catch {}
+
+  // 3. Lookup by assignedById in empList
+  const assignerId = item.assignedById || item.createdById;
+  if (assignerId && empList && empList.length > 0) {
+    const found = empList.find((e: any) =>
+      String(e.id) === String(assignerId) ||
+      String(e.userId) === String(assignerId) ||
+      String(e.user?.id) === String(assignerId)
+    );
+    if (found) {
+      const fn = found.firstName || found.user?.firstName || '';
+      const ln = found.lastName || found.user?.lastName || '';
+      const name = `${fn} ${ln}`.trim();
+      if (name) return name;
+    }
+  }
+
+  return null;
+}
+
 // ── Kanban Card ───────────────────────────────────────────────────────────────
 function KanbanCard({ card, employeesList, onEdit, onDelete, onOpen, onCall, onWhatsApp }: {
   card: any;
@@ -5006,10 +5093,18 @@ function LeadsTable({ data, employeesList, loading, visibleColumns, sortKey, sor
       key: 'employee', label: 'Assigned To',
       render: (r: any) => {
         const name = getAssigneeDisplayName(r, employeesList);
+        const assigner = getAssignerDisplayName(r, employeesList);
         return (
-          <span className={clsx("text-[12.5px]", name === 'Unassigned' || name === '—' ? 'text-slate-400' : 'text-slate-700 font-medium')}>
-            {name}
-          </span>
+          <div className="flex flex-col">
+            <span className={clsx("text-[12.5px]", name === 'Unassigned' || name === '—' ? 'text-slate-400' : 'text-slate-800 font-semibold')}>
+              {name}
+            </span>
+            {assigner && assigner.toLowerCase() !== name.toLowerCase() && (
+              <span className="text-[10px] text-purple-600 font-semibold leading-tight">
+                by {assigner}
+              </span>
+            )}
+          </div>
         );
       },
     },
@@ -5245,12 +5340,22 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, allLeads, isOwner,
         }
       }
 
+      const currentUser = useAuthStore.getState().user;
+      const currentUserName = currentUser?.firstName ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim() : (currentUser?.name || currentUser?.email || 'Admin');
+
       const newParsedNotes = {
         ...currentParsed,
         leadStatus: updatedStatus,
         leadType: updatedType,
         leadSource: updatedSource,
         descriptionDetails: currentParsed.descriptionDetails || '',
+        assignedEmployeeId: assignedEmp,
+        assignedEmployeeName: assignedToName,
+        assignedToName: assignedToName,
+        assignedById: currentUser?.id,
+        assignedByName: currentUserName,
+        createdById: currentParsed.createdById || currentUser?.id,
+        createdByName: currentParsed.createdByName || currentUserName,
       };
       const notesJsonStr = JSON.stringify(newParsedNotes);
 
@@ -5435,6 +5540,7 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, allLeads, isOwner,
   const hotness = deriveHotness(fullLead);
   const hotnessConf = HOTNESS_CONFIG[hotness];
   const assigneeName = getAssigneeDisplayName(fullLead, employees);
+  const assignerName = getAssignerDisplayName(fullLead, employees);
 
   const tabs: { id: 'overview' | 'comments' | 'stage'; label: string }[] = [
     { id: 'overview', label: 'Overview' },
@@ -5461,8 +5567,13 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, allLeads, isOwner,
               </span>
               {fullLead.plan && <span className="text-[10px] text-slate-500">• {fullLead.plan.name}</span>}
               <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200/80 px-2 py-0.5 rounded-full flex items-center gap-1">
-                <UserCircle2 size={11} className="text-purple-600" /> {assigneeName}
+                <UserCircle2 size={11} className="text-purple-600" /> To: {assigneeName}
               </span>
+              {assignerName && assignerName.toLowerCase() !== assigneeName.toLowerCase() && (
+                <span className="text-[10px] font-semibold text-slate-600 bg-slate-100 border border-slate-200/80 px-2 py-0.5 rounded-full flex items-center gap-1">
+                  By: {assignerName}
+                </span>
+              )}
             </div>
           </div>
         </div>

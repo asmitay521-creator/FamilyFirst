@@ -556,6 +556,11 @@ export default function Contacts() {
   }
 
   function serializeLeadNotes(card: ProductInterestCard) {
+    const currentUser = useAuthStore.getState().user;
+    const currentUserName = currentUser?.firstName ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim() : (currentUser?.name || currentUser?.email || 'User');
+    const assignedEmp = employeesList.find((e: any) => e.id === card.assignedEmployeeId || e.userId === card.assignedEmployeeId || e.user?.id === card.assignedEmployeeId);
+    const assignedEmpName = assignedEmp ? `${assignedEmp.firstName || assignedEmp.user?.firstName || ''} ${assignedEmp.lastName || assignedEmp.user?.lastName || ''}`.trim() : '';
+
     return JSON.stringify({
       leadStatus: card.leadStatus,
       leadType: card.leadType,
@@ -563,6 +568,13 @@ export default function Contacts() {
       dependentDetails: card.dependencyType === 'DEPENDENT' ? (card.dependentDetails || '') : '',
       descriptionDetails: card.descriptionDetails || '',
       cleanNotes: card.otherProduct ? `Other Product: ${card.otherProduct}` : '',
+      assignedEmployeeId: card.assignedEmployeeId || '',
+      assignedEmployeeName: assignedEmpName,
+      assignedToName: assignedEmpName,
+      assignedById: currentUser?.id,
+      assignedByName: currentUserName,
+      createdById: currentUser?.id,
+      createdByName: currentUserName,
     });
   }
 
@@ -1988,7 +2000,12 @@ export default function Contacts() {
       : baseList;
 
     return list.filter((item: any) => {
-      // Employee role data isolation safeguard: only see self-assigned, unassigned, or contacts with self-assigned sub-resources
+      // Employee role data isolation safeguard:
+      // An employee sees:
+      // 1. Contacts assigned to them (or unassigned)
+      // 2. Contacts with sub-resources assigned to them
+      // 3. Contacts assigned BY them
+      // 4. Contacts created BY them
       if (user?.role === 'EMPLOYEE') {
         const currentUserId = user.id;
         const assignedEmpId = item.assignedEmployeeId || item.assignedEmployee?.id || item.assignedEmployee?.userId;
@@ -1998,12 +2015,30 @@ export default function Contacts() {
         if (myEmp?.userId) validMyIds.push(myEmp.userId);
         if (myEmp?.user?.id) validMyIds.push(myEmp.user.id);
 
+        const myNames = [
+          user.name,
+          user.firstName,
+          `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+          myEmp?.name,
+          `${myEmp?.firstName || ''} ${myEmp?.lastName || ''}`.trim(),
+        ].filter(Boolean).map((n: string) => n.toLowerCase().trim());
+
+        const extra = parseLeadNotes(item.notes);
+        const assignedById = item.assignedById || extra.assignedById;
+        const assignedByName = (item.assignedByName || extra.assignedByName || '').toLowerCase().trim();
+        const createdById = item.createdById || extra.createdById;
+        const createdByName = (item.createdByName || extra.createdByName || '').toLowerCase().trim();
+
         const hasMySubResource =
           (item.policies && item.policies.some((p: any) => p.assignedEmployeeId && validMyIds.includes(p.assignedEmployeeId))) ||
           (item.productInterests && item.productInterests.some((pi: any) => pi.assignedEmployeeId && validMyIds.includes(pi.assignedEmployeeId))) ||
           (item.claims && item.claims.some((c: any) => c.assignedEmployeeId && validMyIds.includes(c.assignedEmployeeId)));
 
-        if (assignedEmpId && !validMyIds.includes(assignedEmpId) && !hasMySubResource) {
+        const isAssignedToMe = assignedEmpId ? validMyIds.includes(assignedEmpId) : true;
+        const isAssignedByMe = (assignedById && validMyIds.includes(assignedById)) || (assignedByName && myNames.some((mn: string) => assignedByName.includes(mn) || mn.includes(assignedByName)));
+        const isCreatedByMe = (createdById && validMyIds.includes(createdById)) || (createdByName && myNames.some((mn: string) => createdByName.includes(mn) || mn.includes(createdByName)));
+
+        if (assignedEmpId && !isAssignedToMe && !hasMySubResource && !isAssignedByMe && !isCreatedByMe) {
           return false;
         }
       }
@@ -2216,6 +2251,9 @@ export default function Contacts() {
       sortable: true,
       render: r => {
         const empName = getEmployeeName(r.assignedEmployeeId, r.assignedEmployee, r);
+        const extra = parseLeadNotes(r.notes);
+        const assignerName = r.assignedByName || extra.assignedByName || r.createdByName || extra.createdByName;
+
         if (empName === 'Unassigned') {
           return (
             <div className="flex flex-wrap items-center gap-1.5 flex-wrap">
@@ -2238,7 +2276,16 @@ export default function Contacts() {
             </div>
           );
         }
-        return <span className="text-slate-700 text-xs font-bold">{empName}</span>;
+        return (
+          <div className="flex flex-col">
+            <span className="text-slate-800 text-xs font-bold">{empName}</span>
+            {assignerName && assignerName.toLowerCase() !== empName.toLowerCase() && (
+              <span className="text-[10px] text-purple-600 font-semibold leading-tight">
+                by {assignerName}
+              </span>
+            )}
+          </div>
+        );
       }
     },
     {
