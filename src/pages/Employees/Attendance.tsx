@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Pencil } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { employeesService } from '@api/index';
+import { employeesService, getLocalWorkspaceLogs } from '@api/index';
 import DataTable, { Column } from '@comps/common/DataTable';
 import { format } from 'date-fns';
 import clsx from 'clsx';
@@ -24,7 +24,26 @@ export default function EmployeeAttendance() {
     queryFn: () => employeesService.list({ page: 1, limit: 500 }),
   });
 
-  const allEmployees = data?.data ?? data ?? [];
+  const rawEmployees = data?.data ?? data ?? [];
+  const allEmployees = React.useMemo(() => {
+    const localLogs = getLocalWorkspaceLogs();
+    if (!Array.isArray(rawEmployees)) return [];
+    return rawEmployees.map((emp: any) => {
+      const empId = emp.userId || emp.id || emp.user?.id;
+      const matchingLogs = localLogs.filter((l: any) => l.userId === empId);
+      if (matchingLogs.length > 0) {
+        const existingLogs = emp.user?.dailyLogs || [];
+        return {
+          ...emp,
+          user: {
+            ...(emp.user || {}),
+            dailyLogs: [...matchingLogs, ...existingLogs],
+          }
+        };
+      }
+      return emp;
+    });
+  }, [rawEmployees]);
   const sortedEmployees = React.useMemo(() => {
     return sortData(Array.isArray(allEmployees) ? allEmployees : [], sortKey, sortDir, (row: any, key: string) => {
       if (key === 'firstName') return `${row.firstName} ${row.lastName}`;

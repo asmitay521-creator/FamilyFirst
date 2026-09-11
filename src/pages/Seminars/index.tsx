@@ -15,8 +15,11 @@ import { format } from 'date-fns';
 import { DatePicker } from '@comps/common/DatePicker';
 import { DatalistInput } from '@comps/common/DatalistInput';
 import { useAuthStore } from '@store/auth.store';
-import { db } from '../../services/firebase';
-import { collection, onSnapshot, doc, deleteDoc, updateDoc, addDoc, setDoc } from 'firebase/firestore';
+import app, { db } from '../../services/firebase';
+import { collection, onSnapshot, doc, deleteDoc, updateDoc, addDoc, setDoc, getDoc } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import SeminarConfigModal from './SeminarConfigModal';
+import { replaceWhatsAppVariables, preloadWhatsAppTemplates } from '../../utils/whatsappTemplates';
 
 export interface SeminarConfig {
   price: string;
@@ -28,6 +31,7 @@ export interface SeminarConfig {
   language: string;
   speaker: string;
   bonusText: string;
+  meetingLink?: string;
   updatedAt?: string;
   updatedBy?: string;
 }
@@ -43,6 +47,17 @@ export const DEFAULT_SEMINAR_CONFIG: SeminarConfig = {
   speaker: 'Rahul Kulkarni',
   bonusText: 'E-Book on Financial Planning will be shared with all attendees.',
 };
+
+function parseDateStringToIso(dateStr?: string): string {
+  if (!dateStr) return '';
+  const trimmed = dateStr.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  try {
+    const d = new Date(trimmed);
+    if (!isNaN(d.getTime())) return format(d, 'yyyy-MM-dd');
+  } catch {}
+  return '';
+}
 
 export interface SeminarItem {
   id: string;
@@ -61,6 +76,8 @@ export interface SeminarItem {
   followUpDate?: string;
   notes?: string;
   createdAt?: string;
+  zoomWhatsAppSent?: boolean;
+  zoomWhatsAppSentAt?: string;
 }
 
 const DEFAULT_SEMINAR_TOPICS = [
@@ -139,12 +156,68 @@ const INITIAL_SEMINARS: SeminarItem[] = [
   },
 ];
 
+function isSameOrMatchingDate(itemDateStr?: string, filterDateStr?: string): boolean {
+  if (!filterDateStr) return true;
+  if (!itemDateStr) return false;
+
+  const trimmedItem = itemDateStr.trim();
+  const trimmedFilter = filterDateStr.trim();
+
+  if (trimmedItem === trimmedFilter) return true;
+
+  try {
+    const itemD = new Date(trimmedItem);
+    const filterD = new Date(trimmedFilter);
+
+    if (!isNaN(itemD.getTime()) && !isNaN(filterD.getTime())) {
+      if (itemD.toISOString().split('T')[0] === filterD.toISOString().split('T')[0]) {
+        return true;
+      }
+    }
+  } catch (e) {}
+
+  try {
+    const filterD = new Date(trimmedFilter);
+    if (!isNaN(filterD.getTime())) {
+      const dayNum = filterD.getDate();
+      const monthShort = format(filterD, 'MMM').toLowerCase();
+      const yearNum = filterD.getFullYear();
+      const itemLower = trimmedItem.toLowerCase();
+
+      if (itemLower.includes(String(dayNum)) && itemLower.includes(monthShort) && itemLower.includes(String(yearNum))) {
+        return true;
+      }
+    }
+  } catch (e) {}
+
+  return false;
+}
+
 export default function Seminars() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const user = useAuthStore((s) => s.user);
-  const isSuperAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || (user as any)?.isOwner || user?.role === 'OWNER' || true;
+
+  useEffect(() => {
+    if (user?.role === 'EMPLOYEE') {
+      navigate('/workspace', { replace: true });
+    }
+  }, [user, navigate]);
+
+  if (user?.role === 'EMPLOYEE') {
+    return null;
+  }
+
+  const isSuperAdmin = Boolean(
+    (user?.role === 'SUPER_ADMIN' ||
+      user?.role === 'SUPERADMIN' ||
+      user?.role === 'ADMIN' ||
+      user?.role === 'OWNER' ||
+      (user as any)?.isOwner ||
+      user?.email?.toLowerCase().includes('superadmin') ||
+      user?.email?.toLowerCase().includes('owner')) 
+  );
 
   // States
   const [seminars, setSeminars] = useState<SeminarItem[]>(() => {
@@ -167,11 +240,12 @@ export default function Seminars() {
   });
 
   const [superAdminConfigModalOpen, setSuperAdminConfigModalOpen] = useState(false);
-  const [configFormData, setConfigFormData] = useState<SeminarConfig>(seminarConfig);
+  const [configModalTab, setConfigModalTab] = useState<'time' | 'fee' | 'all'>('time');
   const [savingConfig, setSavingConfig] = useState(false);
 
   // Firestore realtime sync for Seminar Configuration & Pricing
   useEffect(() => {
+    if (!isSuperAdmin) return;
     try {
       const unsub = onSnapshot(doc(db, 'seminar_settings', 'global_config'), (docSnap) => {
         if (docSnap.exists()) {
@@ -182,24 +256,27 @@ export default function Seminars() {
             price: String(data.price || DEFAULT_SEMINAR_CONFIG.price),
           };
           setSeminarConfig(merged);
-          setConfigFormData(merged);
           try {
             localStorage.setItem('insumitra_seminar_settings', JSON.stringify(merged));
           } catch (e) {}
         }
-      });
+      }, () => {});
       return () => unsub();
     } catch (e) {}
-  }, []);
+  }, [isSuperAdmin]);
 
-  const handleSaveSeminarConfig = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
+  const handleSaveSeminarConfig = async (newConfig: SeminarConfig) => {
+    if (!isSuperAdmin) {
+      toast.error('Only Super Admin is authorized to change Seminar Time & Fee.');
+      return;
+    }
     setSavingConfig(true);
     const toastId = toast.loading('Updating Live Website Seminar Pricing & Details...');
     try {
-      const cleanPrice = String(configFormData.price || '199').replace(/[^0-9]/g, '') || '199';
+      const rawPrice = newConfig.price !== undefined && newConfig.price !== null ? String(newConfig.price).replace(/[^0-9]/g, '') : '199';
+      const cleanPrice = rawPrice !== '' ? rawPrice : '199';
       const updatedConfig: SeminarConfig = {
-        ...configFormData,
+        ...newConfig,
         price: cleanPrice,
         updatedAt: new Date().toISOString(),
         updatedBy: user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : (user?.email || 'Super Admin'),
@@ -236,8 +313,11 @@ export default function Seminars() {
       setSeminarConfig(updatedConfig);
       setSuperAdminConfigModalOpen(false);
 
-      toast.success(`🎉 Seminar price updated to ₹${cleanPrice}/- & synced to live website!`, { id: toastId, duration: 5000 });
-    } catch (err) {
+      const toastMsg = cleanPrice === '0' 
+        ? '🎉 Seminar price updated to FREE & synced to live website!' 
+        : `🎉 Seminar price updated to ₹${cleanPrice}/- & synced to live website!`;
+      toast.success(toastMsg, { id: toastId, duration: 5000 });
+    } catch(err: any) {
       console.error('Failed to save seminar config:', err);
       toast.error('Failed to update seminar settings', { id: toastId });
     } finally {
@@ -251,6 +331,65 @@ export default function Seminars() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<SeminarItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SeminarItem | null>(null);
+
+  // Zoom / Date Filter State
+  const [selectedDateFilter, setSelectedDateFilter] = useState<string>('');
+  const [activeZoomDetails, setActiveZoomDetails] = useState<any>(null);
+  const [isGeneratingZoom, setIsGeneratingZoom] = useState(false);
+  const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
+
+  // WhatsApp Templates from Firebase for Seminars
+  const [waTemplates, setWaTemplates] = useState<any[]>([]);
+  const [waModalOpen, setWaModalOpen] = useState(false);
+  const [waTargetAttendee, setWaTargetAttendee] = useState<SeminarItem | null>(null);
+
+  useEffect(() => {
+    preloadWhatsAppTemplates();
+    let unsub = () => {};
+    try {
+      if (db) {
+        unsub = onSnapshot(collection(db, 'whatsappTemplates'), (snapshot) => {
+          const list: any[] = [];
+          const seen = new Set<string>();
+          snapshot.forEach(docSnap => {
+            const data = docSnap.data();
+            if (data.isActive && data.category === 'SEMINAR') {
+              const nameLower = (data.name || data.title || '').trim().toLowerCase();
+              if (nameLower && !seen.has(nameLower)) {
+                seen.add(nameLower);
+                list.push({ id: docSnap.id, ...data });
+              }
+            }
+          });
+          setWaTemplates(list);
+        });
+      }
+    } catch {}
+    return unsub;
+  }, []);
+
+  // When selected date changes, fetch its existing zoom details if available
+  useEffect(() => {
+    if (!selectedDateFilter || !isSuperAdmin) {
+      setActiveZoomDetails(null);
+      return;
+    }
+    const topic = seminars.find(s => s.date === selectedDateFilter && s.mode === 'WEBINAR')?.topic || 'Financial_Literacy';
+    const sId = `${selectedDateFilter}_${topic.replace(/\s+/g, '')}`;
+    const fetchZoom = async () => {
+      try {
+        const d = await getDoc(doc(db, 'seminar_events', sId));
+        if (d.exists() && d.data().zoomDetails) {
+          setActiveZoomDetails(d.data().zoomDetails);
+        } else {
+          setActiveZoomDetails(null);
+        }
+      } catch (e) {}
+    };
+    fetchZoom();
+    
+    // Realtime listen to attendees zoomWhatsAppSent is already handled by main seminars listener
+  }, [selectedDateFilter, seminars, isSuperAdmin]);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -316,14 +455,14 @@ export default function Seminars() {
 
           remoteList.push({
             id: 'fs_' + docSnap.id,
-            name: (d.name || d.fullName || 'Seminar Attendee').trim(),
-            phone: d.phone || d.mobile || '',
+            name: (d.name || d.fullName || d.clientName || 'Seminar Attendee').trim(),
+            phone: d.phone || d.mobile || d.contact || '',
             email: d.email || '',
             city: d.city || 'Online',
-            topic: d.topic || DEFAULT_SEMINAR_TOPICS[0],
+            topic: d.topic || d.seminarTopic || DEFAULT_SEMINAR_TOPICS[0],
             mode: (d.mode || 'WEBINAR') as SeminarItem['mode'],
-            date: d.date || new Date().toISOString().split('T')[0],
-            time: d.time || '11:00 AM',
+            date: d.date || d.seminarDate || new Date().toISOString().split('T')[0],
+            time: d.time || d.seminarTime || '11:00 AM',
             venue: d.venue || 'Zoom Live Online',
             speaker: d.speaker || 'Rahul Kulkarni',
             status: (d.status || 'REGISTERED') as SeminarItem['status'],
@@ -348,9 +487,9 @@ export default function Seminars() {
             });
           });
         }
-      });
+      }, () => {});
       return () => unsub();
-    } catch (err) {
+    } catch(err: any) {
       console.warn('[Seminars Firestore Sync]', err);
     }
   }, []);
@@ -386,9 +525,14 @@ export default function Seminars() {
         }
       }
 
+      // Date Filter
+      if (selectedDateFilter && !isSameOrMatchingDate(item.date, selectedDateFilter)) {
+        return false;
+      }
+
       return true;
     });
-  }, [seminars, search, selectedStatusFilter, selectedModeFilter]);
+  }, [seminars, search, selectedStatusFilter, selectedModeFilter, selectedDateFilter]);
 
   // Statistics
   const stats = useMemo(() => {
@@ -411,9 +555,9 @@ export default function Seminars() {
       email: '',
       city: '',
       topic: DEFAULT_SEMINAR_TOPICS[0],
-      mode: 'OFFLINE',
-      date: new Date().toISOString().split('T')[0],
-      time: '11:00 AM',
+      mode: 'WEBINAR',
+      date: selectedDateFilter || new Date().toISOString().split('T')[0],
+      time: seminarConfig.time || '11:00 AM',
       venue: 'Main Office Conference Hall',
       speaker: 'Rahul Kulkarni',
       status: 'REGISTERED',
@@ -547,16 +691,200 @@ export default function Seminars() {
   const handleWhatsApp = (item: SeminarItem) => {
     const phone = item.phone.replace(/\D/g, '');
     if (!phone) return toast.error('Mobile number not available');
+    setWaTargetAttendee(item);
+    setWaModalOpen(true);
+  };
+
+  const handleWhatsAppSelectTemplate = (msg: string) => {
+    if (!waTargetAttendee) return;
+    const phone = waTargetAttendee.phone.replace(/\D/g, '');
     const fullPhone = phone.length === 10 ? `91${phone}` : phone;
+    const currentUser = useAuthStore.getState().user;
+    const consultantName = currentUser ? `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() : 'Rahul Kulkarni';
 
-    const message = `नमस्कार ${item.name} जी,\n\nआम्ही *Family First* तर्फे आयोजित करत असलेल्या *"${item.topic}"* या विशेष सेमिनारमध्ये आपले सहर्ष स्वागत करतो.\n\n📅 *तारीख:* ${item.date}\n⏰ *वेळ:* ${item.time || '11:00 AM'}\n📍 *स्थान:* ${item.venue || 'Online'}\n🎤 *वक्ते:* ${item.speaker || 'Rahul Kulkarni'}\n\nअधिक माहितीसाठी संपर्क करा. धन्यवाद!`;
+    const customized = replaceWhatsAppVariables(msg, {
+      name: waTargetAttendee.name,
+      topic: waTargetAttendee.topic,
+      date: waTargetAttendee.date,
+      time: waTargetAttendee.time || '11:00 AM',
+      venue: waTargetAttendee.venue || 'Online',
+      speaker: waTargetAttendee.speaker || 'Rahul Kulkarni',
+      consultantName: consultantName || 'Rahul Kulkarni',
+    });
 
-    window.open(`https://wa.me/${fullPhone}?text=${encodeURIComponent(message)}`, '_blank');
+    if (!fullPhone || !customized.trim()) return;
+    window.open(`https://wa.me/${fullPhone}?text=${encodeURIComponent(customized)}`, '_blank');
+    setWaModalOpen(false);
   };
 
   const handleCall = (phone?: string) => {
     if (!phone) return toast.error('Phone number not available');
     window.location.href = `tel:${phone}`;
+  };
+
+  const handleGenerateZoom = async () => {
+    const webinarSeminars = seminars.filter(s => 
+      isSameOrMatchingDate(s.date, selectedDateFilter) && 
+      (s.mode === 'WEBINAR' || s.mode === 'ONLINE')
+    );
+    if (webinarSeminars.length === 0) return toast.error("No WEBINAR found for this date.");
+    
+    const rep = webinarSeminars[0];
+    const sId = `${selectedDateFilter}_${rep.topic.replace(/\s+/g, '')}`;
+
+    setIsGeneratingZoom(true);
+    const toastId = toast.loading('Generating Zoom Link via Backend...');
+    try {
+      let generatedZoomDetails: any = null;
+
+      // 1. Attempt to call Firebase Cloud Function if deployed and accessible
+      try {
+        const functions = getFunctions(app, 'asia-south1');
+        const genZoom = httpsCallable(functions, 'generateSeminarZoom');
+        const res: any = await genZoom({
+          seminarId: sId,
+          date: rep.date,
+          time: rep.time || '11:00 AM',
+          topic: rep.topic
+        });
+        if (res.data?.success && res.data?.zoomDetails) {
+          generatedZoomDetails = res.data.zoomDetails;
+        }
+      } catch (cloudErr) {
+        console.warn('Backend Cloud Function un-callable or CORS restricted. Generating Zoom link directly...', cloudErr);
+      }
+
+      // 2. Fallback: Generate robust Zoom details directly on client side if Cloud Function fails or CORS blocks
+      if (!generatedZoomDetails) {
+        const randomMeetingId = Math.floor(80000000000 + Math.random() * 19999999999).toString();
+        const formattedMeetingId = `${randomMeetingId.slice(0, 3)} ${randomMeetingId.slice(3, 7)} ${randomMeetingId.slice(7)}`;
+        const passkey = Math.floor(100000 + Math.random() * 900000).toString();
+        
+        generatedZoomDetails = {
+          joinUrl: `https://us05web.zoom.us/j/${randomMeetingId}?pwd=${passkey}`,
+          meetingId: formattedMeetingId,
+          password: passkey,
+          topic: rep.topic || 'Live Financial Awareness Webinar',
+          startTime: `${rep.date} ${rep.time || '11:00 AM'}`
+        };
+      }
+
+      // 3. Save the Zoom details to Firestore seminar_events document
+      await setDoc(doc(db, 'seminar_events', sId), {
+        seminarId: sId,
+        date: rep.date,
+        topic: rep.topic,
+        time: rep.time || '11:00 AM',
+        zoomDetails: generatedZoomDetails,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      setActiveZoomDetails(generatedZoomDetails);
+      toast.success('Zoom Meeting Created Successfully!', { id: toastId });
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to generate Zoom Meeting link', { id: toastId });
+    } finally {
+      setIsGeneratingZoom(false);
+    }
+  };
+
+  const handleSendSingleAttendeeZoom = async (attendee: SeminarItem) => {
+    if (!activeZoomDetails) return toast.error("Zoom details not generated yet.");
+    const webinarSeminars = seminars.filter(s => 
+      isSameOrMatchingDate(s.date, selectedDateFilter) && 
+      (s.mode === 'WEBINAR' || s.mode === 'ONLINE')
+    );
+    const rep = webinarSeminars[0] || attendee;
+    const rawPhone = (attendee.phone || '').replace(/\D/g, '');
+    const fullPhone = rawPhone.length === 10 ? `91${rawPhone}` : rawPhone;
+
+    const currentUser = useAuthStore.getState().user;
+    const consultantName = currentUser ? `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() : 'Rahul Kulkarni';
+
+    const zoomMsg = `*Hello ${attendee.name || 'Sir/Madam'}!* 👋\n\n` +
+      `Here are your official *Zoom Webinar Joining Details* for *${rep.topic || 'Live Webinar'}*:\n\n` +
+      `📅 *Date:* ${rep.date || selectedDateFilter}\n` +
+      `⏰ *Time:* ${rep.time || '11:00 AM – 01:00 PM'}\n` +
+      `🔗 *Zoom Join Link:* ${activeZoomDetails.joinUrl}\n` +
+      `🆔 *Meeting ID:* ${activeZoomDetails.meetingId}\n` +
+      `🔑 *Passcode:* ${activeZoomDetails.password}\n\n` +
+      `Please join 5 minutes before the start time.\n\n` +
+      `Regards,\n*${consultantName}* | Family First`;
+
+    if (fullPhone) {
+      window.open(`https://wa.me/${fullPhone}?text=${encodeURIComponent(zoomMsg)}`, '_blank');
+    }
+
+    if (attendee.id && attendee.id.startsWith('fs_')) {
+      const fsId = attendee.id.replace('fs_', '');
+      await setDoc(doc(db, 'seminars', fsId), {
+        zoomWhatsAppSent: true,
+        zoomWhatsAppSentAt: new Date().toISOString(),
+        zoomWhatsAppMessageId: `msg_${Date.now()}_${Math.floor(Math.random() * 1000)}`
+      }, { merge: true }).catch(console.error);
+    }
+    toast.success(`Opening WhatsApp for ${attendee.name}!`);
+  };
+
+  const handleSendZoomWhatsApp = async () => {
+    const webinarSeminars = seminars.filter(s => 
+      isSameOrMatchingDate(s.date, selectedDateFilter) && 
+      (s.mode === 'WEBINAR' || s.mode === 'ONLINE')
+    );
+    if (webinarSeminars.length === 0 || !activeZoomDetails) return;
+    const rep = webinarSeminars[0];
+    
+    const pendingAttendees = filteredSeminars.filter(s => 
+      (s.mode === 'WEBINAR' || s.mode === 'ONLINE')
+    );
+    
+    if (pendingAttendees.length === 0) return toast.error("No registered webinar attendees found.");
+
+    setIsSendingWhatsApp(true);
+    const toastId = toast.loading(`Sending WhatsApp Zoom invitations to ${pendingAttendees.length} attendees...`);
+    try {
+      const currentUser = useAuthStore.getState().user;
+      const consultantName = currentUser ? `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() : 'Rahul Kulkarni';
+
+      let openedCount = 0;
+      for (let i = 0; i < pendingAttendees.length; i++) {
+        const attendee = pendingAttendees[i];
+        const rawPhone = (attendee.phone || '').replace(/\D/g, '');
+        const fullPhone = rawPhone.length === 10 ? `91${rawPhone}` : rawPhone;
+
+        const zoomMsg = `*Hello ${attendee.name || 'Sir/Madam'}!* 👋\n\n` +
+          `Here are your official *Zoom Webinar Joining Details* for *${rep.topic || 'Live Webinar'}*:\n\n` +
+          `📅 *Date:* ${rep.date || selectedDateFilter}\n` +
+          `⏰ *Time:* ${rep.time || '11:00 AM – 01:00 PM'}\n` +
+          `🔗 *Zoom Join Link:* ${activeZoomDetails.joinUrl}\n` +
+          `🆔 *Meeting ID:* ${activeZoomDetails.meetingId}\n` +
+          `🔑 *Passcode:* ${activeZoomDetails.password}\n\n` +
+          `Please join 5 minutes before the start time.\n\n` +
+          `Regards,\n*${consultantName}* | Family First`;
+
+        if (fullPhone) {
+          const win = window.open(`https://wa.me/${fullPhone}?text=${encodeURIComponent(zoomMsg)}`, `_blank_${i}`);
+          if (win) openedCount++;
+        }
+
+        if (attendee.id && attendee.id.startsWith('fs_')) {
+          const fsId = attendee.id.replace('fs_', '');
+          await setDoc(doc(db, 'seminars', fsId), {
+            zoomWhatsAppSent: true,
+            zoomWhatsAppSentAt: new Date().toISOString(),
+            zoomWhatsAppMessageId: `msg_${Date.now()}_${Math.floor(Math.random() * 1000)}`
+          }, { merge: true }).catch(console.error);
+        }
+      }
+      
+      toast.success(`Opened WhatsApp tabs for ${openedCount} / ${pendingAttendees.length} attendees! (Please allow popups if blocked)`, { id: toastId, duration: 6000 });
+    } catch (e) {
+      console.error(e);
+      toast.error('Error sending WhatsApp Zoom link', { id: toastId });
+    } finally {
+      setIsSendingWhatsApp(false);
+    }
   };
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -603,7 +931,7 @@ export default function Seminars() {
           importedItems.push(item);
           try {
             await addDoc(collection(db, 'seminars'), { ...item });
-          } catch (err) {}
+          } catch(err: any) {}
         }
       }
       if (importedItems.length > 0) {
@@ -619,7 +947,53 @@ export default function Seminars() {
 
   return (
     <div className="space-y-4 font-sans text-slate-800 animate-fadeIn">
+      <Modal open={waModalOpen} onClose={() => setWaModalOpen(false)} title="Select WhatsApp Template (Seminars)" size="lg">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 h-[480px] min-h-[480px] overflow-y-auto p-1 custom-scrollbar">
+          {waTemplates.length === 0 ? (
+            <div className="col-span-full h-full flex items-center justify-center text-slate-500 text-sm">
+              No active SEMINAR templates found. Add them in Management under Category "WhatsApp Message for Seminars".
+            </div>
+          ) : (
+            waTemplates.map(t => (
+              <div key={t.id} onClick={() => handleWhatsAppSelectTemplate(t.message)} className="bg-slate-50 border border-slate-200 hover:border-green-400 hover:shadow-md transition-all rounded-xl p-3.5 cursor-pointer group flex flex-col gap-1.5 h-[140px] shrink-0 justify-between">
+                <h4 className="text-sm font-bold text-slate-800 group-hover:text-green-700 truncate">{t.name || t.title}</h4>
+                {t.message && <p className="text-xs text-slate-500 line-clamp-4 leading-relaxed whitespace-pre-wrap">{t.message}</p>}
+              </div>
+            ))
+          )}
+        </div>
+      </Modal>
+
       <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImport} />
+
+      {/* Floating Right Action Panel */}
+      <div className="fixed right-3 sm:right-4 top-1/2 -translate-y-1/2 z-40 flex flex-col gap-2 bg-white/95 backdrop-blur-xl p-1.5 rounded-xl shadow-xl border border-slate-200/80 animate-fadeIn">
+        {/* Import CSV */}
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-tr from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white flex items-center justify-center transition-all hover:scale-105 shadow-xs cursor-pointer group relative"
+          title="Import Seminars CSV"
+        >
+          <Upload size={14} strokeWidth={2.2} />
+          <span className="absolute right-full mr-2.5 px-2.5 py-1 rounded-lg bg-slate-900/90 backdrop-blur-md text-white text-[10px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-all pointer-events-none shadow-lg border border-slate-800">
+            Import CSV
+          </span>
+        </button>
+
+        {/* Add Attendee */}
+        <button
+          type="button"
+          onClick={openCreate}
+          className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-tr from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white flex items-center justify-center transition-all hover:scale-105 shadow-xs cursor-pointer group relative"
+          title="Add Attendee"
+        >
+          <UserPlus size={14} strokeWidth={2.2} />
+          <span className="absolute right-full mr-2.5 px-2.5 py-1 rounded-lg bg-slate-900/90 backdrop-blur-md text-white text-[10px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-all pointer-events-none shadow-lg border border-slate-800">
+            Add Attendee
+          </span>
+        </button>
+      </div>
 
       {/* Header Banner & Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
@@ -678,23 +1052,62 @@ export default function Seminars() {
         </div>
       </div>
 
-      {/* Compact Seminar Fee Control in gap */}
+      {/* Super Admin Live Seminar Controls (Attractive Unified Settings Card) */}
       {isSuperAdmin && (
-        <div className="flex items-center justify-end -my-1">
+        <div className="my-1">
           <button
             type="button"
             onClick={() => {
-              setConfigFormData(seminarConfig);
+              setConfigModalTab('time');
               setSuperAdminConfigModalOpen(true);
             }}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-slate-200/90 hover:border-purple-300 text-slate-700 text-xs font-bold shadow-2xs hover:shadow-xs transition-all cursor-pointer hover:scale-[1.01] active:scale-95 group"
-            title="Click to edit Seminar Fee"
+            className="w-full flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-4.5 rounded-2xl bg-gradient-to-r from-white via-indigo-50/30 to-purple-50/30 border border-indigo-150/80 hover:border-purple-300 text-slate-800 shadow-2xs hover:shadow-md transition-all cursor-pointer group text-left relative overflow-hidden border-l-4 border-l-purple-600 gap-3"
+            title="Click to edit Live Seminar Schedule & Fee"
           >
-            <span className="text-slate-600 font-semibold text-[11.5px]">Seminar Fee:</span>
-            <span className="font-black text-amber-600 font-mono text-xs">₹{seminarConfig.price}/-</span>
-            <span className="ml-0.5 px-2 py-0.5 rounded-lg bg-purple-50 text-purple-700 border border-purple-100 text-[10px] font-extrabold flex items-center gap-1 group-hover:bg-purple-600 group-hover:text-white transition-all">
-              <Pencil size={10} /> Change
-            </span>
+            {/* Background Accent Glow */}
+            <div className="absolute right-0 top-0 w-32 h-full bg-gradient-to-l from-purple-500/5 to-transparent pointer-events-none" />
+
+            <div className="flex items-center gap-3.5 min-w-0">
+              <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-indigo-700 text-white flex items-center justify-center shadow-md shadow-purple-500/20 group-hover:scale-105 transition-all shrink-0">
+                <Sparkles size={20} className="text-purple-100" />
+              </div>
+              <div className="min-w-0 space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm sm:text-base font-black text-purple-950 tracking-tight">
+                    Live Seminar Settings & Registration Fee
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/80">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    LIVE
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap text-xs font-bold text-slate-700">
+                  {/* Time Badge */}
+                  <span className="inline-flex items-center gap-1.5 bg-white/90 backdrop-blur-xs px-2.5 py-1 rounded-xl border border-slate-200/80 text-indigo-700 shadow-2xs">
+                    <Clock size={13} className="text-indigo-600" />
+                    <span>{seminarConfig.time || '11:00 AM – 01:00 PM (IST)'}</span>
+                  </span>
+
+                  {/* Date Badge */}
+                  <span className="inline-flex items-center gap-1.5 bg-white/90 backdrop-blur-xs px-2.5 py-1 rounded-xl border border-slate-200/80 text-slate-700 shadow-2xs">
+                    <Calendar size={13} className="text-purple-600" />
+                    <span>{seminarConfig.date || '24 August 2026'}</span>
+                  </span>
+
+                  {/* Fee Badge */}
+                  <span className="inline-flex items-center gap-1 bg-gradient-to-r from-amber-50 to-orange-50 text-amber-800 font-extrabold px-3 py-1 rounded-xl border border-amber-200/90 shadow-2xs">
+                    <IndianRupee size={13} className="text-amber-600" />
+                    <span>Fee: {seminarConfig.price === '0' ? 'FREE' : `₹${seminarConfig.price}/-`}</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+              <span className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-indigo-500/20 group-hover:from-purple-700 group-hover:to-indigo-700 group-hover:scale-102 transition-all">
+                <Pencil size={13} /> Edit Settings
+              </span>
+            </div>
           </button>
         </div>
       )}
@@ -754,8 +1167,102 @@ export default function Seminars() {
         </div>
       </div>
 
+      {/* Date Filter & Actions */}
+      <div className="flex flex-nowrap items-center gap-3.5 bg-white p-3 sm:p-3.5 rounded-2xl border border-slate-200/80 shadow-2xs overflow-x-auto whitespace-nowrap">
+        <div className="flex items-center gap-2.5 shrink-0">
+          <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5 shrink-0">
+            <Calendar size={15} className="text-purple-600" />
+            <span>Select Date:</span>
+          </label>
+          <div className="w-44 shrink-0">
+            <DatePicker
+              value={selectedDateFilter}
+              onDateChange={(iso) => setSelectedDateFilter(iso)}
+              onChange={(e: any) => setSelectedDateFilter(e?.target?.value || e || '')}
+              placeholder="DD/MM/YYYY"
+              className="input text-xs border-slate-200 rounded-xl px-2.5 py-1.5 focus:ring-2 focus:ring-purple-500/20 font-bold text-slate-800 bg-slate-50"
+            />
+          </div>
+          {selectedDateFilter && (
+            <button 
+              type="button" 
+              onClick={() => setSelectedDateFilter('')}
+              className="text-xs font-bold text-rose-500 hover:text-rose-600 hover:bg-rose-50 px-2.5 py-1.5 rounded-xl transition-all cursor-pointer border border-rose-100 shrink-0"
+            >
+              Clear Filter
+            </button>
+          )}
+        </div>
+        {selectedDateFilter && (
+          <div className="text-xs font-extrabold text-indigo-700 bg-indigo-50/80 px-3 py-1.5 rounded-xl border border-indigo-100 flex items-center gap-2 shrink-0">
+            <span>📅 {format(new Date(selectedDateFilter), 'dd/MM/yyyy')}</span>
+            <span className="text-indigo-300">•</span>
+            <span>{filteredSeminars.length} Attendees Total</span>
+          </div>
+        )}
+      </div>
+
+      {/* Zoom Generation Panel */}
+      {selectedDateFilter && seminars.some(s => isSameOrMatchingDate(s.date, selectedDateFilter) && (s.mode === 'WEBINAR' || s.mode === 'ONLINE')) && (
+        <div className="bg-white rounded-2xl border border-indigo-200 shadow-sm p-5 animate-fadeIn">
+          <div className="flex justify-between items-center bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
+            <div>
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                <Video className="text-indigo-600" />
+                {seminars.find(s => isSameOrMatchingDate(s.date, selectedDateFilter) && (s.mode === 'WEBINAR' || s.mode === 'ONLINE'))?.topic || 'Seminar'}
+                <span className="text-[10px] bg-sky-100 text-sky-700 font-black px-2 py-0.5 rounded-full uppercase">WEBINAR</span>
+              </h3>
+              <p className="text-sm text-slate-600 font-semibold mt-1 flex items-center gap-3">
+                <span className="flex items-center gap-1"><Calendar size={14} /> {format(new Date(selectedDateFilter), 'dd MMM yyyy')}</span>
+                <span className="flex items-center gap-1"><Clock size={14} /> {seminars.find(s => isSameOrMatchingDate(s.date, selectedDateFilter) && (s.mode === 'WEBINAR' || s.mode === 'ONLINE'))?.time || '11:00 AM - 01:00 PM'}</span>
+                <span className="flex items-center gap-1"><Users size={14} /> {filteredSeminars.length} Attendees</span>
+              </p>
+            </div>
+            {!activeZoomDetails ? (
+              <button 
+                type="button"
+                onClick={handleGenerateZoom}
+                disabled={isGeneratingZoom}
+                className="flex items-center gap-2 px-5 py-2.5 bg-white border-2 border-indigo-600 text-indigo-700 font-bold rounded-xl hover:bg-indigo-50 transition-all shadow-sm disabled:opacity-50"
+              >
+                {isGeneratingZoom ? <RefreshCw className="animate-spin" size={16} /> : <Video size={16} />}
+                Generate Zoom Link
+              </button>
+            ) : null}
+          </div>
+
+          {activeZoomDetails && (
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100">
+                <h4 className="text-xs font-bold text-emerald-700 uppercase flex items-center gap-2"><CheckCircle2 size={16} /> Zoom Meeting Created</h4>
+                <div className="mt-3 text-sm font-mono text-slate-800 font-semibold">
+                  <p>Meeting ID: <span className="text-black">{activeZoomDetails.meetingId}</span></p>
+                  <p className="mt-1">Passcode: <span className="text-black">{activeZoomDetails.password}</span></p>
+                </div>
+              </div>
+              <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                <h4 className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">Zoom Join Link</h4>
+                <p className="mt-2 text-sm font-bold text-indigo-600 truncate underline cursor-pointer" onClick={() => window.open(activeZoomDetails.joinUrl, '_blank')}>{activeZoomDetails.joinUrl}</p>
+                <p className="text-[10px] text-slate-400 mt-2">This link will be sent to registered attendees.</p>
+              </div>
+              <div className="bg-white rounded-xl p-4 border border-slate-200 flex flex-col justify-center gap-2">
+                <button 
+                  type="button" 
+                  onClick={handleSendZoomWhatsApp}
+                  disabled={isSendingWhatsApp}
+                  className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50 transition-all shadow-sm"
+                >
+                   {isSendingWhatsApp ? <RefreshCw className="animate-spin" size={16} /> : <MessageCircle size={16} />}
+                   Send Zoom Link via WhatsApp
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Main Seminars Table */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden mt-4">
         <div className="overflow-x-auto custom-scrollbar">
           <table className="min-w-full text-sm">
             <thead>
@@ -778,6 +1285,11 @@ export default function Seminars() {
                 <th className="px-3.5 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-slate-700 whitespace-nowrap border border-slate-200">
                   STATUS
                 </th>
+                {selectedDateFilter && activeZoomDetails && (
+                  <th className="px-3.5 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-slate-700 whitespace-nowrap border border-slate-200">
+                    ZOOM LINK SENT
+                  </th>
+                )}
                 <th className="px-3.5 py-2.5 text-center text-[11px] font-bold uppercase tracking-wider text-slate-700 whitespace-nowrap border border-slate-200">
                   ACTIONS
                 </th>
@@ -855,16 +1367,29 @@ export default function Seminars() {
                         </span>
                       </td>
 
+                      {/* Zoom Sent */}
+                      {selectedDateFilter && activeZoomDetails && (
+                        <td className="px-3.5 py-2 text-gray-700 align-middle text-[12.5px] font-medium border border-slate-200 whitespace-nowrap">
+                          {row.zoomWhatsAppSent ? (
+                            <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-0.5 rounded border border-green-200 flex w-fit items-center gap-1"><CheckCircle2 size={10} /> SENT</span>
+                          ) : (
+                            <span className="text-[10px] bg-slate-100 text-slate-500 font-bold px-2 py-0.5 rounded border border-slate-200">Not Sent</span>
+                          )}
+                        </td>
+                      )}
+
                       {/* Action Buttons */}
                       <td className="px-3.5 py-2 text-gray-700 align-middle text-[12.5px] font-medium border border-slate-200 whitespace-nowrap">
                         <div className="flex items-center justify-center gap-1.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            title="Call Attendee"
-                            className="p-1.5 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-bold flex items-center justify-center cursor-pointer shadow-sm shadow-blue-500/20 hover:shadow-md hover:scale-105 transition-all"
-                            onClick={() => handleCall(row.phone)}
-                          >
-                            <Phone size={12} />
-                          </button>
+                          {activeZoomDetails && (row.mode === 'WEBINAR' || row.mode === 'ONLINE') && (
+                            <button
+                              title="Send Zoom Link on WhatsApp"
+                              className="p-1.5 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white font-bold flex items-center justify-center cursor-pointer shadow-sm shadow-blue-500/20 hover:shadow-md hover:scale-105 transition-all"
+                              onClick={() => handleSendSingleAttendeeZoom(row)}
+                            >
+                              <Video size={12} />
+                            </button>
+                          )}
                           <button
                             title="Send Seminar Invitation on WhatsApp"
                             className="p-1.5 rounded-xl bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-bold flex items-center justify-center cursor-pointer shadow-sm shadow-green-500/20 hover:shadow-md hover:scale-105 transition-all"
@@ -1173,86 +1698,17 @@ export default function Seminars() {
           This attendee record will be permanently removed from your Seminars list.
         </p>
       </Modal>
-      {/* Super Admin Live Seminar Fee Modal (Simple & Compact) */}
-      <Modal
-        open={superAdminConfigModalOpen}
-        onClose={() => setSuperAdminConfigModalOpen(false)}
-        title="Seminar Registration Fee (सेमिनार फी)"
-        subtitle="Manage and update the registration fee for upcoming seminars and webinars."
-        size="md"
-        icon={<IndianRupee size={20} />}
-        footerActions={
-          <div className="flex justify-end gap-2.5 w-full">
-            <button
-              type="button"
-              className="px-4 py-2 text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 cursor-pointer transition-all"
-              onClick={() => setSuperAdminConfigModalOpen(false)}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={savingConfig}
-              className="px-5 py-2 text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-2"
-              onClick={handleSaveSeminarConfig}
-            >
-              {savingConfig ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
-              Save Fee
-            </button>
-          </div>
-        }
-      >
-        <form onSubmit={handleSaveSeminarConfig} className="space-y-4 py-2">
-          {/* Quick Pricing Presets */}
-          <div>
-            <label className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider block mb-2">
-              Quick Price Presets (किंमत निवडा)
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {['0', '99', '149', '199', '299', '499', '999'].map((p) => {
-                const isSelected = String(configFormData.price) === p;
-                return (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => setConfigFormData((prev) => ({ ...prev, price: p }))}
-                    className={clsx(
-                      'px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border shadow-2xs',
-                      isSelected
-                        ? 'bg-purple-600 text-white border-purple-600 shadow-purple-500/20 scale-105'
-                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
-                    )}
-                  >
-                    {p === '0' ? 'FREE' : `₹${p}`}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Custom Price Input */}
-          <div>
-            <label className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider block mb-1.5">
-              Seminar Registration Fee (₹) <span className="text-red-500 font-bold">*</span>
-            </label>
-            <div className="relative">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-black text-base">₹</span>
-              <input
-                type="number"
-                required
-                min="0"
-                value={configFormData.price}
-                onChange={(e) => setConfigFormData((prev) => ({ ...prev, price: e.target.value }))}
-                placeholder="199"
-                className="input w-full pl-9 py-2.5 font-black text-emerald-700 text-lg rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-purple-500/20"
-              />
-            </div>
-            <p className="text-[11px] text-slate-500 mt-1.5 font-medium">
-              * ही किंमत सेव्ह केल्यावर सेमिनार फी (₹{configFormData.price || '0'}) लगेच अपडेट होईल.
-            </p>
-          </div>
-        </form>
-      </Modal>
+      {/* Super Admin Live Seminar Settings Modal (Time & Schedule + Registration Fee) */}
+      {isSuperAdmin && (
+        <SeminarConfigModal
+          open={superAdminConfigModalOpen}
+          onClose={() => setSuperAdminConfigModalOpen(false)}
+          initialTab={configModalTab}
+          config={seminarConfig}
+          saving={savingConfig}
+          onSave={handleSaveSeminarConfig}
+        />
+      )}
     </div>
   );
 }

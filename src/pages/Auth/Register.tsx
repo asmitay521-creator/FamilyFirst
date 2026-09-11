@@ -39,7 +39,7 @@ export default function Register() {
     <div className="min-h-screen bg-gradient-to-br from-primary-900 to-primary-700 flex items-center justify-center p-4">
       <div className="w-full max-w-lg">
         <div className="text-center mb-8">
-          <img src="/InsumitraLogo.png" alt="Insumitra" className="h-20 w-auto mx-auto mb-4 drop-shadow-lg" />
+          <img src="/InsumitraLogo.png" alt="Family First" className="h-20 w-auto mx-auto mb-4 drop-shadow-lg" />
           <p className="text-primary-200 mt-1">Register your agency</p>
         </div>
 

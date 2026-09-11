@@ -22,7 +22,12 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: (failureCount, error: any) => {
-        if (error?.code === 'ERR_NETWORK' || error?.message?.includes('ERR_NETWORK_CHANGED')) {
+        if (
+          error?.response?.status === 401 ||
+          error?.status === 401 ||
+          error?.code === 'ERR_NETWORK' ||
+          error?.message?.includes('ERR_NETWORK_CHANGED')
+        ) {
           return false;
         }
         return failureCount < 1;

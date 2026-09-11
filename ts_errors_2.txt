@@ -1,0 +1,51 @@
+﻿src/hooks/useContacts.ts(68,47): error TS2554: Expected 0 arguments, but got 1.
+src/hooks/useDashboard.ts(68,48): error TS2554: Expected 0 arguments, but got 1.
+src/pages/Claims/index.tsx(546,97): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(549,111): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(552,104): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(555,103): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(558,113): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(561,117): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(564,112): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(567,109): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(570,92): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(573,109): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(576,107): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(579,102): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(582,117): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(585,109): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(1993,157): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(1994,178): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(1995,162): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(1996,166): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(1997,176): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(1998,185): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(1999,176): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(2000,170): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(2001,148): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(2002,172): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(2003,169): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(2004,162): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(2005,184): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(2006,175): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Contacts/ContactDetail.tsx(92,50): error TS2554: Expected 1 arguments, but got 2.
+src/pages/Contacts/ContactDetailModal.tsx(81,57): error TS2554: Expected 1 arguments, but got 2.
+src/pages/Contacts/index.tsx(839,67): error TS2554: Expected 1 arguments, but got 2.
+src/pages/Contacts/index.tsx(1472,79): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Contacts/index.tsx(1484,20): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Contacts/index.tsx(1491,81): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Contacts/index.tsx(1499,20): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Contacts/index.tsx(1565,22): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Contacts/index.tsx(1573,22): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Employees/EmployeeDetail.tsx(195,16): error TS2339: Property 'data' does not exist on type '{}'.
+src/pages/Employees/EmployeeDetail.tsx(201,43): error TS2339: Property 'data' does not exist on type '{}'.
+src/pages/Employees/EmployeeDetail.tsx(204,35): error TS2339: Property 'data' does not exist on type '{}'.
+src/pages/Employees/EmployeeDetail.tsx(217,16): error TS2339: Property 'data' does not exist on type '{}'.
+src/pages/Employees/EmployeeDetail.tsx(220,35): error TS2339: Property 'data' does not exist on type '{}'.
+src/pages/Insurance/index.tsx(195,47): error TS2339: Property 'exportCsv' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 15 more ...; importCsv: (file: File) => any; }'.
+src/pages/Leads/index.tsx(1728,20): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Leads/index.tsx(5806,80): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.
+  Type 'null' is not assignable to type 'string'.
+src/pages/Policies/index.tsx(1208,18): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Policies/index.tsx(1243,18): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Subscription/index.tsx(211,26): error TS2339: Property 'message' does not exist on type '{}'.

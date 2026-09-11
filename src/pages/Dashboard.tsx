@@ -4,9 +4,10 @@ import {
   Users, Shield, FileText, TrendingUp, DollarSign, AlertCircle,
   RefreshCw, Plus, Calendar, ChevronRight, CheckCircle,
   Clock, UserPlus, Briefcase, PhoneCall, Star, Award, Settings,
-  BarChart2, Activity, Sparkles, Presentation
+  BarChart2, Activity, Sparkles, Presentation, IndianRupee, Pencil
 } from 'lucide-react';
 import { format, differenceInDays } from 'date-fns';
+import toast from 'react-hot-toast';
 import {
   useDashboardKpis, useDashboardRevenue, useDashboardPortfolio,
   useDashboardPipeline, useDashboardDbSummary
@@ -21,7 +22,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@store/auth.store';
 import { claimsService, employeesService } from '@api/index';
 import { db } from '../services/firebase';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
 import clsx from 'clsx';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -573,8 +574,18 @@ function ClaimsReportsTab() {
 export default function Dashboard() {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const user = useAuthStore((s) => s.user);
+  const isSuperAdmin = Boolean(
+    (user?.role === 'SUPER_ADMIN' ||
+      user?.role === 'SUPERADMIN' ||
+      user?.role === 'ADMIN' ||
+      user?.role === 'OWNER' ||
+      (user as any)?.isOwner ||
+      user?.email?.toLowerCase().includes('superadmin') ||
+      user?.email?.toLowerCase().includes('owner')) 
+  );
+
   const [revenueMonths, setRevenueMonths] = useState(12);
-  const [portfolioView, setPortfolioView] = useState<'product' | 'company'>('product');
   const [activeTab, setActiveTab] = useState<'overview' | 'claims-reports'>('overview');
   const [firestoreLeads, setFirestoreLeads] = useState<any[]>([]);
   const [firestoreSeminars, setFirestoreSeminars] = useState<any[]>([]);
@@ -592,6 +603,7 @@ export default function Dashboard() {
 
   // 2. Realtime Firestore Leads & Seminars Listener
   useEffect(() => {
+    if (!isSuperAdmin) return;
     let unsubLeads: (() => void) | null = null;
     try {
       unsubLeads = onSnapshot(collection(db, 'leads'), (snap) => {
@@ -600,7 +612,7 @@ export default function Dashboard() {
           list.push({ id: docSnap.id, ...docSnap.data() });
         });
         setFirestoreLeads(list);
-      });
+      }, () => {});
     } catch (e) {}
 
     let unsubSeminars: (() => void) | null = null;
@@ -611,14 +623,14 @@ export default function Dashboard() {
           list.push({ id: docSnap.id, ...docSnap.data() });
         });
         setFirestoreSeminars(list);
-      });
+      }, () => {});
     } catch (e) {}
 
     return () => {
       if (unsubLeads) unsubLeads();
       if (unsubSeminars) unsubSeminars();
     };
-  }, []);
+  }, [isSuperAdmin]);
 
   // Normalise Real Data
   const contacts = useMemo(() => contactsRes?.data ?? [], [contactsRes]);
@@ -672,26 +684,6 @@ export default function Dashboard() {
     return { head, dependent, total };
   }, [contacts]);
 
-  // Dynamic Premium by Insurance Plan Category
-  const premiumByPlanCategory = useMemo(() => {
-    const map = new Map<string, number>();
-    policies.forEach((p: any) => {
-      const cat = p.plan?.category || p.category || 'General';
-      const amount = Number(p.premiumAmount || p.grossPremium || p.netPremium || 0);
-      map.set(cat, (map.get(cat) ?? 0) + amount);
-    });
-
-    const entries = Array.from(map.entries()).map(([name, value]) => ({ name, value }));
-    if (entries.length === 0) {
-      return [
-        { name: 'Health', value: 0 },
-        { name: 'Life', value: 0 },
-        { name: 'Motor', value: 0 },
-        { name: 'Mutual Funds', value: 0 },
-      ];
-    }
-    return entries;
-  }, [policies]);
 
   // Dynamic Active Policies by Category
   const activePoliciesByCategory = useMemo(() => {
@@ -707,18 +699,6 @@ export default function Dashboard() {
     return entries;
   }, [policies]);
 
-  // Dynamic Portfolio by Product vs Company
-  const portfolioData = useMemo(() => {
-    const map = new Map<string, number>();
-    policies.forEach((p: any) => {
-      const key = portfolioView === 'product'
-        ? (p.plan?.category || p.category || 'General')
-        : (p.plan?.company?.name || p.companyName || 'Other');
-      map.set(key, (map.get(key) ?? 0) + 1);
-    });
-    const entries = Array.from(map.entries()).map(([name, value]) => ({ name, value }));
-    return entries.length > 0 ? entries : [{ name: 'No Data Yet', value: 0 }];
-  }, [policies, portfolioView]);
 
   // Dynamic Stage Counts for Leads Progress
   const leadStageCounts = useMemo(() => {
@@ -917,86 +897,35 @@ export default function Dashboard() {
           </div>
 
           {/* ── Real Charts Section ─────────────────────────────────────────── */}
-          <div className="grid lg:grid-cols-3 gap-6 mb-6">
-            <div className="lg:col-span-2">
-              <BarChartWidget
-                title="Premium by Insurance Plan Category"
-                data={premiumByPlanCategory}
-                xKey="name"
-                bars={[{ key: 'value', label: 'Premium (₹)', color: '#10b981' }]}
-                className="h-full flex flex-col justify-center"
-                height={350}
-              />
-            </div>
-            <div className="lg:col-span-1 flex flex-col gap-6">
-              <div className="flex-1">
-                <ContactsBreakdownCard data={contactsData} />
-              </div>
-              <div className="flex-1">
-                <PieChartWidget
-                  title="Active Policies by Category"
-                  data={activePoliciesByCategory}
-                  nameKey="name"
-                  valueKey="value"
-                />
-              </div>
-            </div>
+          <div className="grid lg:grid-cols-2 gap-6 mb-6">
+            <ContactsBreakdownCard data={contactsData} />
+            <PieChartWidget
+              title="Active Policies by Category"
+              data={activePoliciesByCategory}
+              nameKey="name"
+              valueKey="value"
+            />
           </div>
 
-          {/* ── Mid-section: Chart + Portfolio Donut ─────────────────────────── */}
-          <div className="grid lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 p-5 shadow-sm relative">
-              <div className="absolute right-5 top-5 z-10 flex flex-wrap items-center gap-2">
-                <select
-                  value={revenueMonths}
-                  onChange={e => setRevenueMonths(Number(e.target.value))}
-                  className="py-1 px-2.5 text-xs bg-gray-50 border border-gray-200 rounded-lg outline-none font-bold text-gray-600"
-                >
-                  <option value={3}>This Quarter</option>
-                  <option value={6}>Last 6 Months</option>
-                  <option value={12}>This Year</option>
-                </select>
-              </div>
-              <LineChartWidget
-                title="Premium Collection Trend (₹)"
-                data={revenueTrend}
-                xKey="month"
-                lines={[{ key: 'revenue', label: 'Premium (₹)', color: '#2563eb' }]}
-              />
+          {/* ── Mid-section: Premium Collection Trend Chart ─────────────────── */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm relative">
+            <div className="absolute right-5 top-5 z-10 flex flex-wrap items-center gap-2">
+              <select
+                value={revenueMonths}
+                onChange={e => setRevenueMonths(Number(e.target.value))}
+                className="py-1 px-2.5 text-xs bg-gray-50 border border-gray-200 rounded-lg outline-none font-bold text-gray-600"
+              >
+                <option value={3}>This Quarter</option>
+                <option value={6}>Last 6 Months</option>
+                <option value={12}>This Year</option>
+              </select>
             </div>
-
-            <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm relative">
-              <div className="absolute right-5 top-5 z-10 flex flex-wrap items-center gap-1.5">
-                <button
-                  onClick={() => setPortfolioView('product')}
-                  className={clsx(
-                    "px-2 py-0.5 text-[10px] font-bold rounded transition-all cursor-pointer",
-                    portfolioView === 'product'
-                      ? "bg-blue-50 text-blue-600 border border-blue-200"
-                      : "text-gray-400 bg-gray-50 hover:bg-gray-100 border border-transparent"
-                  )}
-                >
-                  Product
-                </button>
-                <button
-                  onClick={() => setPortfolioView('company')}
-                  className={clsx(
-                    "px-2 py-0.5 text-[10px] font-bold rounded transition-all cursor-pointer",
-                    portfolioView === 'company'
-                      ? "bg-blue-50 text-blue-600 border border-blue-200"
-                      : "text-gray-400 bg-gray-50 hover:bg-gray-100 border border-transparent"
-                  )}
-                >
-                  Company
-                </button>
-              </div>
-              <PieChartWidget
-                title={`Portfolio by ${portfolioView === 'product' ? 'Product Type' : 'Insurance Company'}`}
-                data={portfolioData}
-                nameKey="name"
-                valueKey="value"
-              />
-            </div>
+            <LineChartWidget
+              title="Premium Collection Trend (₹)"
+              data={revenueTrend}
+              xKey="month"
+              lines={[{ key: 'revenue', label: 'Premium (₹)', color: '#2563eb' }]}
+            />
           </div>
 
           {/* ── Mid-section 2: Leads Progress Indicator + Database Summary ────── */}

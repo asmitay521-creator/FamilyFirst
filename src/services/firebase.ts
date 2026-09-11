@@ -1,5 +1,7 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
+import { getFunctions, connectFunctionsEmulator } from "firebase/functions";
+import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: "AIzaSyA4vQYHuBy0ngNlb8wquJaoCgg0UfqEwLc",
@@ -11,10 +13,11 @@ const firebaseConfig = {
   measurementId: "G-7HT47DL4ZQ"
 };
 
-const app = getApps().some(a => a.name === "familyfirst-crm")
+const app = getApps().some((a) => a.name === "familyfirst-crm")
   ? getApp("familyfirst-crm")
   : initializeApp(firebaseConfig, "familyfirst-crm");
 
 export const db = getFirestore(app);
+export const auth = getAuth(app);
 
 export default app;

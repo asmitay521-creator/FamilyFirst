@@ -24,6 +24,11 @@ import { DatalistInput } from '@comps/common/DatalistInput';
 import { sortData } from '../../utils/sortUtils';
 import { db } from '../../services/firebase';
 import { collection, onSnapshot, doc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { replaceWhatsAppVariables, preloadWhatsAppTemplates, PRELOAD_TEMPLATES } from '../../utils/whatsappTemplates';
+
+const DEFAULT_WA_TEMPLATES = (PRELOAD_TEMPLATES || [])
+  .filter(t => t.category !== 'SEMINAR')
+  .map((t, idx) => ({ id: `default_${idx}`, ...t }));
 
 const EDUCATION_OPTIONS = [
   'Metric',
@@ -344,11 +349,10 @@ function MultiSelectBox({
             {selectedValues.map((val, idx) => (
               <span
                 key={idx}
-                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border ${
-                  badgeColor === 'orange'
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border ${badgeColor === 'orange'
                     ? 'bg-orange-50 text-orange-700 border-orange-200'
                     : 'bg-blue-50 text-blue-700 border-blue-200'
-                }`}
+                  }`}
               >
                 {val}
                 <span
@@ -411,9 +415,48 @@ function MultiSelectBox({
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function Leads() {
   const [searchParams] = useSearchParams();
-  const [viewMode, setViewMode] = useState<'board' | 'table'>('table');
+  const [viewMode, setViewMode] = useState<'board' | 'table'>(() =>
+    searchParams.get('view') === 'table' ? 'table' : 'board'
+  );
   const [showFilters, setShowFilters] = useState(false);
   const [createInitialStage, setCreateInitialStage] = useState<string>('TO_CONTACT');
+
+  // WhatsApp Templates from Firebase
+  const [waTemplates, setWaTemplates] = useState<any[]>(DEFAULT_WA_TEMPLATES);
+
+  useEffect(() => {
+    preloadWhatsAppTemplates();
+    let unsub = () => { };
+    try {
+      if (db) {
+        unsub = onSnapshot(collection(db, 'whatsappTemplates'), (snapshot) => {
+          const list: any[] = [];
+          const seen = new Set<string>();
+          snapshot.forEach(docSnap => {
+            const data = docSnap.data();
+            if (data.isActive !== false && data.category?.toUpperCase() !== 'SEMINAR') {
+              const nameLower = (data.name || data.title || '').trim().toLowerCase();
+              if (nameLower && !seen.has(nameLower)) {
+                seen.add(nameLower);
+                list.push({ id: docSnap.id, ...data });
+              }
+            }
+          });
+          if (list.length > 0) {
+            setWaTemplates(list);
+          } else {
+            setWaTemplates(DEFAULT_WA_TEMPLATES);
+          }
+        }, (err) => {
+          console.warn('[WhatsApp Templates Notice]:', err);
+          setWaTemplates(DEFAULT_WA_TEMPLATES);
+        });
+      }
+    } catch {
+      setWaTemplates(DEFAULT_WA_TEMPLATES);
+    }
+    return unsub;
+  }, []);
 
   // Filters & Status Badges
   const [selectedFilters, setSelectedFilters] = useState<string[]>([]);
@@ -458,6 +501,12 @@ export default function Leads() {
   const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
+    const viewParam = searchParams.get('view');
+    if (viewParam === 'table') {
+      setViewMode('table');
+    } else if (viewParam === 'board') {
+      setViewMode('board');
+    }
     if (searchParams.get('action') === 'add') {
       openCreate();
     }
@@ -483,7 +532,7 @@ export default function Leads() {
           setMaxRenewalWindow(res.data.maxWindow);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // Policy Modal States for PAYMENT_DONE -> PROCESS_COMPLETED transition
@@ -869,7 +918,7 @@ export default function Leads() {
     staleTime: 5 * 60_000,
   });
   const employeesList = useMemo(() => {
-    const raw = empRes?.data?.data || empRes?.data || [];
+    const raw = (empRes as any)?.data?.data || (empRes as any)?.data || empRes || [];
     return Array.isArray(raw) ? raw : [];
   }, [empRes]);
 
@@ -1046,7 +1095,7 @@ export default function Leads() {
           }
         }
       };
-    } catch (e) {}
+    } catch (e) { }
 
     // 3. Window PostMessage Listener
     const handleMessage = (event: MessageEvent) => {
@@ -1064,93 +1113,121 @@ export default function Leads() {
     // 4. Firestore Realtime Snapshot Listener
     let unsubscribeFirestore: (() => void) | null = null;
     try {
-      const leadsCol = collection(db, 'leads');
-      unsubscribeFirestore = onSnapshot(leadsCol, (snapshot) => {
-        const firestoreList: any[] = [];
-        snapshot.forEach(docSnap => {
-          const data = docSnap.data();
-          const fullName = (data.fullName || data.name || data.clientName || 'Website Lead').trim();
-          const parts = fullName.split(/\s+/);
-          const firstName = parts[0] || 'Web';
-          const lastName = parts.slice(1).join(' ') || 'User';
-          const service = data.serviceRequired || data.service || data.requirement || data.planName || 'Financial Planning';
-          const phone = data.phone || data.mobile || data.contactNumber || '';
-          const email = data.email || '';
-          const createdAtDate = data.createdAt?.toDate 
-            ? data.createdAt.toDate().toISOString() 
-            : (data.createdAtIso || (data.timestamp ? new Date(Number(data.timestamp)).toISOString() : new Date().toISOString()));
+      const isSuperAdmin = Boolean((user?.role === 'SUPER_ADMIN' || user?.role === 'SUPERADMIN' || user?.role === 'ADMIN' || user?.role === 'OWNER'));
+      if (isSuperAdmin) {
+        const leadsCol = collection(db, 'leads');
+        unsubscribeFirestore = onSnapshot(leadsCol, (snapshot) => {
+          const firestoreList: any[] = [];
+          snapshot.forEach(docSnap => {
+            const data = docSnap.data();
+            const fullName = (data.fullName || data.name || data.clientName || 'Website Lead').trim();
+            const parts = fullName.split(/\s+/);
+            const firstName = parts[0] || 'Web';
+            const lastName = parts.slice(1).join(' ') || 'User';
+            const service = data.serviceRequired || data.service || data.requirement || data.planName || 'Financial Planning';
+            const phone = data.phone || data.mobile || data.contactNumber || '';
+            const email = data.email || '';
+            const createdAtDate = data.createdAt?.toDate
+              ? data.createdAt.toDate().toISOString()
+              : (data.createdAtIso || (data.timestamp ? new Date(Number(data.timestamp)).toISOString() : new Date().toISOString()));
 
-          if (!isDeletedItem('fs_' + docSnap.id)) {
-            const sUpper = (service || '').toUpperCase();
-            const category = sUpper.includes('HEALTH') || sUpper.includes('MEDICLAIM')
-              ? 'HEALTH'
-              : (sUpper.includes('MUTUAL') || sUpper.includes('MF') || sUpper.includes('WEALTH') || sUpper.includes('SIP'))
-                ? 'MUTUAL FUNDS'
-                : sUpper.includes('MOTOR') || sUpper.includes('CAR')
-                  ? 'MOTOR'
-                  : 'LIFE';
+            if (!isDeletedItem('fs_' + docSnap.id)) {
+              const sUpper = (service || '').toUpperCase();
+              const category = sUpper.includes('HEALTH') || sUpper.includes('MEDICLAIM')
+                ? 'HEALTH'
+                : (sUpper.includes('MUTUAL') || sUpper.includes('MF') || sUpper.includes('WEALTH') || sUpper.includes('SIP'))
+                  ? 'MUTUAL FUNDS'
+                  : sUpper.includes('MOTOR') || sUpper.includes('CAR')
+                    ? 'MOTOR'
+                    : 'LIFE';
 
-            const descriptionDetails = data.notes || (
-              data.age || data.income
-                ? `Financial Checkup (Age: ${data.age || 'N/A'}, Income: ${data.income || 'N/A'}, Requirement: ${service})`
-                : `Website Consultation: ${service}`
-            );
+              const descriptionDetails = data.notes || (
+                data.age || data.income
+                  ? `Financial Checkup (Age: ${data.age || 'N/A'}, Income: ${data.income || 'N/A'}, Requirement: ${service})`
+                  : `Website Consultation: ${service}`
+              );
 
-            firestoreList.push({
-              id: 'fs_' + docSnap.id,
-              stage: data.stage === 'OPEN' || !data.stage ? 'TO_CONTACT' : data.stage,
-              uiStage: 'To Contact',
-              createdAt: createdAtDate,
-              followUpDate: data.followUpDate || new Date().toISOString().split('T')[0],
-              assignedEmployeeId: data.assignedEmployeeId || data.assignedTo || '',
-              assignedTo: data.assignedTo || data.assignedEmployeeId || '',
-              assignedToName: data.assignedToName || data.assignedEmployeeName || data.assignedEmployee?.name || '',
-              assignedEmployee: data.assignedEmployee || (data.assignedToName ? { name: data.assignedToName, id: data.assignedEmployeeId || data.assignedTo } : undefined),
-              premiumBudget: data.premiumBudget || data.expectedPremium || data.amount || undefined,
-              expectedPremium: data.expectedPremium || data.premiumBudget || data.amount || undefined,
-              notes: JSON.stringify({
-                leadStatus: data.status || 'INTERESTED',
-                leadSource: data.leadSource || data.source || 'Website Consultation',
-                leadType: data.leadType || 'FRESH',
+              firestoreList.push({
+                id: 'fs_' + docSnap.id,
+                stage: data.stage === 'OPEN' || !data.stage ? 'TO_CONTACT' : data.stage,
+                uiStage: 'To Contact',
+                createdAt: createdAtDate,
+                followUpDate: data.followUpDate || new Date().toISOString().split('T')[0],
                 assignedEmployeeId: data.assignedEmployeeId || data.assignedTo || '',
-                assignedEmployeeName: data.assignedToName || data.assignedEmployeeName || '',
-                descriptionDetails
-              }),
-              interests: [service],
-              contact: {
-                id: 'fs_contact_' + docSnap.id,
-                firstName,
-                lastName,
-                phone,
-                email,
-                tags: ['Website Consultation', service]
-              },
-              plan: {
-                name: service,
-                category
-              }
+                assignedTo: data.assignedTo || data.assignedEmployeeId || '',
+                assignedToName: data.assignedToName || data.assignedEmployeeName || data.assignedEmployee?.name || '',
+                assignedEmployee: data.assignedEmployee || (data.assignedToName ? { name: data.assignedToName, id: data.assignedEmployeeId || data.assignedTo } : undefined),
+                premiumBudget: data.premiumBudget || data.expectedPremium || data.amount || undefined,
+                expectedPremium: data.expectedPremium || data.premiumBudget || data.amount || undefined,
+                notes: JSON.stringify({
+                  leadStatus: data.status || 'INTERESTED',
+                  leadSource: data.leadSource || data.source || 'Website Consultation',
+                  leadType: data.leadType || 'FRESH',
+                  assignedEmployeeId: data.assignedEmployeeId || data.assignedTo || '',
+                  assignedEmployeeName: data.assignedToName || data.assignedEmployeeName || '',
+                  descriptionDetails
+                }),
+                interests: [service],
+                contact: {
+                  id: 'fs_contact_' + docSnap.id,
+                  firstName,
+                  lastName,
+                  phone,
+                  email,
+                  tags: ['Website Consultation', service]
+                },
+                plan: {
+                  name: service,
+                  category
+                }
+              });
+            }
+          });
+
+          if (firestoreList.length >= 0) {
+            setWebLeads(prev => {
+              return [...firestoreList, ...prev.filter(p => !p.id.startsWith('fs_'))];
             });
           }
+        }, () => {
         });
-
-        if (firestoreList.length >= 0) {
-          setWebLeads(prev => {
-            return [...firestoreList, ...prev.filter(p => !p.id.startsWith('fs_'))];
-          });
-        }
-      }, (err) => {
-        console.warn('Firestore leads listener notice:', err);
-      });
+      } // Closing if (isSuperAdmin)
     } catch (e) {
       console.warn('Firestore init error:', e);
     }
 
+    const handleStorageOrLeadUpdate = (event?: any) => {
+      const updatedDetail = event?.detail;
+      if (updatedDetail && updatedDetail.id) {
+        setWebLeads(prev => prev.map(l => {
+          const lId = String(l.id || '');
+          const tId = String(updatedDetail.id || '');
+          if (lId === tId || lId === ('fs_' + tId) || ('fs_' + lId) === tId) {
+            return { ...l, ...updatedDetail };
+          }
+          return l;
+        }));
+      } else {
+        const locals = loadLocalWebLeads();
+        setWebLeads(prev => {
+          const fsLeads = prev.filter(p => String(p.id).startsWith('fs_'));
+          const seenIds = new Set(locals.map((l: any) => String(l.id)));
+          const filteredFs = fsLeads.filter(p => !seenIds.has(String(p.id)));
+          return [...filteredFs, ...locals];
+        });
+      }
+    };
+    window.addEventListener('storage', handleStorageOrLeadUpdate);
+    window.addEventListener('lead_updated', handleStorageOrLeadUpdate);
+
     return () => {
       if (channel) channel.close();
       window.removeEventListener('message', handleMessage);
+      window.removeEventListener('storage', handleStorageOrLeadUpdate);
+      window.removeEventListener('lead_updated', handleStorageOrLeadUpdate);
       if (unsubscribeFirestore) unsubscribeFirestore();
     };
-  }, [qc]);
+  }, [qc, user]);
 
   // Flat leads
   const leadsFlat = useMemo(() => {
@@ -1204,42 +1281,76 @@ export default function Leads() {
   const filteredLeads = useMemo(() => {
     const sTerm = search.toLowerCase();
     return leadsFlat.filter(lead => {
-      // Employee role data isolation safeguard:
-      // An employee sees:
-      // 1. Leads assigned to them (or unassigned)
-      // 2. Leads assigned BY them (e.g. Vaishnavi assigned lead to Asmita)
-      // 3. Leads created BY them
-      if (user?.role === 'EMPLOYEE') {
-        const currentUserId = user.id;
-        const assignedEmpId = lead.assignedEmployeeId || lead.assignedEmployee?.id || lead.assignedEmployee?.userId;
-        const myEmp = employeesList.find((e: any) => e.userId === currentUserId || e.user?.id === currentUserId || e.id === currentUserId);
-        const validMyIds = [currentUserId];
-        if (myEmp?.id) validMyIds.push(myEmp.id);
-        if (myEmp?.userId) validMyIds.push(myEmp.userId);
-        if (myEmp?.user?.id) validMyIds.push(myEmp.user.id);
+      // Filter ONLY for EMPLOYEE role if not owner/admin: Show only leads assigned by, created by, or assigned to this employee
+      const userRole = String(user?.role || '').toUpperCase().trim();
+      const isOwnerOrAdmin = userRole === 'OWNER' || userRole === 'SUPERADMIN' || userRole === 'SUPER_ADMIN' || userRole === 'SUPER ADMIN' || userRole === 'ADMIN' || userRole === 'MANAGER' || !userRole;
+      const isEmployeeRole = userRole === 'EMPLOYEE' && !isOwnerOrAdmin;
 
+      if (isEmployeeRole) {
+        const currentUserId = String(user?.id || '').toLowerCase().trim();
+        const myEmp = employeesList.find((e: any) => {
+          const eUid = String(e.userId || e.user?.id || e.id || '').toLowerCase().trim();
+          return eUid && eUid === currentUserId;
+        });
+
+        const validMyIds = new Set(
+          [currentUserId, myEmp?.id, myEmp?.userId, myEmp?.user?.id]
+            .filter(Boolean)
+            .map(id => String(id).toLowerCase().trim())
+        );
+
+        const myFirst = String(user?.firstName || '').toLowerCase().trim();
+        const myLast = String(user?.lastName || '').toLowerCase().trim();
+        const myFullName = `${myFirst} ${myLast}`.trim();
         const myNames = [
-          (user as any)?.name,
-          user.firstName,
-          `${user.firstName || ''} ${user.lastName || ''}`.trim(),
-          myEmp?.name,
-          `${myEmp?.firstName || ''} ${myEmp?.lastName || ''}`.trim(),
-        ].filter(Boolean).map((n: string) => n.toLowerCase().trim());
+          myFullName,
+          myFirst,
+          (user as any)?.name ? String((user as any).name).toLowerCase().trim() : '',
+          myEmp?.name ? String(myEmp.name).toLowerCase().trim() : '',
+          myEmp?.firstName ? String(myEmp.firstName).toLowerCase().trim() : '',
+        ].filter(n => n && n.length >= 3);
 
         const extra: any = parseLeadNotes(lead.notes);
-        const assignedById = lead.assignedById || extra?.assignedById;
-        const assignedByName = (lead.assignedByName || extra?.assignedByName || '').toLowerCase().trim();
-        const createdById = lead.createdById || extra?.createdById;
-        const createdByName = (lead.createdByName || extra?.createdByName || '').toLowerCase().trim();
 
-        const isAssignedToMe = assignedEmpId ? validMyIds.includes(assignedEmpId) : false;
-        const isAssignedByMe = (assignedById && validMyIds.includes(assignedById)) || (assignedByName && myNames.some((mn: string) => assignedByName.includes(mn) || mn.includes(assignedByName)));
-        const isCreatedByMe = (createdById && validMyIds.includes(createdById)) || (createdByName && myNames.some((mn: string) => createdByName.includes(mn) || mn.includes(createdByName)));
+        // 1. Check Assignee
+        const assignedEmpId = String(lead.assignedEmployeeId || lead.assignedEmployee?.id || lead.assignedEmployee?.userId || extra?.assignedEmployeeId || '').toLowerCase().trim();
+        const assignedToName = String(lead.assignedToName || extra?.assignedToName || extra?.assignedEmployeeName || '').toLowerCase().trim();
 
-        if (!isAssignedToMe && !isAssignedByMe && !isCreatedByMe) {
+        const isAssignedToMe = (assignedEmpId && validMyIds.has(assignedEmpId)) ||
+          (assignedToName && myNames.some(mn => mn.length >= 3 && (assignedToName.includes(mn) || mn.includes(assignedToName))));
+
+        // 2. Check Assigner
+        const assignedById = String(lead.assignedById || extra?.assignedById || '').toLowerCase().trim();
+        const assignedByName = String(lead.assignedByName || extra?.assignedByName || '').toLowerCase().trim();
+
+        const isAssignedByMe = (assignedById && validMyIds.has(assignedById)) ||
+          (assignedByName && myNames.some(mn => mn.length >= 3 && (assignedByName.includes(mn) || mn.includes(assignedByName))));
+
+        // 3. Check Creator
+        const createdById = String(lead.createdById || extra?.createdById || '').toLowerCase().trim();
+        const createdByName = String(lead.createdByName || extra?.createdByName || '').toLowerCase().trim();
+
+        const isCreatedByMe = (createdById && validMyIds.has(createdById)) ||
+          (createdByName && myNames.some(mn => mn.length >= 3 && (createdByName.includes(mn) || mn.includes(createdByName))));
+
+        // 4. Check Client / Contact Name (e.g. Lead for Vaishnavi Bhosale assigned to Asmita Yadav)
+        const contactFirst = String(lead.contact?.firstName || '').toLowerCase().trim();
+        const contactLast = String(lead.contact?.lastName || '').toLowerCase().trim();
+        const contactFullName = `${contactFirst} ${contactLast}`.trim();
+        const rawLeadName = String(lead.fullName || lead.name || lead.clientName || '').toLowerCase().trim();
+
+        const isClientNameMe = myNames.some(mn =>
+          mn.length >= 3 && (
+            (contactFullName && (contactFullName.includes(mn) || mn.includes(contactFullName))) ||
+            (rawLeadName && (rawLeadName.includes(mn) || mn.includes(rawLeadName)))
+          )
+        );
+
+        if (!isAssignedByMe && !isCreatedByMe && !isAssignedToMe && !isClientNameMe) {
           return false;
         }
       }
+
       const fullName = `${lead.contact?.firstName || ''} ${lead.contact?.lastName || ''}`.toLowerCase();
       if (search && !fullName.includes(sTerm) && !(lead.contact?.phone || '').includes(sTerm)) return false;
 
@@ -1280,7 +1391,7 @@ export default function Leads() {
 
       if (filterEmployee && lead.assignedEmployeeId !== filterEmployee) return false;
       if (filterStages.length > 0 && !filterStages.includes(lead.stage ?? '')) return false;
-      
+
       if (filterStatuses.length > 0) {
         if (!filterStatuses.includes(status)) return false;
       }
@@ -1312,7 +1423,7 @@ export default function Leads() {
       if (key === 'premiumBudget') return row.premiumBudget ?? 0;
       if (key === 'followUpDate') return row.followUpDate ? new Date(row.followUpDate).getTime() : 0;
       if (key === 'stage') return row.stage ?? '';
-      
+
       const parts = key.split('.');
       let val = row;
       for (const part of parts) {
@@ -1333,6 +1444,33 @@ export default function Leads() {
   const expectedBusiness = (uiStage: string) =>
     (filteredBoard[uiStage] ?? []).reduce((sum, c) => sum + (c.premiumBudget ?? 0), 0);
 
+  const [waModalOpen, setWaModalOpen] = useState(false);
+  const [waTargetPhone, setWaTargetPhone] = useState('');
+  const [waTargetLead, setWaTargetLead] = useState<any>(null);
+  const [waMessage, setWaMessage] = useState('');
+
+  const handleWhatsApp = (lead: any, phone?: string) => {
+    const rawPhone = phone || lead?.contact?.phone || lead?.phone || lead?.mobile || lead?.whatsappNumber || lead?.callingNumber || '';
+    if (!rawPhone) {
+      toast.error('No phone number found for this lead');
+      return;
+    }
+    setWaTargetLead(lead);
+    setWaTargetPhone(rawPhone.replace(/\D/g, ''));
+    setWaMessage('');
+    setWaModalOpen(true);
+  };
+
+  const handleWhatsAppSelectTemplate = (msg: string) => {
+    const customized = replaceWhatsAppVariables(msg, {
+      name: waTargetLead?.contact?.firstName || waTargetLead?.firstName || waTargetLead?.name,
+      consultantName: user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : 'Consultant',
+    });
+    if (!waTargetPhone || !customized.trim()) return;
+    window.open(`https://wa.me/91${waTargetPhone}?text=${encodeURIComponent(customized)}`, '_blank');
+    setWaModalOpen(false);
+  };
+
   // Click-outside
   useEffect(() => {
     function handleOutside(e: MouseEvent) {
@@ -1346,10 +1484,6 @@ export default function Leads() {
     return () => document.removeEventListener('mousedown', handleOutside);
   }, []);
 
-  const handleWhatsApp = (phone?: string) => {
-    if (!phone) return;
-    window.open(`https://wa.me/91${phone.replace(/\D/g, '')}`, '_blank');
-  };
   const handleCall = (phone?: string) => {
     if (!phone) return;
     window.location.href = `tel:${phone}`;
@@ -1507,14 +1641,25 @@ export default function Leads() {
         }
 
         // C. Update Backend Contact if exists
-        if (contactId && /^[0-9a-fA-F]{24}$/.test(contactId)) {
+        if (contactId) {
           try {
             await contactsService.update(contactId, {
               firstName,
               lastName,
+              middleName: personalFields.middleName || undefined,
               phone: targetPhone,
               email: personalFields.email || undefined,
               dateOfBirth: personalFields.dateOfBirth ? new Date(personalFields.dateOfBirth).toISOString() : undefined,
+              bankName: personalFields.bankName || '',
+              bankAccountNumber: personalFields.bankAccountNumber || '',
+              bankIfsc: personalFields.bankIfsc || '',
+              bankBranch: personalFields.bankBranch || '',
+              bankDetails: {
+                bankName: personalFields.bankName || '',
+                accountNumber: personalFields.bankAccountNumber || '',
+                ifscCode: personalFields.bankIfsc || '',
+                branchName: personalFields.bankBranch || '',
+              },
             } as any);
           } catch (cErr) {
             console.warn('[Backend Contact Update Notice]:', cErr);
@@ -1541,7 +1686,7 @@ export default function Leads() {
             return l;
           });
           localStorage.setItem('insumitra_local_leads', JSON.stringify(updatedLocal));
-        } catch (e) {}
+        } catch (e) { }
 
         // E. Update webLeads in memory
         setWebLeads(prev => prev.map(l => {
@@ -1575,6 +1720,13 @@ export default function Leads() {
       }
 
       // 2. New Lead Creation
+      const currentUser = useAuthStore.getState().user;
+      const curEmp = employeesList.find((e: any) => e.userId === currentUser?.id || e.id === currentUser?.id || e.user?.id === currentUser?.id);
+      const curEmpId = curEmp?.userId || curEmp?.id || currentUser?.id;
+      const curEmpName = currentUser?.firstName ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim() : (currentUser?.email || '');
+      const validEmpId = (id?: string) => (id && /^[0-9a-fA-F]{24}$/.test(id.trim())) ? id.trim() : undefined;
+      const chosenEmpId = validEmpId(leadInfoFields?.assignedEmployeeId) || validEmpId(productInterests[0]?.assignedEmployeeId) || (currentUser?.role === 'EMPLOYEE' ? curEmpId : undefined);
+
       const contactPayload: any = {
         firstName,
         middleName: personalFields.middleName || undefined,
@@ -1593,6 +1745,19 @@ export default function Leads() {
         annualIncome: personalFields.annualIncome ? Number(personalFields.annualIncome) : undefined,
         tags: mergedTags,
         notes: personalFields.streetAddress || undefined,
+        bankName: personalFields.bankName || '',
+        bankAccountNumber: personalFields.bankAccountNumber || '',
+        bankIfsc: personalFields.bankIfsc || '',
+        bankBranch: personalFields.bankBranch || '',
+        bankDetails: {
+          bankName: personalFields.bankName || '',
+          accountNumber: personalFields.bankAccountNumber || '',
+          ifscCode: personalFields.bankIfsc || '',
+          branchName: personalFields.bankBranch || '',
+        },
+        assignedEmployeeId: chosenEmpId || undefined,
+        createdById: currentUser?.id,
+        createdByName: curEmpName,
       };
 
       const contactRes = await contactsService.create(contactPayload);
@@ -1610,10 +1775,9 @@ export default function Leads() {
             pincode: personalFields.pincode || 'N/A',
             country: 'India',
             isPrimary: true,
-          }).catch(err => console.error('Failed to add address:', err));
+          }).catch((err: any) => console.error('Failed to add address:', err));
         }
 
-        const validEmpId = (id?: string) => (id && /^[0-9a-fA-F]{24}$/.test(id.trim())) ? id.trim() : undefined;
         const firstCard = productInterests[0] || {};
         const product = firstCard.interestedIn?.[0] || 'Health';
         const interests = [product === 'Other' && firstCard.otherProduct ? firstCard.otherProduct : product];
@@ -1624,7 +1788,7 @@ export default function Leads() {
           interests,
           stage,
           source: firstCard.leadSource || 'Social Media',
-          assignedEmployeeId: validEmpId(firstCard.assignedEmployeeId),
+          assignedEmployeeId: validEmpId(firstCard.assignedEmployeeId) || chosenEmpId,
           followUpDate: String(firstCard.followUpDate ?? '').trim() ? new Date(firstCard.followUpDate).toISOString() : undefined,
           premiumBudget: Number(firstCard.expectedPremium) || undefined,
           notes: serializeLeadNotes(firstCard),
@@ -1667,6 +1831,10 @@ export default function Leads() {
       city: '',
       pincode: '',
       streetAddress: '',
+      bankName: '',
+      bankAccountNumber: '',
+      bankIfsc: '',
+      bankBranch: '',
       declaredMedicalHistory: [],
       notDeclaredMedicalHistory: [],
       medicalHistoryDetails: ''
@@ -1727,6 +1895,10 @@ export default function Leads() {
       city: card.contact?.city || card.city || '',
       pincode: card.contact?.pincode || card.pincode || '',
       streetAddress: card.contact?.streetAddress || card.address || '',
+      bankName: card.contact?.bankName || card.bankName || card.contact?.bankDetails?.bankName || '',
+      bankAccountNumber: card.contact?.bankAccountNumber || card.bankAccountNumber || card.contact?.bankDetails?.accountNumber || card.contact?.bankDetails?.bankAccountNumber || '',
+      bankIfsc: card.contact?.bankIfsc || card.bankIfsc || card.contact?.bankDetails?.ifscCode || card.contact?.bankDetails?.bankIfsc || '',
+      bankBranch: card.contact?.bankBranch || card.bankBranch || card.contact?.bankDetails?.branchName || card.contact?.bankDetails?.bankBranch || '',
       declaredMedicalHistory: card.contact?.declaredMedicalHistory || [],
       notDeclaredMedicalHistory: card.contact?.notDeclaredMedicalHistory || [],
       medicalHistoryDetails: card.contact?.medicalHistoryDetails || ''
@@ -1763,8 +1935,8 @@ export default function Leads() {
       }
     ]);
 
-    // 2. If contactId exists and is valid backend UUID, attempt to enrich with full profile
-    if (contactId && /^[0-9a-fA-F]{24}$/.test(contactId)) {
+    // 2. If contactId exists, attempt to enrich with full profile
+    if (contactId) {
       try {
         const res = await contactsService.get(contactId);
         const contact = res?.data ?? res;
@@ -1795,6 +1967,10 @@ export default function Leads() {
             city: primaryAddr?.city || initialPersonal.city,
             pincode: primaryAddr?.pincode || initialPersonal.pincode,
             streetAddress: primaryAddr?.line1 || contact.notes || initialPersonal.streetAddress,
+            bankName: contact.bankName || contact.bankDetails?.bankName || initialPersonal.bankName,
+            bankAccountNumber: contact.bankAccountNumber || contact.accountNumber || contact.bankDetails?.accountNumber || contact.bankDetails?.bankAccountNumber || initialPersonal.bankAccountNumber,
+            bankIfsc: contact.bankIfsc || contact.ifscCode || contact.bankDetails?.ifscCode || contact.bankDetails?.bankIfsc || initialPersonal.bankIfsc,
+            bankBranch: contact.bankBranch || contact.branchName || contact.bankDetails?.branchName || contact.bankDetails?.bankBranch || initialPersonal.bankBranch,
             declaredMedicalHistory: contact.declaredMedicalHistory || [],
             notDeclaredMedicalHistory: contact.notDeclaredMedicalHistory || [],
             medicalHistoryDetails: contact.medicalHistoryDetails || ''
@@ -1982,7 +2158,7 @@ export default function Leads() {
         setDuplicateContactMatched(contact);
         toast.success("Existing Contact Found – Details Loaded.");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
     }
   };
@@ -2137,7 +2313,7 @@ export default function Leads() {
         const updatedKeys = Array.from(new Set([...stored, ...newKeysToAdd]));
         localStorage.setItem('insumitra_deleted_lead_keys', JSON.stringify(updatedKeys));
         setDeletedKeys(updatedKeys);
-      } catch (e) {}
+      } catch (e) { }
 
       // 2. If it is a Firestore lead (id starts with 'fs_' or raw Firestore ID)
       const firestoreDocId = targetId.startsWith('fs_') ? targetId.replace('fs_', '') : targetId;
@@ -2196,10 +2372,10 @@ export default function Leads() {
               if ((targetName && iName === targetName) || (targetPhone && iPhone === targetPhone)) {
                 localStorage.removeItem(k);
               }
-            } catch (e) {}
+            } catch (e) { }
           }
         });
-      } catch (lsErr) {}
+      } catch (lsErr) { }
 
       // 5. Update webLeads state immediately
       setWebLeads(prev => prev.filter(l => {
@@ -2231,6 +2407,20 @@ export default function Leads() {
     setDetailOpen(true);
   };
 
+  const handleLeadDetailUpdated = (updatedLead: any) => {
+    if (!updatedLead) return;
+    setDetailTarget((prev: any) => prev ? { ...prev, ...updatedLead } : updatedLead);
+    setWebLeads((prev: any[]) => prev.map(l => {
+      const lId = String(l.id || '');
+      const tId = String(updatedLead.id || '');
+      if (lId === tId || lId === ('fs_' + tId) || ('fs_' + lId) === tId) {
+        return { ...l, ...updatedLead };
+      }
+      return l;
+    }));
+    qc.invalidateQueries({ queryKey: ['leads'] });
+  };
+
   const handleSort = (key: string) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setSortKey(key); setSortDir('asc'); }
@@ -2244,9 +2434,26 @@ export default function Leads() {
 
   return (
     <div className="space-y-4 font-sans text-slate-800">
+      <Modal open={waModalOpen} onClose={() => setWaModalOpen(false)} title="Select WhatsApp Template" size="lg">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 h-[480px] min-h-[480px] overflow-y-auto p-1 custom-scrollbar">
+          {waTemplates.length === 0 ? (
+            <div className="col-span-full h-full flex items-center justify-center text-slate-500 text-sm">
+              No active LEAD templates found. Add them in Management.
+            </div>
+          ) : (
+            waTemplates.map(t => (
+              <div key={t.id} onClick={() => handleWhatsAppSelectTemplate(t.message)} className="bg-slate-50 border border-slate-200 hover:border-green-400 hover:shadow-md transition-all rounded-xl p-3.5 cursor-pointer group flex flex-col gap-1.5 h-[140px] shrink-0 justify-between">
+                <h4 className="text-sm font-bold text-slate-800 group-hover:text-green-700 truncate">{t.name || t.title}</h4>
+                {t.message && <p className="text-xs text-slate-500 line-clamp-4 leading-relaxed whitespace-pre-wrap">{t.message}</p>}
+              </div>
+            ))
+          )}
+        </div>
+      </Modal>
+
       {/* Floating Right Action Panel */}
       <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImport} />
-      <div className="fixed right-2 sm:right-3.5 top-60 sm:top-64 z-40 flex flex-col gap-2 bg-white/95 backdrop-blur-xl p-1.5 rounded-xl shadow-xl border border-slate-200/80 animate-fadeIn">
+      <div className="fixed right-3 sm:right-4 top-1/2 -translate-y-1/2 z-40 flex flex-col gap-2 bg-white/95 backdrop-blur-xl p-1.5 rounded-xl shadow-xl border border-slate-200/80 animate-fadeIn">
         {/* Import CSV */}
         <button
           type="button"
@@ -3587,408 +3794,408 @@ export default function Leads() {
                 <fieldset disabled={!!editContactId} className="flex-1 overflow-y-auto pr-0.5 min-h-0">
                   <div className="space-y-3">
                     {(familyMembers.length === 0 ? [createEmptyFamilyMember()] : familyMembers).map((member, idx) => (
-                        <div key={idx} className="border border-gray-200 rounded-xl bg-white shadow-sm">
-                          {/* Card header */}
-                          <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100">
-                            <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Member #{idx + 1}</span>
-                            {!editContactId && (
-                              <button
-                                type="button"
-                                onClick={() => setFamilyMembers(prev => prev.filter((_, i) => i !== idx))}
-                                className="w-5 h-5 flex items-center justify-center rounded-full bg-red-50 hover:bg-red-100 text-red-400 hover:text-red-600 transition-colors cursor-pointer text-xs font-bold"
-                              >
-                                ✕
-                              </button>
+                      <div key={idx} className="border border-gray-200 rounded-xl bg-white shadow-sm">
+                        {/* Card header */}
+                        <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100">
+                          <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Member #{idx + 1}</span>
+                          {!editContactId && (
+                            <button
+                              type="button"
+                              onClick={() => setFamilyMembers(prev => prev.filter((_, i) => i !== idx))}
+                              className="w-5 h-5 flex items-center justify-center rounded-full bg-red-50 hover:bg-red-100 text-red-400 hover:text-red-600 transition-colors cursor-pointer text-xs font-bold"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Row 1: First Name | Middle Name | Last Name */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 px-4 pt-3">
+                          <div>
+                            <label className="label text-[10px] font-bold text-gray-500 uppercase tracking-wider">First Name <span className="text-red-500">*</span></label>
+                            <input
+                              type="text"
+                              className="input w-full mt-1"
+                              placeholder="First name"
+                              value={member.firstName || ''}
+                              onChange={e => setFamilyMembers(prev => prev.map((m, i) => i === idx ? { ...m, firstName: e.target.value } : m))}
+                            />
+                          </div>
+                          <div>
+                            <label className="label text-[10px] font-bold text-gray-500 uppercase tracking-wider">Middle Name</label>
+                            <input
+                              type="text"
+                              className="input w-full mt-1"
+                              placeholder="Middle name"
+                              value={member.middleName || ''}
+                              onChange={e => setFamilyMembers(prev => prev.map((m, i) => i === idx ? { ...m, middleName: e.target.value } : m))}
+                            />
+                          </div>
+                          <div>
+                            <label className="label text-[10px] font-bold text-gray-500 uppercase tracking-wider">Last Name <span className="text-red-500">*</span></label>
+                            <input
+                              type="text"
+                              className="input w-full mt-1"
+                              placeholder="Last name"
+                              value={member.lastName || ''}
+                              onChange={e => setFamilyMembers(prev => prev.map((m, i) => i === idx ? { ...m, lastName: e.target.value } : m))}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Row 2: DOB | Relation */}
+                        {/* Row 2: DOB | Relation | Occupation */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 px-4 pt-3">
+                          <div>
+                            <label className="label text-[10px] font-bold text-gray-500 uppercase tracking-wider">DOB</label>
+                            <DatePicker
+                              className="input w-full mt-1"
+                              value={member.dob}
+                              onChange={val => setFamilyMembers(prev => prev.map((m, i) => i === idx ? { ...m, dob: val } : m))}
+                            />
+                          </div>
+                          <div>
+                            <label className="label text-[10px] font-bold text-gray-500 uppercase tracking-wider">Relation</label>
+                            <select
+                              className="input w-full mt-1"
+                              value={['SPOUSE', 'SON', 'DAUGHTER', 'FATHER', 'MOTHER', 'Spouse', 'Son', 'Daughter', 'Father', 'Mother', 'Brother', 'Sister', 'Child', ''].includes(member.relation) ? member.relation : 'OTHER'}
+                              onChange={e => setFamilyMembers(prev => prev.map((m, i) => i === idx ? { ...m, relation: e.target.value } : m))}
+                            >
+                              <option value="">Select</option>
+                              <option value="SPOUSE">Spouse</option>
+                              <option value="SON">Son</option>
+                              <option value="DAUGHTER">Daughter</option>
+                              <option value="FATHER">Father</option>
+                              <option value="MOTHER">Mother</option>
+                              <option value="OTHER">Other</option>
+                            </select>
+                            {(member.relation === 'OTHER' || member.relation === 'Other' || (member.relation && !['SPOUSE', 'SON', 'DAUGHTER', 'FATHER', 'MOTHER', 'Spouse', 'Son', 'Daughter', 'Father', 'Mother', 'Brother', 'Sister', 'Child', ''].includes(member.relation))) && (
+                              <div className="mt-1.5 animate-fadeIn">
+                                <input
+                                  type="text"
+                                  className="input w-full text-xs"
+                                  placeholder="Specify Relation..."
+                                  value={['OTHER', 'Other'].includes(member.relation) ? '' : member.relation}
+                                  onChange={e => setFamilyMembers(prev => prev.map((m, i) => i === idx ? { ...m, relation: e.target.value || 'OTHER' } : m))}
+                                />
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <label className="label text-[10px] font-bold text-gray-500 uppercase tracking-wider">Occupation</label>
+                            <select
+                              className="input w-full mt-1"
+                              value={['SALARIED', 'SELF_EMPLOYED', 'BUSINESS', 'STUDENT', 'HOMEMAKER', 'RETIRED', 'Salaried', 'Self Employed', 'Business', 'Student', 'Homemaker', 'Retired', ''].includes(member.occupation) ? member.occupation : 'OTHER'}
+                              onChange={e => setFamilyMembers(prev => prev.map((m, i) => i === idx ? { ...m, occupation: e.target.value } : m))}
+                            >
+                              <option value="">Select Type</option>
+                              <option value="SALARIED">Salaried</option>
+                              <option value="SELF_EMPLOYED">Self Employed</option>
+                              <option value="BUSINESS">Business</option>
+                              <option value="STUDENT">Student</option>
+                              <option value="HOMEMAKER">Homemaker</option>
+                              <option value="RETIRED">Retired</option>
+                              <option value="OTHER">Other</option>
+                            </select>
+                            {(member.occupation === 'OTHER' || member.occupation === 'Other' || (member.occupation && !['SALARIED', 'SELF_EMPLOYED', 'BUSINESS', 'STUDENT', 'HOMEMAKER', 'RETIRED', 'Salaried', 'Self Employed', 'Business', 'Student', 'Homemaker', 'Retired', ''].includes(member.occupation))) && (
+                              <div className="mt-1.5 animate-fadeIn">
+                                <input
+                                  type="text"
+                                  className="input w-full text-xs"
+                                  placeholder="Specify Occupation..."
+                                  value={['OTHER', 'Other'].includes(member.occupation) ? '' : member.occupation}
+                                  onChange={e => setFamilyMembers(prev => prev.map((m, i) => i === idx ? { ...m, occupation: e.target.value || 'OTHER' } : m))}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Row 3: Whatsapp | Calling Number | Education */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 px-4 pt-3">
+                          <div>
+                            <label className="label text-[10px] font-bold text-gray-500 uppercase tracking-wider">Whatsapp</label>
+                            <div className="flex border border-slate-200 rounded-xl overflow-hidden bg-white focus-within:ring-2 focus-within:ring-blue-500/10 focus-within:border-blue-500 transition-all mt-1">
+                              <span className="bg-slate-50 px-2.5 py-1.5 text-xs border-r border-slate-200 text-slate-500 font-bold">+91</span>
+                              <input
+                                type="tel"
+                                className="px-3 py-1.5 text-xs w-full outline-none bg-transparent"
+                                placeholder="Number"
+                                maxLength={10}
+                                value={member.whatsapp}
+                                onChange={e => setFamilyMembers(prev => prev.map((m, i) => i === idx ? { ...m, whatsapp: e.target.value.replace(/\D/g, '') } : m))}
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="label text-[10px] font-bold text-gray-500 uppercase tracking-wider">Calling Number</label>
+                            <div className="mt-1">
+                              <CountryPhoneInput
+                                value={member.callingNumber || ''}
+                                onChange={(value: string) => setFamilyMembers(prev => prev.map((m, i) => i === idx ? { ...m, callingNumber: value } : m))}
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="label text-[10px] font-bold text-gray-500 uppercase tracking-wider">Education</label>
+                            <select
+                              className="input w-full mt-1"
+                              value={['HighSchool', 'Graduate', 'PostGraduate', 'Professional', 'Below 10th', '10th Pass', '12th Pass', ''].includes(member.education) ? member.education : 'OTHER'}
+                              onChange={e => setFamilyMembers(prev => prev.map((m, i) => i === idx ? { ...m, education: e.target.value } : m))}
+                            >
+                              <option value="">Select Type</option>
+                              <option value="HighSchool">High School</option>
+                              <option value="Graduate">Graduate</option>
+                              <option value="PostGraduate">Post Graduate</option>
+                              <option value="Professional">Professional</option>
+                              <option value="OTHER">Other</option>
+                            </select>
+                            {(member.education === 'OTHER' || member.education === 'Other' || (member.education && !['HighSchool', 'Graduate', 'PostGraduate', 'Professional', 'Below 10th', '10th Pass', '12th Pass', ''].includes(member.education))) && (
+                              <div className="mt-1.5 animate-fadeIn">
+                                <input
+                                  type="text"
+                                  className="input w-full text-xs"
+                                  placeholder="Specify Education..."
+                                  value={['OTHER', 'Other'].includes(member.education) ? '' : member.education}
+                                  onChange={e => setFamilyMembers(prev => prev.map((m, i) => i === idx ? { ...m, education: e.target.value || 'OTHER' } : m))}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Row 4: Medical History */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 px-4 pt-3 pb-3">
+                          {/* Generic Medical History */}
+                          <div className="col-span-3">
+                            <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Medical History (Select if applicable)</label>
+                            <div className="flex flex-wrap gap-x-6 gap-y-2">
+                              {['BP', 'Sugar', 'Heart', 'Thyroid', 'Others'].map((condition) => {
+                                const isOthers = condition === 'Others';
+                                const current = member.medicalHistory || [];
+                                const isSelected = isOthers
+                                  ? current.some((c: string) => !['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c))
+                                  : current.includes(condition);
+                                return (
+                                  <label key={condition} className="flex flex-wrap items-center gap-1.5 cursor-pointer select-none">
+                                    <input
+                                      type="checkbox"
+                                      className="accent-blue-600 w-3.5 h-3.5"
+                                      checked={isSelected}
+                                      onChange={() => {
+                                        setFamilyMembers(prev => prev.map((m, i) => {
+                                          if (i !== idx) return m;
+                                          const list: string[] = m.medicalHistory || [];
+                                          if (isOthers) {
+                                            if (isSelected) {
+                                              return {
+                                                ...m,
+                                                medicalHistory: list.filter((c: string) => ['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c))
+                                              };
+                                            } else {
+                                              return {
+                                                ...m,
+                                                medicalHistory: [...list, '']
+                                              };
+                                            }
+                                          } else {
+                                            return {
+                                              ...m,
+                                              medicalHistory: isSelected
+                                                ? list.filter((c: string) => c !== condition)
+                                                : [...list, condition]
+                                            };
+                                          }
+                                        }));
+                                      }}
+                                    />
+                                    <span className="text-xs text-slate-600 font-medium">{condition}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                            {(member.medicalHistory || []).some((c: string) => !['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c)) && (
+                              <div className="mt-2 animate-fadeIn">
+                                <input
+                                  type="text"
+                                  className="input w-full text-xs py-1 px-2.5"
+                                  placeholder="Type medical conditions..."
+                                  value={(member.medicalHistory || []).find((c: string) => !['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c)) || ''}
+                                  onChange={e => {
+                                    const val = e.target.value;
+                                    setFamilyMembers(prev => prev.map((m, i) => {
+                                      if (i !== idx) return m;
+                                      const current: string[] = m.medicalHistory || [];
+                                      const baseVal = current.filter((c: string) => ['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c));
+                                      return {
+                                        ...m,
+                                        medicalHistory: [...baseVal, val]
+                                      };
+                                    }));
+                                  }}
+                                />
+                              </div>
                             )}
                           </div>
 
-                          {/* Row 1: First Name | Middle Name | Last Name */}
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 px-4 pt-3">
-                            <div>
-                              <label className="label text-[10px] font-bold text-gray-500 uppercase tracking-wider">First Name <span className="text-red-500">*</span></label>
-                              <input
-                                type="text"
-                                className="input w-full mt-1"
-                                placeholder="First name"
-                                value={member.firstName || ''}
-                                onChange={e => setFamilyMembers(prev => prev.map((m, i) => i === idx ? { ...m, firstName: e.target.value } : m))}
-                              />
+                          {/* Declared Medical History */}
+                          <div className="col-span-3">
+                            <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Declared Medical History</label>
+                            <div className="flex flex-wrap gap-x-6 gap-y-2">
+                              {['BP', 'Sugar', 'Heart', 'Thyroid', 'Others'].map((condition) => {
+                                const isOthers = condition === 'Others';
+                                const current = member.declaredMedicalHistory || [];
+                                const isSelected = isOthers
+                                  ? current.some((c: string) => !['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c))
+                                  : current.includes(condition);
+                                return (
+                                  <label key={condition} className="flex flex-wrap items-center gap-1.5 cursor-pointer select-none">
+                                    <input
+                                      type="checkbox"
+                                      className="accent-blue-600 w-3.5 h-3.5"
+                                      checked={isSelected}
+                                      onChange={() => {
+                                        setFamilyMembers(prev => prev.map((m, i) => {
+                                          if (i !== idx) return m;
+                                          const list: string[] = m.declaredMedicalHistory || [];
+                                          if (isOthers) {
+                                            if (isSelected) {
+                                              return {
+                                                ...m,
+                                                declaredMedicalHistory: list.filter((c: string) => ['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c))
+                                              };
+                                            } else {
+                                              return {
+                                                ...m,
+                                                declaredMedicalHistory: [...list, '']
+                                              };
+                                            }
+                                          } else {
+                                            return {
+                                              ...m,
+                                              declaredMedicalHistory: isSelected
+                                                ? list.filter((c: string) => c !== condition)
+                                                : [...list, condition]
+                                            };
+                                          }
+                                        }));
+                                      }}
+                                    />
+                                    <span className="text-xs text-slate-600 font-medium">{condition}</span>
+                                  </label>
+                                );
+                              })}
                             </div>
-                            <div>
-                              <label className="label text-[10px] font-bold text-gray-500 uppercase tracking-wider">Middle Name</label>
-                              <input
-                                type="text"
-                                className="input w-full mt-1"
-                                placeholder="Middle name"
-                                value={member.middleName || ''}
-                                onChange={e => setFamilyMembers(prev => prev.map((m, i) => i === idx ? { ...m, middleName: e.target.value } : m))}
-                              />
-                            </div>
-                            <div>
-                              <label className="label text-[10px] font-bold text-gray-500 uppercase tracking-wider">Last Name <span className="text-red-500">*</span></label>
-                              <input
-                                type="text"
-                                className="input w-full mt-1"
-                                placeholder="Last name"
-                                value={member.lastName || ''}
-                                onChange={e => setFamilyMembers(prev => prev.map((m, i) => i === idx ? { ...m, lastName: e.target.value } : m))}
-                              />
-                            </div>
-                          </div>
-
-                          {/* Row 2: DOB | Relation */}
-                          {/* Row 2: DOB | Relation | Occupation */}
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 px-4 pt-3">
-                            <div>
-                              <label className="label text-[10px] font-bold text-gray-500 uppercase tracking-wider">DOB</label>
-                              <DatePicker
-                                className="input w-full mt-1"
-                                value={member.dob}
-                                onChange={val => setFamilyMembers(prev => prev.map((m, i) => i === idx ? { ...m, dob: val } : m))}
-                              />
-                            </div>
-                            <div>
-                              <label className="label text-[10px] font-bold text-gray-500 uppercase tracking-wider">Relation</label>
-                              <select
-                                className="input w-full mt-1"
-                                value={['SPOUSE', 'SON', 'DAUGHTER', 'FATHER', 'MOTHER', 'Spouse', 'Son', 'Daughter', 'Father', 'Mother', 'Brother', 'Sister', 'Child', ''].includes(member.relation) ? member.relation : 'OTHER'}
-                                onChange={e => setFamilyMembers(prev => prev.map((m, i) => i === idx ? { ...m, relation: e.target.value } : m))}
-                              >
-                                <option value="">Select</option>
-                                <option value="SPOUSE">Spouse</option>
-                                <option value="SON">Son</option>
-                                <option value="DAUGHTER">Daughter</option>
-                                <option value="FATHER">Father</option>
-                                <option value="MOTHER">Mother</option>
-                                <option value="OTHER">Other</option>
-                              </select>
-                              {(member.relation === 'OTHER' || member.relation === 'Other' || (member.relation && !['SPOUSE', 'SON', 'DAUGHTER', 'FATHER', 'MOTHER', 'Spouse', 'Son', 'Daughter', 'Father', 'Mother', 'Brother', 'Sister', 'Child', ''].includes(member.relation))) && (
-                                <div className="mt-1.5 animate-fadeIn">
-                                  <input
-                                    type="text"
-                                    className="input w-full text-xs"
-                                    placeholder="Specify Relation..."
-                                    value={['OTHER', 'Other'].includes(member.relation) ? '' : member.relation}
-                                    onChange={e => setFamilyMembers(prev => prev.map((m, i) => i === idx ? { ...m, relation: e.target.value || 'OTHER' } : m))}
-                                  />
-                                </div>
-                              )}
-                            </div>
-                            <div>
-                              <label className="label text-[10px] font-bold text-gray-500 uppercase tracking-wider">Occupation</label>
-                              <select
-                                className="input w-full mt-1"
-                                value={['SALARIED', 'SELF_EMPLOYED', 'BUSINESS', 'STUDENT', 'HOMEMAKER', 'RETIRED', 'Salaried', 'Self Employed', 'Business', 'Student', 'Homemaker', 'Retired', ''].includes(member.occupation) ? member.occupation : 'OTHER'}
-                                onChange={e => setFamilyMembers(prev => prev.map((m, i) => i === idx ? { ...m, occupation: e.target.value } : m))}
-                              >
-                                <option value="">Select Type</option>
-                                <option value="SALARIED">Salaried</option>
-                                <option value="SELF_EMPLOYED">Self Employed</option>
-                                <option value="BUSINESS">Business</option>
-                                <option value="STUDENT">Student</option>
-                                <option value="HOMEMAKER">Homemaker</option>
-                                <option value="RETIRED">Retired</option>
-                                <option value="OTHER">Other</option>
-                              </select>
-                              {(member.occupation === 'OTHER' || member.occupation === 'Other' || (member.occupation && !['SALARIED', 'SELF_EMPLOYED', 'BUSINESS', 'STUDENT', 'HOMEMAKER', 'RETIRED', 'Salaried', 'Self Employed', 'Business', 'Student', 'Homemaker', 'Retired', ''].includes(member.occupation))) && (
-                                <div className="mt-1.5 animate-fadeIn">
-                                  <input
-                                    type="text"
-                                    className="input w-full text-xs"
-                                    placeholder="Specify Occupation..."
-                                    value={['OTHER', 'Other'].includes(member.occupation) ? '' : member.occupation}
-                                    onChange={e => setFamilyMembers(prev => prev.map((m, i) => i === idx ? { ...m, occupation: e.target.value || 'OTHER' } : m))}
-                                  />
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Row 3: Whatsapp | Calling Number | Education */}
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 px-4 pt-3">
-                            <div>
-                              <label className="label text-[10px] font-bold text-gray-500 uppercase tracking-wider">Whatsapp</label>
-                              <div className="flex border border-slate-200 rounded-xl overflow-hidden bg-white focus-within:ring-2 focus-within:ring-blue-500/10 focus-within:border-blue-500 transition-all mt-1">
-                                <span className="bg-slate-50 px-2.5 py-1.5 text-xs border-r border-slate-200 text-slate-500 font-bold">+91</span>
+                            {(member.declaredMedicalHistory || []).some((c: string) => !['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c)) && (
+                              <div className="mt-2 animate-fadeIn">
                                 <input
-                                  type="tel"
-                                  className="px-3 py-1.5 text-xs w-full outline-none bg-transparent"
-                                  placeholder="Number"
-                                  maxLength={10}
-                                  value={member.whatsapp}
-                                  onChange={e => setFamilyMembers(prev => prev.map((m, i) => i === idx ? { ...m, whatsapp: e.target.value.replace(/\D/g, '') } : m))}
+                                  type="text"
+                                  className="input w-full text-xs py-1 px-2.5"
+                                  placeholder="Type medical conditions..."
+                                  value={(member.declaredMedicalHistory || []).find((c: string) => !['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c)) || ''}
+                                  onChange={e => {
+                                    const val = e.target.value;
+                                    setFamilyMembers(prev => prev.map((m, i) => {
+                                      if (i !== idx) return m;
+                                      const current: string[] = m.declaredMedicalHistory || [];
+                                      const baseVal = current.filter((c: string) => ['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c));
+                                      return {
+                                        ...m,
+                                        declaredMedicalHistory: [...baseVal, val]
+                                      };
+                                    }));
+                                  }}
                                 />
                               </div>
-                            </div>
-                            <div>
-                              <label className="label text-[10px] font-bold text-gray-500 uppercase tracking-wider">Calling Number</label>
-                              <div className="mt-1">
-                                <CountryPhoneInput
-                                  value={member.callingNumber || ''}
-                                  onChange={(value: string) => setFamilyMembers(prev => prev.map((m, i) => i === idx ? { ...m, callingNumber: value } : m))}
-                                />
-                              </div>
-                            </div>
-                            <div>
-                              <label className="label text-[10px] font-bold text-gray-500 uppercase tracking-wider">Education</label>
-                              <select
-                                className="input w-full mt-1"
-                                value={['HighSchool', 'Graduate', 'PostGraduate', 'Professional', 'Below 10th', '10th Pass', '12th Pass', ''].includes(member.education) ? member.education : 'OTHER'}
-                                onChange={e => setFamilyMembers(prev => prev.map((m, i) => i === idx ? { ...m, education: e.target.value } : m))}
-                              >
-                                <option value="">Select Type</option>
-                                <option value="HighSchool">High School</option>
-                                <option value="Graduate">Graduate</option>
-                                <option value="PostGraduate">Post Graduate</option>
-                                <option value="Professional">Professional</option>
-                                <option value="OTHER">Other</option>
-                              </select>
-                              {(member.education === 'OTHER' || member.education === 'Other' || (member.education && !['HighSchool', 'Graduate', 'PostGraduate', 'Professional', 'Below 10th', '10th Pass', '12th Pass', ''].includes(member.education))) && (
-                                <div className="mt-1.5 animate-fadeIn">
-                                  <input
-                                    type="text"
-                                    className="input w-full text-xs"
-                                    placeholder="Specify Education..."
-                                    value={['OTHER', 'Other'].includes(member.education) ? '' : member.education}
-                                    onChange={e => setFamilyMembers(prev => prev.map((m, i) => i === idx ? { ...m, education: e.target.value || 'OTHER' } : m))}
-                                  />
-                                </div>
-                              )}
-                            </div>
+                            )}
                           </div>
 
-                          {/* Row 4: Medical History */}
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 px-4 pt-3 pb-3">
-                            {/* Generic Medical History */}
-                            <div className="col-span-3">
-                              <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Medical History (Select if applicable)</label>
-                              <div className="flex flex-wrap gap-x-6 gap-y-2">
-                                {['BP', 'Sugar', 'Heart', 'Thyroid', 'Others'].map((condition) => {
-                                  const isOthers = condition === 'Others';
-                                  const current = member.medicalHistory || [];
-                                  const isSelected = isOthers
-                                    ? current.some((c: string) => !['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c))
-                                    : current.includes(condition);
-                                  return (
-                                    <label key={condition} className="flex flex-wrap items-center gap-1.5 cursor-pointer select-none">
-                                      <input
-                                        type="checkbox"
-                                        className="accent-blue-600 w-3.5 h-3.5"
-                                        checked={isSelected}
-                                        onChange={() => {
-                                          setFamilyMembers(prev => prev.map((m, i) => {
-                                            if (i !== idx) return m;
-                                            const list: string[] = m.medicalHistory || [];
-                                            if (isOthers) {
-                                              if (isSelected) {
-                                                return {
-                                                  ...m,
-                                                  medicalHistory: list.filter((c: string) => ['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c))
-                                                };
-                                              } else {
-                                                return {
-                                                  ...m,
-                                                  medicalHistory: [...list, '']
-                                                };
-                                              }
+                          {/* NOT Declared Medical History */}
+                          <div className="col-span-3">
+                            <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-2">NOT Declared Medical History</label>
+                            <div className="flex flex-wrap gap-x-6 gap-y-2">
+                              {['BP', 'Sugar', 'Heart', 'Thyroid', 'Others'].map((condition) => {
+                                const isOthers = condition === 'Others';
+                                const current = member.notDeclaredMedicalHistory || [];
+                                const isSelected = isOthers
+                                  ? current.some((c: string) => !['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c))
+                                  : current.includes(condition);
+                                return (
+                                  <label key={condition} className="flex flex-wrap items-center gap-1.5 cursor-pointer select-none">
+                                    <input
+                                      type="checkbox"
+                                      className="accent-orange-500 w-3.5 h-3.5"
+                                      checked={isSelected}
+                                      onChange={() => {
+                                        setFamilyMembers(prev => prev.map((m, i) => {
+                                          if (i !== idx) return m;
+                                          const list: string[] = m.notDeclaredMedicalHistory || [];
+                                          if (isOthers) {
+                                            if (isSelected) {
+                                              return {
+                                                ...m,
+                                                notDeclaredMedicalHistory: list.filter((c: string) => ['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c))
+                                              };
                                             } else {
                                               return {
                                                 ...m,
-                                                medicalHistory: isSelected
-                                                  ? list.filter((c: string) => c !== condition)
-                                                  : [...list, condition]
+                                                notDeclaredMedicalHistory: [...list, '']
                                               };
                                             }
-                                          }));
-                                        }}
-                                      />
-                                      <span className="text-xs text-slate-600 font-medium">{condition}</span>
-                                    </label>
-                                  );
-                                })}
+                                          } else {
+                                            return {
+                                              ...m,
+                                              notDeclaredMedicalHistory: isSelected
+                                                ? list.filter((c: string) => c !== condition)
+                                                : [...list, condition]
+                                            };
+                                          }
+                                        }));
+                                      }}
+                                    />
+                                    <span className="text-xs text-slate-600 font-medium">{condition}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                            {(member.notDeclaredMedicalHistory || []).some((c: string) => !['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c)) && (
+                              <div className="mt-2 animate-fadeIn">
+                                <input
+                                  type="text"
+                                  className="input w-full text-xs py-1 px-2.5"
+                                  placeholder="Type medical conditions..."
+                                  value={(member.notDeclaredMedicalHistory || []).find((c: string) => !['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c)) || ''}
+                                  onChange={e => {
+                                    const val = e.target.value;
+                                    setFamilyMembers(prev => prev.map((m, i) => {
+                                      if (i !== idx) return m;
+                                      const current: string[] = m.notDeclaredMedicalHistory || [];
+                                      const baseVal = current.filter((c: string) => ['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c));
+                                      return {
+                                        ...m,
+                                        notDeclaredMedicalHistory: [...baseVal, val]
+                                      };
+                                    }));
+                                  }}
+                                />
                               </div>
-                              {(member.medicalHistory || []).some((c: string) => !['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c)) && (
-                                <div className="mt-2 animate-fadeIn">
-                                  <input
-                                    type="text"
-                                    className="input w-full text-xs py-1 px-2.5"
-                                    placeholder="Type medical conditions..."
-                                    value={(member.medicalHistory || []).find((c: string) => !['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c)) || ''}
-                                    onChange={e => {
-                                      const val = e.target.value;
-                                      setFamilyMembers(prev => prev.map((m, i) => {
-                                        if (i !== idx) return m;
-                                        const current: string[] = m.medicalHistory || [];
-                                        const baseVal = current.filter((c: string) => ['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c));
-                                        return {
-                                          ...m,
-                                          medicalHistory: [...baseVal, val]
-                                        };
-                                      }));
-                                    }}
-                                  />
-                                </div>
-                              )}
-                            </div>
+                            )}
+                          </div>
 
-                            {/* Declared Medical History */}
-                            <div className="col-span-3">
-                              <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Declared Medical History</label>
-                              <div className="flex flex-wrap gap-x-6 gap-y-2">
-                                {['BP', 'Sugar', 'Heart', 'Thyroid', 'Others'].map((condition) => {
-                                  const isOthers = condition === 'Others';
-                                  const current = member.declaredMedicalHistory || [];
-                                  const isSelected = isOthers
-                                    ? current.some((c: string) => !['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c))
-                                    : current.includes(condition);
-                                  return (
-                                    <label key={condition} className="flex flex-wrap items-center gap-1.5 cursor-pointer select-none">
-                                      <input
-                                        type="checkbox"
-                                        className="accent-blue-600 w-3.5 h-3.5"
-                                        checked={isSelected}
-                                        onChange={() => {
-                                          setFamilyMembers(prev => prev.map((m, i) => {
-                                            if (i !== idx) return m;
-                                            const list: string[] = m.declaredMedicalHistory || [];
-                                            if (isOthers) {
-                                              if (isSelected) {
-                                                return {
-                                                  ...m,
-                                                  declaredMedicalHistory: list.filter((c: string) => ['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c))
-                                                };
-                                              } else {
-                                                return {
-                                                  ...m,
-                                                  declaredMedicalHistory: [...list, '']
-                                                };
-                                              }
-                                            } else {
-                                              return {
-                                                ...m,
-                                                declaredMedicalHistory: isSelected
-                                                  ? list.filter((c: string) => c !== condition)
-                                                  : [...list, condition]
-                                              };
-                                            }
-                                          }));
-                                        }}
-                                      />
-                                      <span className="text-xs text-slate-600 font-medium">{condition}</span>
-                                    </label>
-                                  );
-                                })}
-                              </div>
-                              {(member.declaredMedicalHistory || []).some((c: string) => !['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c)) && (
-                                <div className="mt-2 animate-fadeIn">
-                                  <input
-                                    type="text"
-                                    className="input w-full text-xs py-1 px-2.5"
-                                    placeholder="Type medical conditions..."
-                                    value={(member.declaredMedicalHistory || []).find((c: string) => !['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c)) || ''}
-                                    onChange={e => {
-                                      const val = e.target.value;
-                                      setFamilyMembers(prev => prev.map((m, i) => {
-                                        if (i !== idx) return m;
-                                        const current: string[] = m.declaredMedicalHistory || [];
-                                        const baseVal = current.filter((c: string) => ['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c));
-                                        return {
-                                          ...m,
-                                          declaredMedicalHistory: [...baseVal, val]
-                                        };
-                                      }));
-                                    }}
-                                  />
-                                </div>
-                              )}
-                            </div>
-
-                            {/* NOT Declared Medical History */}
-                            <div className="col-span-3">
-                              <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-2">NOT Declared Medical History</label>
-                              <div className="flex flex-wrap gap-x-6 gap-y-2">
-                                {['BP', 'Sugar', 'Heart', 'Thyroid', 'Others'].map((condition) => {
-                                  const isOthers = condition === 'Others';
-                                  const current = member.notDeclaredMedicalHistory || [];
-                                  const isSelected = isOthers
-                                    ? current.some((c: string) => !['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c))
-                                    : current.includes(condition);
-                                  return (
-                                    <label key={condition} className="flex flex-wrap items-center gap-1.5 cursor-pointer select-none">
-                                      <input
-                                        type="checkbox"
-                                        className="accent-orange-500 w-3.5 h-3.5"
-                                        checked={isSelected}
-                                        onChange={() => {
-                                          setFamilyMembers(prev => prev.map((m, i) => {
-                                            if (i !== idx) return m;
-                                            const list: string[] = m.notDeclaredMedicalHistory || [];
-                                            if (isOthers) {
-                                              if (isSelected) {
-                                                return {
-                                                  ...m,
-                                                  notDeclaredMedicalHistory: list.filter((c: string) => ['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c))
-                                                };
-                                              } else {
-                                                return {
-                                                  ...m,
-                                                  notDeclaredMedicalHistory: [...list, '']
-                                                };
-                                              }
-                                            } else {
-                                              return {
-                                                ...m,
-                                                notDeclaredMedicalHistory: isSelected
-                                                  ? list.filter((c: string) => c !== condition)
-                                                  : [...list, condition]
-                                              };
-                                            }
-                                          }));
-                                        }}
-                                      />
-                                      <span className="text-xs text-slate-600 font-medium">{condition}</span>
-                                    </label>
-                                  );
-                                })}
-                              </div>
-                              {(member.notDeclaredMedicalHistory || []).some((c: string) => !['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c)) && (
-                                <div className="mt-2 animate-fadeIn">
-                                  <input
-                                    type="text"
-                                    className="input w-full text-xs py-1 px-2.5"
-                                    placeholder="Type medical conditions..."
-                                    value={(member.notDeclaredMedicalHistory || []).find((c: string) => !['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c)) || ''}
-                                    onChange={e => {
-                                      const val = e.target.value;
-                                      setFamilyMembers(prev => prev.map((m, i) => {
-                                        if (i !== idx) return m;
-                                        const current: string[] = m.notDeclaredMedicalHistory || [];
-                                        const baseVal = current.filter((c: string) => ['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c));
-                                        return {
-                                          ...m,
-                                          notDeclaredMedicalHistory: [...baseVal, val]
-                                        };
-                                      }));
-                                    }}
-                                  />
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Details of Medical History */}
-                            <div className="col-span-3">
-                              <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Details of Medical History</label>
-                              <textarea
-                                className="input w-full resize-none"
-                                rows={2}
-                                placeholder="Add any additional medical history details..."
-                                value={member.medicalHistoryDetails || ''}
-                                onChange={e => setFamilyMembers(prev => prev.map((m, i) => i === idx ? { ...m, medicalHistoryDetails: e.target.value } : m))}
-                              />
-                            </div>
+                          {/* Details of Medical History */}
+                          <div className="col-span-3">
+                            <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Details of Medical History</label>
+                            <textarea
+                              className="input w-full resize-none"
+                              rows={2}
+                              placeholder="Add any additional medical history details..."
+                              value={member.medicalHistoryDetails || ''}
+                              onChange={e => setFamilyMembers(prev => prev.map((m, i) => i === idx ? { ...m, medicalHistoryDetails: e.target.value } : m))}
+                            />
                           </div>
                         </div>
-                      ))}
+                      </div>
+                    ))}
 
                     {!editContactId && (
                       <button
@@ -4431,6 +4638,7 @@ export default function Leads() {
             isOwner={isOwner}
             onEdit={() => { setDetailOpen(false); openEdit(detailTarget); }}
             onTriggerPolicyCreation={triggerPolicyCreationForLead}
+            onUpdateLead={handleLeadDetailUpdated}
           />
         )}
       </Modal>
@@ -4752,19 +4960,11 @@ export function getAssignableEmployees(empList: any[] = [], currentLeadOrContact
 function getAssigneeDisplayName(item: any, empList?: any[]) {
   if (!item) return 'Unassigned';
 
-  const clientName = (
-    item.contact?.fullName ||
-    `${item.contact?.firstName || ''} ${item.contact?.lastName || ''}`.trim() ||
-    item.name ||
-    item.fullName ||
-    ''
-  ).toLowerCase().trim();
-
   const isInvalidAssigneeName = (name?: string) => {
     if (!name) return true;
     const n = name.trim().toLowerCase();
     if (!n || n === 'unassigned' || n === 'super admin' || n === 'superadmin' || n === 'owner' || n === 'administrator') return true;
-    if (clientName && (n === clientName || n.includes(clientName) || clientName.includes(n))) return true;
+    if (n.startsWith('fs_') || n.startsWith('local_') || n.startsWith('checkup_') || n.startsWith('usr_') || n.startsWith('lead_') || n.startsWith('temp-') || /^[0-9a-fA-F]{24}$/.test(n)) return true;
     return false;
   };
 
@@ -4790,50 +4990,81 @@ function getAssigneeDisplayName(item: any, empList?: any[]) {
     if (full && !isInvalidAssigneeName(full)) return full;
   }
 
-  // 2. Lookup by ID in empList
-  const empId = item.assignedEmployeeId || item.assignedEmployee?.id || item.assignedEmployee?.userId || item.assignedTo;
-  if (empId && empList && empList.length > 0) {
-    const found = empList.find((e: any) =>
-      String(e.id) === String(empId) ||
-      String(e.userId) === String(empId) ||
-      String(e.user?.id) === String(empId) ||
-      String(e._id) === String(empId) ||
-      (e.email && e.email.toLowerCase() === String(empId).toLowerCase())
-    );
-    if (found) {
-      const p = found.employeeProfile || found;
-      const fn = p.firstName || found.firstName || found.user?.firstName || '';
-      const ln = p.lastName || found.lastName || found.user?.lastName || '';
-      const name = `${fn} ${ln}`.trim() || found.name || '';
-      if (name && !isInvalidAssigneeName(name)) return name;
-    }
+  // 2. Direct name on assignedTo / assignedEmployeeId if it's already a text name (not an ID)
+  if (typeof item.assignedTo === 'string' && item.assignedTo && !isInvalidAssigneeName(item.assignedTo)) {
+    return item.assignedTo.trim();
+  }
+  if (typeof item.assignedEmployeeId === 'string' && item.assignedEmployeeId && !isInvalidAssigneeName(item.assignedEmployeeId)) {
+    return item.assignedEmployeeId.trim();
   }
 
-  // 3. Fallback to parsing notes JSON
+  // 3. Check notes JSON
   try {
     if (item.notes && typeof item.notes === 'string') {
       const parsed = JSON.parse(item.notes);
-      if (parsed.assignedEmployeeName && !isInvalidAssigneeName(parsed.assignedEmployeeName)) {
-        return parsed.assignedEmployeeName;
-      }
       if (parsed.assignedToName && !isInvalidAssigneeName(parsed.assignedToName)) {
-        return parsed.assignedToName;
+        return String(parsed.assignedToName).trim();
       }
-      if (parsed.assignedEmployeeId && empList) {
-        const found = empList.find((e: any) =>
-          String(e.id) === String(parsed.assignedEmployeeId) ||
-          String(e.userId) === String(parsed.assignedEmployeeId) ||
-          String(e.user?.id) === String(parsed.assignedEmployeeId)
-        );
-        if (found) {
-          const fn = found.firstName || found.user?.firstName || '';
-          const ln = found.lastName || found.user?.lastName || '';
-          const name = `${fn} ${ln}`.trim();
-          if (name && !isInvalidAssigneeName(name)) return name;
-        }
+      if (parsed.assignedEmployeeName && !isInvalidAssigneeName(parsed.assignedEmployeeName)) {
+        return String(parsed.assignedEmployeeName).trim();
       }
     }
-  } catch {}
+  } catch { }
+
+  // 4. Lookup across empList and local storage by ID
+  const empId = item.assignedEmployeeId || item.assignedEmployee?.id || item.assignedEmployee?.userId || item.assignedTo;
+  if (empId) {
+    const strEmpId = String(empId).trim().toLowerCase();
+
+    if (empList && empList.length > 0) {
+      const found = empList.find((e: any) => {
+        const eId = String(e.id || '').toLowerCase();
+        const eUid = String(e.userId || '').toLowerCase();
+        const eUserDocId = String(e.user?.id || e.user?._id || '').toLowerCase();
+        const eRawId = String(e._id || '').toLowerCase();
+        const eEmail = String(e.email || e.user?.email || '').toLowerCase();
+
+        const p = e.employeeProfile || e;
+        const fn = String(p.firstName || e.firstName || e.user?.firstName || '').toLowerCase().trim();
+        const ln = String(p.lastName || e.lastName || e.user?.lastName || '').toLowerCase().trim();
+        const fullName = `${fn} ${ln}`.trim();
+        const empName = String(e.name || '').toLowerCase().trim();
+
+        return (eId && (eId === strEmpId || strEmpId === eId || ('fs_' + eId) === strEmpId || eId === strEmpId.replace('fs_', ''))) ||
+          (eUid && (eUid === strEmpId || strEmpId === eUid)) ||
+          (eUserDocId && (eUserDocId === strEmpId || strEmpId === eUserDocId)) ||
+          (eRawId && (eRawId === strEmpId || strEmpId === eRawId)) ||
+          (eEmail && eEmail === strEmpId) ||
+          (fullName && (fullName === strEmpId || strEmpId.includes(fullName))) ||
+          (empName && (empName === strEmpId || strEmpId.includes(empName)));
+      });
+
+      if (found) {
+        const p = found.employeeProfile || found;
+        const fn = p.firstName || found.firstName || found.user?.firstName || '';
+        const ln = p.lastName || found.lastName || found.user?.lastName || '';
+        const name = `${fn} ${ln}`.trim() || found.name || '';
+        if (name && !isInvalidAssigneeName(name)) return name;
+      }
+    }
+
+    // Lookup across local storage leads
+    try {
+      const localLeads = JSON.parse(localStorage.getItem('insumitra_local_leads') || '[]');
+      const localMatch = localLeads.find((l: any) => {
+        const lid = String(l.id || '').toLowerCase();
+        const lcid = String(l.contact?.id || '').toLowerCase();
+        return lid === strEmpId || ('fs_' + lid) === strEmpId || lid === strEmpId.replace('fs_', '') || lcid === strEmpId;
+      });
+      if (localMatch) {
+        const c = localMatch.contact || localMatch;
+        const fn = c.firstName || localMatch.firstName || '';
+        const ln = c.lastName || localMatch.lastName || '';
+        const name = `${fn} ${ln}`.trim() || localMatch.name || localMatch.fullName;
+        if (name && !isInvalidAssigneeName(name)) return name;
+      }
+    } catch { }
+  }
 
   return 'Unassigned';
 }
@@ -4871,7 +5102,7 @@ export function getAssignerDisplayName(item: any, empList?: any[]): string | nul
         }
       }
     }
-  } catch {}
+  } catch { }
 
   // 3. Lookup by assignedById in empList
   const assignerId = item.assignedById || item.createdById;
@@ -4900,11 +5131,27 @@ function KanbanCard({ card, employeesList, onEdit, onDelete, onOpen, onCall, onW
   onDelete: (c: any) => void;
   onOpen: (c: any) => void;
   onCall: (phone?: string) => void;
-  onWhatsApp: (phone?: string) => void;
+  onWhatsApp: (lead: any, phone?: string) => void;
 }) {
-  const formattedDate = card.createdAt ? format(new Date(card.createdAt), 'dd/MM/yyyy') : '';
-  const followUp = card.followUpDate ? format(new Date(card.followUpDate), 'dd/MM/yyyy') : null;
+  let formattedDate = '';
+  try {
+    if (card.createdAt) {
+      const raw = typeof card.createdAt === 'object' && card.createdAt?.seconds ? card.createdAt.seconds * 1000 : card.createdAt;
+      const d = new Date(raw);
+      if (!isNaN(d.getTime())) formattedDate = format(d, 'dd/MM/yyyy');
+    }
+  } catch {}
+
+  let followUp: string | null = null;
+  try {
+    if (card.followUpDate) {
+      const raw = typeof card.followUpDate === 'object' && card.followUpDate?.seconds ? card.followUpDate.seconds * 1000 : card.followUpDate;
+      const d = new Date(raw);
+      if (!isNaN(d.getTime())) followUp = format(d, 'dd/MM/yyyy');
+    }
+  } catch {}
   const assigneeName = getAssigneeDisplayName(card, employeesList);
+  const assignerName = getAssignerDisplayName(card, employeesList);
   const hotness = deriveHotness(card);
   const hotnessConf = HOTNESS_CONFIG[hotness];
 
@@ -5009,7 +5256,7 @@ function KanbanCard({ card, employeesList, onEdit, onDelete, onOpen, onCall, onW
 
       {/* Line 4: Assignee (Left) + Follow-up Date & Call/WhatsApp (Right) */}
       <div className="flex items-center justify-between border-t border-slate-100 pt-2 mt-0.5 gap-1.5" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center gap-1 text-[10px] text-slate-600 font-bold truncate max-w-[48%]" title={`Assigned to: ${assigneeName}`}>
+        <div className="flex items-center gap-1 text-[10px] text-slate-600 font-bold truncate max-w-[55%]" title={`Assigned to: ${assigneeName}`}>
           <UserCircle2 size={12} className="text-purple-600 shrink-0" />
           <span className="truncate">{assigneeName}</span>
         </div>
@@ -5027,7 +5274,7 @@ function KanbanCard({ card, employeesList, onEdit, onDelete, onOpen, onCall, onW
           <button onClick={() => onCall(phoneNum)} className="p-1 rounded bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-600 cursor-pointer" title="Call">
             <Phone size={10} />
           </button>
-          <button onClick={() => onWhatsApp(phoneNum)} className="p-1 rounded bg-green-50 border border-green-200 hover:bg-green-100 text-green-600 cursor-pointer" title="WhatsApp">
+          <button onClick={() => onWhatsApp(card, phoneNum)} className="p-1 rounded bg-green-50 border border-green-200 hover:bg-green-100 text-green-600 cursor-pointer" title="WhatsApp">
             <MessageCircle size={10} />
           </button>
         </div>
@@ -5049,7 +5296,7 @@ function LeadsTable({ data, employeesList, loading, visibleColumns, sortKey, sor
   onEdit: (r: any) => void;
   onDelete: (r: any) => void;
   onCall: (phone?: string) => void;
-  onWhatsApp: (phone?: string) => void;
+  onWhatsApp: (lead: any, phone?: string) => void;
   onCreate?: () => void;
 }) {
   const sortableKeys = ['name', 'plan', 'premiumBudget', 'followUpDate', 'stage'];
@@ -5057,12 +5304,18 @@ function LeadsTable({ data, employeesList, loading, visibleColumns, sortKey, sor
   const colDefs = [
     {
       key: 'name', label: 'Client Name',
-      render: (r: any) => (
-        <div>
-          <p className="font-semibold text-gray-900 text-[13px]">{r.contact?.firstName} {r.contact?.lastName}</p>
-          <p className="text-[11px] text-gray-400">{r.contact?.phone}</p>
-        </div>
-      ),
+      render: (r: any) => {
+        const clientName = (r.contact?.firstName || r.contact?.lastName)
+          ? `${r.contact?.firstName || ''} ${r.contact?.lastName || ''}`.trim()
+          : (r.name || r.fullName || r.clientName || 'Lead').trim();
+        const clientPhone = r.contact?.phone || r.phone || r.mobile || r.whatsappNumber || r.callingNumber || '';
+        return (
+          <div>
+            <p className="font-semibold text-gray-900 text-[13px]">{clientName}</p>
+            {clientPhone && <p className="text-[11px] text-gray-400">{clientPhone}</p>}
+          </div>
+        );
+      },
     },
     {
       key: 'plan', label: 'Product',
@@ -5093,18 +5346,10 @@ function LeadsTable({ data, employeesList, loading, visibleColumns, sortKey, sor
       key: 'employee', label: 'Assigned To',
       render: (r: any) => {
         const name = getAssigneeDisplayName(r, employeesList);
-        const assigner = getAssignerDisplayName(r, employeesList);
         return (
-          <div className="flex flex-col">
-            <span className={clsx("text-[12.5px]", name === 'Unassigned' || name === '—' ? 'text-slate-400' : 'text-slate-800 font-semibold')}>
-              {name}
-            </span>
-            {assigner && assigner.toLowerCase() !== name.toLowerCase() && (
-              <span className="text-[10px] text-purple-600 font-semibold leading-tight">
-                by {assigner}
-              </span>
-            )}
-          </div>
+          <span className={clsx("text-[12.5px]", name === 'Unassigned' || name === '—' ? 'text-slate-400' : 'text-slate-800 font-semibold')}>
+            {name}
+          </span>
         );
       },
     },
@@ -5137,16 +5382,12 @@ function LeadsTable({ data, employeesList, loading, visibleColumns, sortKey, sor
       render: (r: any) => (
         <div className="flex items-center justify-center gap-1.5 whitespace-nowrap" onClick={e => e.stopPropagation()}>
           <button
-            title="Call Lead"
-            className="p-1.5 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-bold flex items-center justify-center cursor-pointer shadow-sm shadow-blue-500/20 hover:shadow-md hover:scale-105 transition-all"
-            onClick={() => onCall(r.contact?.phone)}
-          >
-            <Phone size={12} />
-          </button>
-          <button
             title="Share on WhatsApp"
             className="p-1.5 rounded-xl bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-bold flex items-center justify-center cursor-pointer shadow-sm shadow-green-500/20 hover:shadow-md hover:scale-105 transition-all"
-            onClick={() => onWhatsApp(r.contact?.phone)}
+            onClick={() => {
+              const phoneToUse = r.contact?.phone || r.phone || r.mobile || r.whatsappNumber || r.callingNumber || '';
+              onWhatsApp(r, phoneToUse);
+            }}
           >
             <MessageCircle size={12} />
           </button>
@@ -5242,7 +5483,7 @@ function LeadsTable({ data, employeesList, loading, visibleColumns, sortKey, sor
 }
 
 // ── Lead Detail Popup ─────────────────────────────────────────────────────────
-function LeadDetailPopup({ lead, tab, onTabChange, employees, allLeads, isOwner, onEdit, onTriggerPolicyCreation }: {
+function LeadDetailPopup({ lead, tab, onTabChange, employees, allLeads, isOwner, onEdit, onTriggerPolicyCreation, onUpdateLead }: {
   lead: any;
   tab: 'overview' | 'comments' | 'stage';
   onTabChange: (t: 'overview' | 'comments' | 'stage') => void;
@@ -5251,6 +5492,7 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, allLeads, isOwner,
   isOwner: boolean;
   onEdit: () => void;
   onTriggerPolicyCreation?: (lead: any) => void;
+  onUpdateLead?: (lead: any) => void;
 }) {
   const qc = useQueryClient();
   const moveStage = useMoveLeadStage();
@@ -5288,12 +5530,77 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, allLeads, isOwner,
     return getAssignableEmployees(employees, fullLead || lead, allLeads || []);
   }, [employees, fullLead, lead, allLeads]);
 
-  const currentAssigneeObj = assignableEmployeesList.find((e: any) => (e.userId && e.userId === editAssignee) || (e.id && e.id === editAssignee) || (e.user?.id && e.user?.id === editAssignee)) ||
-    employees.find((e: any) => (e.userId && e.userId === editAssignee) || (e.id && e.id === editAssignee) || (e.user?.id && e.user?.id === editAssignee));
+  const currentAssigneeObj = useMemo(() => {
+    if (!editAssignee) return null;
+    const targetId = String(editAssignee).toLowerCase().trim();
+    const searchLists = [assignableEmployeesList, employees, allLeads || []];
+    for (const list of searchLists) {
+      const found = list.find((e: any) => {
+        const uid = String(e.userId || e.user?.id || e.id || e._id || e.user?._id || '').toLowerCase().trim();
+        return uid && uid === targetId;
+      });
+      if (found) return found;
+    }
+    return null;
+  }, [assignableEmployeesList, employees, allLeads, editAssignee]);
 
-  const currentAssigneeName = currentAssigneeObj
-    ? `${currentAssigneeObj.firstName || currentAssigneeObj.employeeProfile?.firstName || currentAssigneeObj.user?.firstName || ''} ${currentAssigneeObj.lastName || currentAssigneeObj.employeeProfile?.lastName || currentAssigneeObj.user?.lastName || ''}`.trim() || currentAssigneeObj.name || currentAssigneeObj.email
-    : (editAssignee ? editAssignee : '');
+  const currentAssigneeName = useMemo(() => {
+    if (currentAssigneeObj) {
+      const p = currentAssigneeObj.employeeProfile || currentAssigneeObj;
+      const fn = p.firstName || currentAssigneeObj.firstName || currentAssigneeObj.user?.firstName || '';
+      const ln = p.lastName || currentAssigneeObj.lastName || currentAssigneeObj.user?.lastName || '';
+      const name = `${fn} ${ln}`.trim() || currentAssigneeObj.name || currentAssigneeObj.email;
+      if (name && !/^[0-9a-fA-F]{24}$/.test(name)) return name;
+    }
+
+    if (editAssignee) {
+      const targetId = String(editAssignee).toLowerCase().trim();
+      const allEmp = [...(assignableEmployeesList || []), ...(employees || [])];
+      const match = allEmp.find((e: any) => {
+        const eId = String(e.id || '').toLowerCase();
+        const eUid = String(e.userId || '').toLowerCase();
+        const eUserDocId = String(e.user?.id || e.user?._id || '').toLowerCase();
+        const eRawId = String(e._id || '').toLowerCase();
+        const p = e.employeeProfile || e;
+        const fn = String(p.firstName || e.firstName || e.user?.firstName || '').toLowerCase().trim();
+        const ln = String(p.lastName || e.lastName || e.user?.lastName || '').toLowerCase().trim();
+        const fullName = `${fn} ${ln}`.trim();
+        const empName = String(e.name || '').toLowerCase().trim();
+        return eId === targetId || eUid === targetId || eUserDocId === targetId || eRawId === targetId || fullName === targetId || empName === targetId;
+      });
+      if (match) {
+        const p = match.employeeProfile || match;
+        const fn = p.firstName || match.firstName || match.user?.firstName || '';
+        const ln = p.lastName || match.lastName || match.user?.lastName || '';
+        const name = `${fn} ${ln}`.trim() || match.name || match.email;
+        if (name && !/^[0-9a-fA-F]{24}$/.test(name)) return name;
+      }
+      if (!/^[0-9a-fA-F]{24}$/.test(editAssignee) && !editAssignee.startsWith('fs_') && !editAssignee.startsWith('usr_')) {
+        return editAssignee;
+      }
+    }
+
+    // Try resolving from getAssigneeDisplayName
+    const fromAssigneeHelper = getAssigneeDisplayName({ ...(fullLead || lead), assignedEmployeeId: editAssignee }, employees);
+    if (fromAssigneeHelper && fromAssigneeHelper !== 'Unassigned' && !/^[0-9a-fA-F]{24}$/.test(fromAssigneeHelper)) {
+      return fromAssigneeHelper;
+    }
+
+    // Try parsed lead notes
+    const parsedNotes = parseLeadNotes(fullLead?.notes || lead?.notes);
+    if (parsedNotes.assignedEmployeeName && !/^[0-9a-fA-F]{24}$/.test(parsedNotes.assignedEmployeeName)) {
+      return parsedNotes.assignedEmployeeName;
+    }
+    if (parsedNotes.assignedToName && !/^[0-9a-fA-F]{24}$/.test(parsedNotes.assignedToName)) {
+      return parsedNotes.assignedToName;
+    }
+    if (fullLead?.assignedToName && !/^[0-9a-fA-F]{24}$/.test(fullLead.assignedToName)) {
+      return fullLead.assignedToName;
+    }
+
+    if (!editAssignee) return 'Unassigned';
+    return 'Unassigned';
+  }, [currentAssigneeObj, editAssignee, fullLead, lead, employees, assignableEmployeesList]);
 
   useEffect(() => {
     if (fullLead) {
@@ -5342,14 +5649,55 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, allLeads, isOwner,
 
       const currentUser = useAuthStore.getState().user;
       const currentUserName = currentUser?.firstName ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim() : ((currentUser as any)?.name || currentUser?.email || 'Admin');
-      
-      // Find assignee display name from employees list
-      const availableList = getAssignableEmployees(employees, fullLead || lead);
-      const foundEmp = availableList.find((e: any) => e.id === assignedEmp || e.userId === assignedEmp || e.user?.id === assignedEmp) ||
-        employees.find((e: any) => e.id === assignedEmp || e.userId === assignedEmp || e.user?.id === assignedEmp);
-      const assignedToName = foundEmp
-        ? `${foundEmp.firstName || foundEmp.user?.firstName || foundEmp.employeeProfile?.firstName || ''} ${foundEmp.lastName || foundEmp.user?.lastName || foundEmp.employeeProfile?.lastName || ''}`.trim() || foundEmp.name || foundEmp.email
-        : '';
+
+      // Find assignee display name from employees and all contacts list
+      const availableList = assignableEmployeesList || getAssignableEmployees(employees, fullLead || lead, allLeads || []);
+      const strAssignedEmp = String(assignedEmp || '').toLowerCase().trim();
+      const foundEmp = availableList.find((e: any) => {
+        const eId = String(e.id || '').toLowerCase();
+        const eUid = String(e.userId || '').toLowerCase();
+        const eUserDocId = String(e.user?.id || e.user?._id || '').toLowerCase();
+        const eRawId = String(e._id || '').toLowerCase();
+        const eEmail = String(e.email || e.user?.email || '').toLowerCase();
+        const p = e.employeeProfile || e;
+        const fn = String(p.firstName || e.firstName || e.user?.firstName || '').toLowerCase().trim();
+        const ln = String(p.lastName || e.lastName || e.user?.lastName || '').toLowerCase().trim();
+        const fullName = `${fn} ${ln}`.trim();
+        const empName = String(e.name || '').toLowerCase().trim();
+        return (eId && (eId === strAssignedEmp || strAssignedEmp === eId || ('fs_' + eId) === strAssignedEmp || eId === strAssignedEmp.replace('fs_', ''))) ||
+          (eUid && (eUid === strAssignedEmp || strAssignedEmp === eUid)) ||
+          (eUserDocId && (eUserDocId === strAssignedEmp || strAssignedEmp === eUserDocId)) ||
+          (eRawId && (eRawId === strAssignedEmp || strAssignedEmp === eRawId)) ||
+          (eEmail && eEmail === strAssignedEmp) ||
+          (fullName && (fullName === strAssignedEmp || strAssignedEmp.includes(fullName))) ||
+          (empName && (empName === strAssignedEmp || strAssignedEmp.includes(empName)));
+      }) ||
+        employees.find((e: any) => {
+          const eId = String(e.id || '').toLowerCase();
+          const eUid = String(e.userId || '').toLowerCase();
+          const eUserDocId = String(e.user?.id || e.user?._id || '').toLowerCase();
+          const eRawId = String(e._id || '').toLowerCase();
+          const p = e.employeeProfile || e;
+          const fn = String(p.firstName || e.firstName || e.user?.firstName || '').toLowerCase().trim();
+          const ln = String(p.lastName || e.lastName || e.user?.lastName || '').toLowerCase().trim();
+          const fullName = `${fn} ${ln}`.trim();
+          const empName = String(e.name || '').toLowerCase().trim();
+          return eId === strAssignedEmp || eUid === strAssignedEmp || eUserDocId === strAssignedEmp || eRawId === strAssignedEmp || fullName === strAssignedEmp || empName === strAssignedEmp;
+        });
+
+      let foundEmpName = '';
+      if (foundEmp) {
+        const p = foundEmp.employeeProfile || foundEmp;
+        const fn = p.firstName || foundEmp.firstName || foundEmp.user?.firstName || '';
+        const ln = p.lastName || foundEmp.lastName || foundEmp.user?.lastName || '';
+        foundEmpName = `${fn} ${ln}`.trim() || foundEmp.name || '';
+      }
+
+      const assignedToName = (foundEmpName && !foundEmpName.startsWith('fs_') && !foundEmpName.startsWith('usr_'))
+        ? foundEmpName
+        : (currentAssigneeName && currentAssigneeName !== 'Unassigned' && !currentAssigneeName.startsWith('fs_')
+          ? currentAssigneeName
+          : (assignedEmp && !/^[0-9a-fA-F]{24}$/.test(assignedEmp) && !assignedEmp.startsWith('fs_') ? assignedEmp : ''));
 
       const newParsedNotes = {
         ...currentParsed,
@@ -5366,6 +5714,32 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, allLeads, isOwner,
         createdByName: currentParsed.createdByName || currentUserName,
       };
       const notesJsonStr = JSON.stringify(newParsedNotes);
+
+      const baseLead = { ...(lead || {}), ...(fullLead || {}) };
+      const updatedLeadObject: any = {
+        ...baseLead,
+        id: targetId,
+        stage: updatedStage,
+        status: updatedStatus,
+        type: updatedType,
+        source: updatedSource,
+        contact: baseLead.contact || {
+          firstName: baseLead.firstName || baseLead.name?.split(' ')[0] || '',
+          lastName: baseLead.lastName || baseLead.name?.split(' ').slice(1).join(' ') || '',
+          phone: baseLead.phone || baseLead.mobile || '',
+          email: baseLead.email || '',
+        },
+        interests: baseLead.interests || (baseLead.plan?.name ? [baseLead.plan.name] : ['Mutual Funds']),
+        plan: baseLead.plan || { name: (baseLead.interests && baseLead.interests[0]) || 'Mutual Funds', category: 'MUTUAL FUNDS' },
+        assignedEmployeeId: assignedEmp || '',
+        assignedTo: assignedEmp || '',
+        assignedToName: assignedToName || '',
+        assignedEmployee: assignedToName ? { name: assignedToName, id: assignedEmp } : undefined,
+        followUpDate: validFollowUpStr || validFollowUpIso || '',
+        premiumBudget: rawPremium || '',
+        expectedPremium: rawPremium || '',
+        notes: notesJsonStr,
+      };
 
       // A. Update Backend API if valid MongoDB lead
       if (isMongoId) {
@@ -5384,7 +5758,7 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, allLeads, isOwner,
 
           await leadsService.update(targetId, payload);
           if (assignedEmp && /^[0-9a-fA-F]{24}$/.test(assignedEmp)) {
-            try { await leadsService.updateAssignee(targetId, assignedEmp); } catch {}
+            try { await leadsService.updateAssignee(targetId, assignedEmp); } catch { }
           }
         } catch (apiErr) {
           console.warn('[Backend Lead Update Warning]:', apiErr);
@@ -5414,7 +5788,7 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, allLeads, isOwner,
                 updatedAt: new Date().toISOString(),
               });
               break;
-            } catch {}
+            } catch { }
           }
         } catch (fsErr) {
           console.warn('[Firestore Update Warning]:', fsErr);
@@ -5468,19 +5842,25 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, allLeads, isOwner,
               return item;
             });
             localStorage.setItem(storageKey, JSON.stringify(updated));
-          } catch {}
+          } catch { }
         });
 
-        // Dispatch storage event / BroadcastChannel notification
+        // Dispatch storage event & custom lead_updated event
         try {
           window.dispatchEvent(new Event('storage'));
-        } catch {}
-      } catch (lsErr) {}
+          window.dispatchEvent(new CustomEvent('lead_updated', { detail: updatedLeadObject }));
+        } catch { }
+      } catch (lsErr) { }
+
+      // Notify parent immediately
+      if (onUpdateLead) {
+        onUpdateLead(updatedLeadObject);
+      }
 
       // Invalidate queries & refetch
       qc.invalidateQueries({ queryKey: ['leads'] });
       qc.invalidateQueries({ queryKey: ['lead-detail-popup', targetId] });
-      try { refetch(); } catch {}
+      try { refetch(); } catch { }
 
       toast.success('Lead details saved successfully!');
     } catch (err: any) {
@@ -5567,13 +5947,8 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, allLeads, isOwner,
               </span>
               {fullLead.plan && <span className="text-[10px] text-slate-500">• {fullLead.plan.name}</span>}
               <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200/80 px-2 py-0.5 rounded-full flex items-center gap-1">
-                <UserCircle2 size={11} className="text-purple-600" /> To: {assigneeName}
+                <UserCircle2 size={11} className="text-purple-600" /> {assigneeName}
               </span>
-              {assignerName && assignerName.toLowerCase() !== assigneeName.toLowerCase() && (
-                <span className="text-[10px] font-semibold text-slate-600 bg-slate-100 border border-slate-200/80 px-2 py-0.5 rounded-full flex items-center gap-1">
-                  By: {assignerName}
-                </span>
-              )}
             </div>
           </div>
         </div>
@@ -5593,484 +5968,488 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, allLeads, isOwner,
         ))}
       </div>
 
-      {/* Fixed height tab content container so popup size remains constant when switching tabs */}
-      <div className="h-[430px] min-h-[430px] max-h-[460px] overflow-y-auto custom-scrollbar pr-1 pb-24">
+      {/* Compact tab content container */}
+      <div className="max-h-[75vh] overflow-y-auto custom-scrollbar pr-1 pb-2">
         {/* Overview */}
-      {tab === 'overview' && (
-        <div className="space-y-4 pb-12">
-          {/* Non-Editable Product Interest Data Cards */}
-          {(() => {
-            const backendInterests: any[] = contactData?.data?.productInterests || [];
-            
-            // Find specific matching backend product interest for this lead (by ID or plan category/interest match), fallback to fullLead
-            const leadInterests = fullLead.interests && fullLead.interests.length > 0
-              ? fullLead.interests
-              : [fullLead.plan?.name || fullLead.plan?.category].filter(Boolean);
+        {tab === 'overview' && (
+          <div className="space-y-3 pb-2">
+            {/* Non-Editable Product Interest Data Cards */}
+            {(() => {
+              const backendInterests: any[] = contactData?.data?.productInterests || [];
 
-            const matchedBackendInterest = backendInterests.find((pi: any) => {
-              if (pi.id && fullLead.id && pi.id === fullLead.id) return true;
-              if (pi.productInterestId && fullLead.id && pi.productInterestId === fullLead.id) return true;
-              if (pi.planId && fullLead.planId && pi.planId === fullLead.planId) return true;
-              const piInterests: string[] = pi.interests && pi.interests.length > 0
-                ? pi.interests
-                : [pi.plan?.name || pi.plan?.category].filter(Boolean);
-              return piInterests.some(i => leadInterests.includes(i));
-            });
+              // Find specific matching backend product interest for this lead (by ID or plan category/interest match), fallback to fullLead
+              const leadInterests = fullLead.interests && fullLead.interests.length > 0
+                ? fullLead.interests
+                : [fullLead.plan?.name || fullLead.plan?.category].filter(Boolean);
 
-            const allProductInterestsList = matchedBackendInterest ? [matchedBackendInterest] : [fullLead];
+              const matchedBackendInterest = backendInterests.find((pi: any) => {
+                if (pi.id && fullLead.id && pi.id === fullLead.id) return true;
+                if (pi.productInterestId && fullLead.id && pi.productInterestId === fullLead.id) return true;
+                if (pi.planId && fullLead.planId && pi.planId === fullLead.planId) return true;
+                const piInterests: string[] = pi.interests && pi.interests.length > 0
+                  ? pi.interests
+                  : [pi.plan?.name || pi.plan?.category].filter(Boolean);
+                return piInterests.some(i => leadInterests.includes(i));
+              });
 
-            return (
-              <div className="space-y-3">
-                {allProductInterestsList.map((pi: any, idx: number) => {
-                  const parsedNotes = parseLeadNotes(pi.notes);
-                  const interestsList: string[] = pi.interests && pi.interests.length > 0
-                    ? pi.interests
-                    : [pi.plan?.name || pi.plan?.category || 'Health'];
-                  const premium = pi.premiumBudget || pi.expectedPremium || 0;
-                  const sumAssured = pi.sumAssuredRequired || pi.sumAssured || 0;
-                  const planName = pi.plan?.name;
-                  const companyName = pi.plan?.company?.name;
+              const allProductInterestsList = matchedBackendInterest ? [matchedBackendInterest] : [fullLead];
 
-                  return (
-                    <div key={pi.id || idx} className="bg-gradient-to-br from-blue-50/90 via-slate-50 to-indigo-50/50 border border-blue-200/80 rounded-2xl p-4 space-y-3 shadow-2xs">
-                      <div className="flex items-center justify-between border-b border-blue-100/80 pb-2.5">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="w-7 h-7 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold shadow-2xs text-xs">
-                            <Shield size={15} />
+              return (
+                <div className="space-y-3">
+                  {allProductInterestsList.map((pi: any, idx: number) => {
+                    const parsedNotes = parseLeadNotes(pi.notes);
+                    const interestsList: string[] = pi.interests && pi.interests.length > 0
+                      ? pi.interests
+                      : [pi.plan?.name || pi.plan?.category || 'Health'];
+                    const premium = pi.premiumBudget || pi.expectedPremium || 0;
+                    const sumAssured = pi.sumAssuredRequired || pi.sumAssured || 0;
+                    const planName = pi.plan?.name;
+                    const companyName = pi.plan?.company?.name;
+
+                    return (
+                      <div key={pi.id || idx} className="bg-gradient-to-br from-blue-50/90 via-slate-50 to-indigo-50/50 border border-blue-200/80 rounded-2xl p-4 space-y-3 shadow-2xs">
+                        <div className="flex items-center justify-between border-b border-blue-100/80 pb-2.5">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="w-7 h-7 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold shadow-2xs text-xs">
+                              <Shield size={15} />
+                            </div>
+                            <div>
+                              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">Product Interest {allProductInterestsList.length > 1 ? `#${idx + 1}` : ''}</span>
+                              <h4 className="text-xs font-extrabold text-slate-800">Selected Product Interest Details</h4>
+                            </div>
                           </div>
-                          <div>
-                            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">Product Interest {allProductInterestsList.length > 1 ? `#${idx + 1}` : ''}</span>
-                            <h4 className="text-xs font-extrabold text-slate-800">Selected Product Interest Details</h4>
-                          </div>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {pi.stage && (
-                            <span className={clsx('text-[9px] px-2 py-0.5 rounded-full font-bold border uppercase tracking-wider', BADGE_STYLES[pi.stage] ?? 'bg-gray-100 text-gray-700 border-gray-200')}>
-                              {STAGE_LABELS[pi.stage] ?? pi.stage}
-                            </span>
-                          )}
-                          <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-slate-200/80 text-slate-600 border border-slate-300/60 flex flex-wrap items-center gap-1">
-                            <Lock size={9} className="text-slate-500" /> Non-Editable
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
-                        <div className="bg-white/90 rounded-xl p-3 border border-slate-200/80 shadow-2xs">
-                          <span className="text-[9.5px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">Selected Product(s)</span>
-                          <div className="flex flex-wrap gap-1.5 mt-0.5">
-                            {interestsList.map((prod: string, i: number) => (
-                              <span key={i} className="px-2.5 py-1 rounded-lg text-[11px] font-extrabold bg-purple-600 text-white shadow-2xs">
-                                ✓ {prod}
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {pi.stage && (
+                              <span className={clsx('text-[9px] px-2 py-0.5 rounded-full font-bold border uppercase tracking-wider', BADGE_STYLES[pi.stage] ?? 'bg-gray-100 text-gray-700 border-gray-200')}>
+                                {STAGE_LABELS[pi.stage] ?? pi.stage}
                               </span>
-                            ))}
+                            )}
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-slate-200/80 text-slate-600 border border-slate-300/60 flex flex-wrap items-center gap-1">
+                              <Lock size={9} className="text-slate-500" /> Non-Editable
+                            </span>
                           </div>
                         </div>
 
-                        <div className="bg-white/90 rounded-xl p-3 border border-slate-200/80 shadow-2xs">
-                          <span className="text-[9.5px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">Expected Premium / Budget</span>
-                          <p className="font-extrabold text-emerald-700 text-sm mt-0.5">
-                            ₹{Number(premium).toLocaleString('en-IN')}
-                          </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                          <div className="bg-white/90 rounded-xl p-3 border border-slate-200/80 shadow-2xs">
+                            <span className="text-[9.5px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">Selected Product(s)</span>
+                            <div className="flex flex-wrap gap-1.5 mt-0.5">
+                              {interestsList.map((prod: string, i: number) => (
+                                <span key={i} className="px-2.5 py-1 rounded-lg text-[11px] font-extrabold bg-purple-600 text-white shadow-2xs">
+                                  ✓ {prod}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="bg-white/90 rounded-xl p-3 border border-slate-200/80 shadow-2xs">
+                            <span className="text-[9.5px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">Expected Premium / Budget</span>
+                            <p className="font-extrabold text-emerald-700 text-sm mt-0.5">
+                              ₹{Number(premium).toLocaleString('en-IN')}
+                            </p>
+                          </div>
+
+                          {Number(sumAssured) > 0 && (
+                            <div className="bg-white/90 rounded-xl p-3 border border-slate-200/80 shadow-2xs">
+                              <span className="text-[9.5px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">Sum Assured Required</span>
+                              <p className="font-extrabold text-blue-700 text-sm mt-0.5">
+                                ₹{Number(sumAssured).toLocaleString('en-IN')}
+                              </p>
+                            </div>
+                          )}
+
+                          {(companyName || planName) && (
+                            <div className="bg-white/90 rounded-xl p-3 border border-slate-200/80 shadow-2xs">
+                              <span className="text-[9.5px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">Selected Plan</span>
+                              <p className="font-bold text-slate-800 text-xs mt-0.5 truncate">
+                                {companyName ? `${companyName} - ` : ''}{planName || ''}
+                              </p>
+                            </div>
+                          )}
+
+                          <div className="bg-white/90 rounded-xl p-3 border border-slate-200/80 shadow-2xs">
+                            <span className="text-[9.5px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">Lead Source</span>
+                            <p className="font-bold text-slate-700 mt-0.5">
+                              {pi.source || fullLead.source || 'Walk-in'}
+                            </p>
+                          </div>
+
+                          <div className="bg-white/90 rounded-xl p-3 border border-slate-200/80 shadow-2xs">
+                            <span className="text-[9.5px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">Lead Stage</span>
+                            <p className="font-bold text-slate-700 mt-0.5">
+                              {(STAGE_LABELS[pi.stage] || pi.stage || STAGE_LABELS[fullLead.stage] || fullLead.stage)}
+                            </p>
+                          </div>
+
+                          <div className="bg-white/90 rounded-xl p-3 border border-slate-200/80 shadow-2xs">
+                            <span className="text-[9.5px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">Assigned Agent</span>
+                            <p className="font-bold text-purple-700 mt-0.5 flex items-center gap-1.5 truncate">
+                              <UserCircle2 size={13} className="text-purple-600 shrink-0" />
+                              <span className="truncate">{assigneeName}</span>
+                            </p>
+                          </div>
                         </div>
 
-                        {Number(sumAssured) > 0 && (
-                          <div className="bg-white/90 rounded-xl p-3 border border-slate-200/80 shadow-2xs">
-                            <span className="text-[9.5px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">Sum Assured Required</span>
-                            <p className="font-extrabold text-blue-700 text-sm mt-0.5">
-                              ₹{Number(sumAssured).toLocaleString('en-IN')}
+                        {parsedNotes.descriptionDetails && (
+                          <div className="bg-white/90 rounded-xl p-3 border border-slate-200/80 shadow-2xs text-xs space-y-1">
+                            <span className="text-[9.5px] font-extrabold text-slate-400 uppercase tracking-wider block">Requirements / Description Notes</span>
+                            <p className="text-slate-700 font-medium text-[11px] leading-relaxed whitespace-pre-wrap">
+                              {parsedNotes.descriptionDetails}
                             </p>
                           </div>
                         )}
-
-                        {(companyName || planName) && (
-                          <div className="bg-white/90 rounded-xl p-3 border border-slate-200/80 shadow-2xs">
-                            <span className="text-[9.5px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">Selected Plan</span>
-                            <p className="font-bold text-slate-800 text-xs mt-0.5 truncate">
-                              {companyName ? `${companyName} - ` : ''}{planName || ''}
-                            </p>
-                          </div>
-                        )}
-
-                        <div className="bg-white/90 rounded-xl p-3 border border-slate-200/80 shadow-2xs">
-                          <span className="text-[9.5px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">Lead Source</span>
-                          <p className="font-bold text-slate-700 mt-0.5">
-                            {pi.source || fullLead.source || 'Walk-in'}
-                          </p>
-                        </div>
-
-                        <div className="bg-white/90 rounded-xl p-3 border border-slate-200/80 shadow-2xs">
-                          <span className="text-[9.5px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">Lead Stage</span>
-                          <p className="font-bold text-slate-700 mt-0.5">
-                            {(STAGE_LABELS[pi.stage] || pi.stage || STAGE_LABELS[fullLead.stage] || fullLead.stage)}
-                          </p>
-                        </div>
-
-                        <div className="bg-white/90 rounded-xl p-3 border border-slate-200/80 shadow-2xs">
-                          <span className="text-[9.5px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">Assigned Agent</span>
-                          <p className="font-bold text-purple-700 mt-0.5 flex items-center gap-1.5 truncate">
-                            <UserCircle2 size={13} className="text-purple-600 shrink-0" />
-                            <span className="truncate">{assigneeName}</span>
-                          </p>
-                        </div>
                       </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+            {(() => {
+              const parsedLeadNotes = parseLeadNotes(fullLead.notes);
+              const connectedPolicyData = fullLead.connectedPolicy;
+              const isRenewalLead = parsedLeadNotes.leadType === 'RENEWAL' || fullLead.source === 'Renewal';
+              if (!isRenewalLead) return null;
 
-                      {parsedNotes.descriptionDetails && (
-                        <div className="bg-white/90 rounded-xl p-3 border border-slate-200/80 shadow-2xs text-xs space-y-1">
-                          <span className="text-[9.5px] font-extrabold text-slate-400 uppercase tracking-wider block">Requirements / Description Notes</span>
-                          <p className="text-slate-700 font-medium text-[11px] leading-relaxed whitespace-pre-wrap">
-                            {parsedNotes.descriptionDetails}
-                          </p>
+              const policyType = connectedPolicyData?.plan?.category || fullLead.plan?.category || (fullLead.interests && fullLead.interests.length > 0 ? fullLead.interests.join(', ') : '—');
+
+              return (
+                <div className="bg-gradient-to-br from-amber-50/90 to-orange-50/70 border border-amber-200/90 rounded-2xl p-4 space-y-3 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold text-xs shadow-2xs">
+                        <Shield size={16} />
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 block">Renewal Created Against</span>
+                        <h4 className="text-sm font-extrabold text-slate-800">
+                          Policy #{connectedPolicyData?.policyNumber || parsedLeadNotes.policyNumber || 'N/A'}
+                        </h4>
+                      </div>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-purple-100 text-purple-700 border border-purple-200">
+                      Renewal Lead
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div className="bg-white/80 rounded-xl p-2.5 border border-amber-100">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Policy Type</span>
+                      <p className="font-bold text-slate-700 mt-0.5 uppercase tracking-wide">
+                        {policyType}
+                      </p>
+                    </div>
+
+                    <div className="bg-white/80 rounded-xl p-2.5 border border-amber-100">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Expiry / End Date</span>
+                      <p className="font-bold text-rose-600 mt-0.5 flex flex-wrap items-center gap-1">
+                        <Calendar size={12} />
+                        {connectedPolicyData?.endDate ? new Date(connectedPolicyData.endDate).toLocaleDateString('en-IN') : (parsedLeadNotes.endDate ? new Date(parsedLeadNotes.endDate).toLocaleDateString('en-IN') : '—')}
+                      </p>
+                    </div>
+
+                    <div className="bg-white/80 rounded-xl p-2.5 border border-amber-100">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Company & Plan Name</span>
+                      <p className="font-bold text-slate-700 mt-0.5 truncate">
+                        {connectedPolicyData?.plan?.company?.name || parsedLeadNotes.companyName || '—'}
+                      </p>
+                      <p className="text-[11px] font-semibold text-slate-500 truncate">
+                        {connectedPolicyData?.plan?.name || parsedLeadNotes.planName || '—'}
+                      </p>
+                    </div>
+
+                    <div className="bg-white/80 rounded-xl p-2.5 border border-amber-100">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Premium & Sum Insured</span>
+                      <p className="font-bold text-emerald-700 mt-0.5">
+                        Premium: ₹{Number(connectedPolicyData?.premiumAmount || parsedLeadNotes.premiumAmount || fullLead.premiumBudget || 0).toLocaleString('en-IN')}
+                      </p>
+                      <p className="text-[11px] font-semibold text-slate-600">
+                        Sum Insured: ₹{Number(connectedPolicyData?.sumAssured || parsedLeadNotes.sumAssured || fullLead.sumAssuredRequired || 0).toLocaleString('en-IN')}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+            {/* Directly Editable Lead Management Details */}
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-4 space-y-3.5 shadow-2xs">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-slate-100 pb-2 gap-3 sm:gap-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="w-7 h-7 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold text-xs shadow-2xs shrink-0">
+                    <Pencil size={14} />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wide">Lead Information & Status</h4>
+                    <p className="text-[10px] text-slate-400">Directly editable fields for this lead</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleUpdateLeadDetails()}
+                  disabled={savingLeadDetails}
+                  className="btn-primary text-xs px-3.5 py-1.5 h-auto flex flex-nowrap items-center justify-center gap-1.5 font-bold shadow-2xs w-full sm:w-auto shrink-0"
+                >
+                  {savingLeadDetails ? <RefreshCw size={12} className="animate-spin shrink-0" /> : <Save size={12} className="shrink-0" />} Save Lead Details
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                {/* Lead Stage */}
+                <div>
+                  <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block mb-1">Lead Stage <span className="text-red-500">*</span></label>
+                  <select
+                    value={editStage}
+                    onChange={e => setEditStage(e.target.value)}
+                    className="input text-xs font-semibold bg-slate-50/50 border-slate-200 focus:bg-white"
+                  >
+                    {UI_STAGES.map(s => {
+                      const key = STAGE_MAPPINGS[s];
+                      return <option key={key} value={key}>{s}</option>;
+                    })}
+                  </select>
+                </div>
+
+                {/* Lead Status */}
+                <div>
+                  <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block mb-1">Lead Status <span className="text-red-500">*</span></label>
+                  <select
+                    value={editStatus}
+                    onChange={e => setEditStatus(e.target.value)}
+                    className="input text-xs font-semibold bg-slate-50/50 border-slate-200 focus:bg-white"
+                  >
+                    <option value="Interested">Interested</option>
+                    <option value="Hot">Hot</option>
+                    <option value="Warm">Warm</option>
+                    <option value="Cold">Cold</option>
+                    <option value="Follow Up">Follow Up</option>
+                    <option value="Closed">Closed</option>
+                  </select>
+                </div>
+
+                {/* Lead Type */}
+                <div>
+                  <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block mb-1">Lead Type <span className="text-red-500">*</span></label>
+                  <select
+                    value={editType}
+                    onChange={e => setEditType(e.target.value)}
+                    className="input text-xs font-semibold bg-slate-50/50 border-slate-200 focus:bg-white"
+                  >
+                    <option value="Fresh">Fresh</option>
+                    <option value="Renewal">Renewal</option>
+                    <option value="Porting">Porting</option>
+                  </select>
+                </div>
+
+                {/* Lead Source */}
+                <div>
+                  <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block mb-1">Lead Source <span className="text-red-500">*</span></label>
+                  <select
+                    value={editSource}
+                    onChange={e => setEditSource(e.target.value)}
+                    className="input text-xs font-semibold bg-slate-50/50 border-slate-200 focus:bg-white"
+                  >
+                    <option value="Walk-in">Walk-in</option>
+                    <option value="Referral">Referral</option>
+                    <option value="Website">Website</option>
+                    <option value="Cold Call">Cold Call</option>
+                    <option value="Campaign">Campaign</option>
+                    <option value="Social Media">Social Media</option>
+                    <option value="Partner">Partner</option>
+                    <option value="Existing Client">Existing Client</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                {/* Assigned Employee */}
+                <div className="relative">
+                  <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block mb-1">Assigned Employee</label>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsAssigneeDropdownOpen(prev => !prev)}
+                      className="input text-xs font-semibold bg-slate-50/50 border-slate-200 focus:bg-white w-full flex items-center justify-between text-left cursor-pointer transition-all shadow-2xs hover:border-slate-300"
+                    >
+                      <span className={currentAssigneeName ? 'text-slate-900 font-semibold truncate' : 'text-slate-400'}>
+                        {currentAssigneeName || 'Unassigned'}
+                      </span>
+                      <ChevronDown size={14} className={`text-slate-400 transition-transform duration-200 shrink-0 ${isAssigneeDropdownOpen ? 'rotate-180 text-purple-600' : ''}`} />
+                    </button>
+
+                    {isAssigneeDropdownOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setIsAssigneeDropdownOpen(false)} />
+                        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 py-1 max-h-48 overflow-y-auto custom-scrollbar divide-y divide-slate-50 animate-fadeIn">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditAssignee('');
+                              setIsAssigneeDropdownOpen(false);
+                            }}
+                            className={`w-full text-left px-3.5 py-2 text-xs transition-colors flex items-center justify-between cursor-pointer ${!editAssignee ? 'bg-purple-50 text-purple-700 font-bold' : 'text-slate-700 hover:bg-slate-50'}`}
+                          >
+                            <span>Unassigned</span>
+                            {!editAssignee && <Check size={13} className="text-purple-600 shrink-0" />}
+                          </button>
+                          {assignableEmployeesList.map((emp: any) => {
+                            const empUserId = emp.userId || emp.user?.id || emp.id || emp._id;
+                            const p = emp.employeeProfile || emp;
+                            const empName = `${p.firstName || emp.firstName || emp.user?.firstName || ''} ${p.lastName || emp.lastName || emp.user?.lastName || ''}`.trim() || emp.name || emp.email || 'Employee';
+                            const isSelected = String(editAssignee).toLowerCase() === String(empUserId).toLowerCase() ||
+                              String(editAssignee).toLowerCase() === String(emp.id).toLowerCase() ||
+                              String(editAssignee).toLowerCase() === String(emp._id || '').toLowerCase() ||
+                              String(editAssignee).toLowerCase() === String(emp.userId || '').toLowerCase();
+                            return (
+                              <button
+                                key={emp.id || empUserId}
+                                type="button"
+                                onClick={() => {
+                                  setEditAssignee(empUserId);
+                                  setIsAssigneeDropdownOpen(false);
+                                }}
+                                className={`w-full text-left px-3.5 py-2 text-xs transition-colors flex items-center justify-between cursor-pointer ${isSelected ? 'bg-purple-50 text-purple-700 font-bold' : 'text-slate-700 hover:bg-slate-50'}`}
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <div className="w-5 h-5 rounded-full bg-purple-100 text-purple-700 text-[10px] font-bold flex items-center justify-center shrink-0">
+                                    {empName.charAt(0).toUpperCase()}
+                                  </div>
+                                  <span className="truncate">{empName}</span>
+                                </div>
+                                {isSelected && <Check size={13} className="text-purple-600 shrink-0" />}
+                              </button>
+                            );
+                          })}
                         </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Follow-up Date */}
+                <div>
+                  <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block mb-1">Follow-up Date *</label>
+                  <DatePicker
+                    value={editFollowUp}
+                    onChange={setEditFollowUp}
+                    className="input text-xs bg-slate-50/50 border-slate-200 focus:bg-white"
+                  />
+                </div>
+
+                {/* Expected Premium / Budget */}
+                <div className="sm:col-span-2">
+                  <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block mb-1">Expected Premium / Budget (₹) *</label>
+                  <input
+                    type="number"
+                    value={editPremium}
+                    onChange={e => setEditPremium(e.target.value)}
+                    placeholder="e.g. 12000"
+                    className="input text-xs font-bold text-emerald-700 bg-slate-50/50 border-slate-200 focus:bg-white"
+                  />
+                </div>
+              </div>
+            </div>
+
+          </div>
+        )}
+
+        {/* Consultation Comments */}
+        {tab === 'comments' && (
+          <div className="space-y-3">
+            <div className="bg-white border border-slate-200/80 rounded-xl p-3 space-y-2 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-bold text-slate-700 block">Add Call Summary / Comment</label>
+                <span className="text-[10px] text-slate-400 font-medium">Press Ctrl+Enter to save</span>
+              </div>
+              <div className="flex gap-2">
+                <textarea
+                  value={commentText}
+                  onChange={e => setCommentText(e.target.value)}
+                  placeholder="Add Call Summary / Comment..."
+                  className="input text-xs flex-1 resize-none bg-slate-50/50 border-slate-200 focus:bg-white"
+                  rows={2}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && commentText.trim()) {
+                      addConsultationMutation.mutate(commentText.trim());
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => commentText.trim() && addConsultationMutation.mutate(commentText.trim())}
+                  disabled={!commentText.trim() || addConsultationMutation.isPending}
+                  className="btn-primary px-3.5 self-end h-8 text-xs flex flex-wrap items-center gap-1 font-bold shadow-2xs"
+                >
+                  {addConsultationMutation.isPending ? <RefreshCw size={12} className="animate-spin" /> : <Send size={12} />} Save
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2 max-h-[280px] overflow-y-auto custom-scrollbar pr-1">
+              {consultations.length === 0 ? (
+                <div className="text-center py-8 text-slate-400 bg-slate-50/60 border border-slate-200/60 rounded-xl p-4">
+                  <MessageCircle size={24} className="mx-auto mb-2 opacity-40 text-slate-400" />
+                  <p className="text-xs font-medium text-slate-500">No comments yet. Add the first summary below.</p>
+                </div>
+              ) : (
+                [...consultations].reverse().map((c: any) => {
+                  const authorName = c.authorName || (c.author?.employeeProfile ? `${c.author.employeeProfile.firstName || ''} ${c.author.employeeProfile.lastName || ''}`.trim() : (c.author?.email || 'System'));
+                  return (
+                    <div key={c.id} className="bg-white border border-slate-200/80 rounded-xl p-3 shadow-2xs space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="inline-flex flex-wrap items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-lg shadow-2xs">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                          {authorName}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-semibold">
+                          {c.createdAt ? format(new Date(c.createdAt), 'dd/MMM/yyyy, hh:mm a') : ''}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-800 leading-relaxed font-medium">{c.notes}</p>
+                      {c.scheduledAt && (
+                        <p className="text-[10px] text-amber-600 mt-1 flex flex-wrap items-center gap-1">
+                          <Calendar size={10} /> Scheduled: {format(new Date(c.scheduledAt), 'dd/MMM/yyyy')}
+                        </p>
                       )}
                     </div>
                   );
+                })
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Stage */}
+        {tab === 'stage' && (
+          <div className="space-y-4">
+            <div>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Move to Stage</p>
+              <div className="flex flex-wrap gap-2">
+                {UI_STAGES.map(s => {
+                  const backendStage = STAGE_MAPPINGS[s];
+                  const isCurrent = BACKEND_TO_UI[fullLead.stage] === s;
+                  return (
+                    <button key={s}
+                      onClick={() => !isCurrent && backendStage && handleStageChange(backendStage)}
+                      disabled={isCurrent || moveStage.isPending}
+                      className={clsx('flex items-center gap-1 text-xs px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer border',
+                        isCurrent ? 'bg-purple-600 text-white border-purple-600 shadow' : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100 hover:text-gray-700')}>
+                      {isCurrent && <ChevronRight size={10} />}
+                      {s}
+                    </button>
+                  );
                 })}
               </div>
-            );
-          })()}
-          {(() => {
-            const parsedLeadNotes = parseLeadNotes(fullLead.notes);
-            const connectedPolicyData = fullLead.connectedPolicy;
-            const isRenewalLead = parsedLeadNotes.leadType === 'RENEWAL' || fullLead.source === 'Renewal';
-            if (!isRenewalLead) return null;
+              <p className="text-[10px] text-gray-400 mt-2">Click any stage to move this lead there.</p>
+            </div>
 
-            const policyType = connectedPolicyData?.plan?.category || fullLead.plan?.category || (fullLead.interests && fullLead.interests.length > 0 ? fullLead.interests.join(', ') : '—');
-
-            return (
-              <div className="bg-gradient-to-br from-amber-50/90 to-orange-50/70 border border-amber-200/90 rounded-2xl p-4 space-y-3 shadow-2xs">
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold text-xs shadow-2xs">
-                      <Shield size={16} />
-                    </div>
-                    <div>
-                      <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 block">Renewal Created Against</span>
-                      <h4 className="text-sm font-extrabold text-slate-800">
-                        Policy #{connectedPolicyData?.policyNumber || parsedLeadNotes.policyNumber || 'N/A'}
-                      </h4>
-                    </div>
-                  </div>
-                  <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-purple-100 text-purple-700 border border-purple-200">
-                    Renewal Lead
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                  <div className="bg-white/80 rounded-xl p-2.5 border border-amber-100">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Policy Type</span>
-                    <p className="font-bold text-slate-700 mt-0.5 uppercase tracking-wide">
-                      {policyType}
-                    </p>
-                  </div>
-
-                  <div className="bg-white/80 rounded-xl p-2.5 border border-amber-100">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Expiry / End Date</span>
-                    <p className="font-bold text-rose-600 mt-0.5 flex flex-wrap items-center gap-1">
-                      <Calendar size={12} />
-                      {connectedPolicyData?.endDate ? new Date(connectedPolicyData.endDate).toLocaleDateString('en-IN') : (parsedLeadNotes.endDate ? new Date(parsedLeadNotes.endDate).toLocaleDateString('en-IN') : '—')}
-                    </p>
-                  </div>
-
-                  <div className="bg-white/80 rounded-xl p-2.5 border border-amber-100">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Company & Plan Name</span>
-                    <p className="font-bold text-slate-700 mt-0.5 truncate">
-                      {connectedPolicyData?.plan?.company?.name || parsedLeadNotes.companyName || '—'}
-                    </p>
-                    <p className="text-[11px] font-semibold text-slate-500 truncate">
-                      {connectedPolicyData?.plan?.name || parsedLeadNotes.planName || '—'}
-                    </p>
-                  </div>
-
-                  <div className="bg-white/80 rounded-xl p-2.5 border border-amber-100">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Premium & Sum Insured</span>
-                    <p className="font-bold text-emerald-700 mt-0.5">
-                      Premium: ₹{Number(connectedPolicyData?.premiumAmount || parsedLeadNotes.premiumAmount || fullLead.premiumBudget || 0).toLocaleString('en-IN')}
-                    </p>
-                    <p className="text-[11px] font-semibold text-slate-600">
-                      Sum Insured: ₹{Number(connectedPolicyData?.sumAssured || parsedLeadNotes.sumAssured || fullLead.sumAssuredRequired || 0).toLocaleString('en-IN')}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
-          {/* Directly Editable Lead Management Details */}
-          <div className="bg-white border border-slate-200/90 rounded-2xl p-4 space-y-3.5 shadow-2xs">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-slate-100 pb-2 gap-3 sm:gap-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="w-7 h-7 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold text-xs shadow-2xs shrink-0">
-                  <Pencil size={14} />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wide">Lead Information & Status</h4>
-                  <p className="text-[10px] text-slate-400">Directly editable fields for this lead</p>
-                </div>
-              </div>
+            <div className="border-t border-gray-100 pt-3">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Mark as Process Completed</p>
               <button
-                onClick={() => handleUpdateLeadDetails()}
-                disabled={savingLeadDetails}
-                className="btn-primary text-xs px-3.5 py-1.5 h-auto flex flex-nowrap items-center justify-center gap-1.5 font-bold shadow-2xs w-full sm:w-auto shrink-0"
+                onClick={() => handleStageChange('PROCESS_COMPLETED')}
+                disabled={fullLead.stage === 'PROCESS_COMPLETED' || moveStage.isPending}
+                className="text-xs px-3 py-1.5 rounded-full font-medium border bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
               >
-                {savingLeadDetails ? <RefreshCw size={12} className="animate-spin shrink-0" /> : <Save size={12} className="shrink-0" />} Save Lead Details
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-              {/* Lead Stage */}
-              <div>
-                <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block mb-1">Lead Stage <span className="text-red-500">*</span></label>
-                <select
-                  value={editStage}
-                  onChange={e => setEditStage(e.target.value)}
-                  className="input text-xs font-semibold bg-slate-50/50 border-slate-200 focus:bg-white"
-                >
-                  {UI_STAGES.map(s => {
-                    const key = STAGE_MAPPINGS[s];
-                    return <option key={key} value={key}>{s}</option>;
-                  })}
-                </select>
-              </div>
-
-              {/* Lead Status */}
-              <div>
-                <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block mb-1">Lead Status <span className="text-red-500">*</span></label>
-                <select
-                  value={editStatus}
-                  onChange={e => setEditStatus(e.target.value)}
-                  className="input text-xs font-semibold bg-slate-50/50 border-slate-200 focus:bg-white"
-                >
-                  <option value="Interested">Interested</option>
-                  <option value="Hot">Hot</option>
-                  <option value="Warm">Warm</option>
-                  <option value="Cold">Cold</option>
-                  <option value="Follow Up">Follow Up</option>
-                  <option value="Closed">Closed</option>
-                </select>
-              </div>
-
-              {/* Lead Type */}
-              <div>
-                <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block mb-1">Lead Type <span className="text-red-500">*</span></label>
-                <select
-                  value={editType}
-                  onChange={e => setEditType(e.target.value)}
-                  className="input text-xs font-semibold bg-slate-50/50 border-slate-200 focus:bg-white"
-                >
-                  <option value="Fresh">Fresh</option>
-                  <option value="Renewal">Renewal</option>
-                  <option value="Porting">Porting</option>
-                </select>
-              </div>
-
-              {/* Lead Source */}
-              <div>
-                <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block mb-1">Lead Source <span className="text-red-500">*</span></label>
-                <select
-                  value={editSource}
-                  onChange={e => setEditSource(e.target.value)}
-                  className="input text-xs font-semibold bg-slate-50/50 border-slate-200 focus:bg-white"
-                >
-                  <option value="Walk-in">Walk-in</option>
-                  <option value="Referral">Referral</option>
-                  <option value="Website">Website</option>
-                  <option value="Cold Call">Cold Call</option>
-                  <option value="Campaign">Campaign</option>
-                  <option value="Social Media">Social Media</option>
-                  <option value="Partner">Partner</option>
-                  <option value="Existing Client">Existing Client</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
-
-              {/* Assigned Employee */}
-              <div className="relative">
-                <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block mb-1">Assigned Employee</label>
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setIsAssigneeDropdownOpen(prev => !prev)}
-                    className="input text-xs font-semibold bg-slate-50/50 border-slate-200 focus:bg-white w-full flex items-center justify-between text-left cursor-pointer transition-all shadow-2xs hover:border-slate-300"
-                  >
-                    <span className={currentAssigneeName ? 'text-slate-900 font-semibold truncate' : 'text-slate-400'}>
-                      {currentAssigneeName || 'Unassigned'}
-                    </span>
-                    <ChevronDown size={14} className={`text-slate-400 transition-transform duration-200 shrink-0 ${isAssigneeDropdownOpen ? 'rotate-180 text-purple-600' : ''}`} />
-                  </button>
-
-                  {isAssigneeDropdownOpen && (
-                    <>
-                      <div className="fixed inset-0 z-40" onClick={() => setIsAssigneeDropdownOpen(false)} />
-                      <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 py-1 max-h-48 overflow-y-auto custom-scrollbar divide-y divide-slate-50 animate-fadeIn">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditAssignee('');
-                            setIsAssigneeDropdownOpen(false);
-                          }}
-                          className={`w-full text-left px-3.5 py-2 text-xs transition-colors flex items-center justify-between cursor-pointer ${!editAssignee ? 'bg-purple-50 text-purple-700 font-bold' : 'text-slate-700 hover:bg-slate-50'}`}
-                        >
-                          <span>Unassigned</span>
-                          {!editAssignee && <Check size={13} className="text-purple-600 shrink-0" />}
-                        </button>
-                        {assignableEmployeesList.map((emp: any) => {
-                          const empUserId = emp.userId || emp.user?.id || emp.id;
-                          const empName = `${emp.firstName || emp.employeeProfile?.firstName || emp.user?.firstName || ''} ${emp.lastName || emp.employeeProfile?.lastName || emp.user?.lastName || ''}`.trim() || emp.name || emp.email || 'Employee';
-                          const isSelected = editAssignee === empUserId || editAssignee === emp.id;
-                          return (
-                            <button
-                              key={emp.id || empUserId}
-                              type="button"
-                              onClick={() => {
-                                setEditAssignee(empUserId);
-                                setIsAssigneeDropdownOpen(false);
-                              }}
-                              className={`w-full text-left px-3.5 py-2 text-xs transition-colors flex items-center justify-between cursor-pointer ${isSelected ? 'bg-purple-50 text-purple-700 font-bold' : 'text-slate-700 hover:bg-slate-50'}`}
-                            >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <div className="w-5 h-5 rounded-full bg-purple-100 text-purple-700 text-[10px] font-bold flex items-center justify-center shrink-0">
-                                  {empName.charAt(0).toUpperCase()}
-                                </div>
-                                <span className="truncate">{empName}</span>
-                              </div>
-                              {isSelected && <Check size={13} className="text-purple-600 shrink-0" />}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* Follow-up Date */}
-              <div>
-                <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block mb-1">Follow-up Date *</label>
-                <DatePicker
-                  value={editFollowUp}
-                  onChange={setEditFollowUp}
-                  className="input text-xs bg-slate-50/50 border-slate-200 focus:bg-white"
-                />
-              </div>
-
-              {/* Expected Premium / Budget */}
-              <div className="sm:col-span-2">
-                <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block mb-1">Expected Premium / Budget (₹) *</label>
-                <input
-                  type="number"
-                  value={editPremium}
-                  onChange={e => setEditPremium(e.target.value)}
-                  placeholder="e.g. 12000"
-                  className="input text-xs font-bold text-emerald-700 bg-slate-50/50 border-slate-200 focus:bg-white"
-                />
-              </div>
-            </div>
-          </div>
-
-        </div>
-      )}
-
-      {/* Consultation Comments */}
-      {tab === 'comments' && (
-        <div className="space-y-3">
-          <div className="bg-white border border-slate-200/80 rounded-xl p-3 space-y-2 shadow-2xs">
-            <div className="flex items-center justify-between">
-              <label className="text-[11px] font-bold text-slate-700 block">Add Call Summary / Comment</label>
-              <span className="text-[10px] text-slate-400 font-medium">Press Ctrl+Enter to save</span>
-            </div>
-            <div className="flex gap-2">
-              <textarea
-                value={commentText}
-                onChange={e => setCommentText(e.target.value)}
-                placeholder="Add Call Summary / Comment..."
-                className="input text-xs flex-1 resize-none bg-slate-50/50 border-slate-200 focus:bg-white"
-                rows={2}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && commentText.trim()) {
-                    addConsultationMutation.mutate(commentText.trim());
-                  }
-                }}
-              />
-              <button
-                onClick={() => commentText.trim() && addConsultationMutation.mutate(commentText.trim())}
-                disabled={!commentText.trim() || addConsultationMutation.isPending}
-                className="btn-primary px-3.5 self-end h-8 text-xs flex flex-wrap items-center gap-1 font-bold shadow-2xs"
-              >
-                {addConsultationMutation.isPending ? <RefreshCw size={12} className="animate-spin" /> : <Send size={12} />} Save
+                Mark as Process Completed
               </button>
             </div>
           </div>
-
-          <div className="space-y-2 max-h-[280px] overflow-y-auto custom-scrollbar pr-1">
-            {consultations.length === 0 ? (
-              <div className="text-center py-8 text-slate-400 bg-slate-50/60 border border-slate-200/60 rounded-xl p-4">
-                <MessageCircle size={24} className="mx-auto mb-2 opacity-40 text-slate-400" />
-                <p className="text-xs font-medium text-slate-500">No comments yet. Add the first summary below.</p>
-              </div>
-            ) : (
-              [...consultations].reverse().map((c: any) => {
-                const authorName = c.authorName || (c.author?.employeeProfile ? `${c.author.employeeProfile.firstName || ''} ${c.author.employeeProfile.lastName || ''}`.trim() : (c.author?.email || 'System'));
-                return (
-                  <div key={c.id} className="bg-white border border-slate-200/80 rounded-xl p-3 shadow-2xs space-y-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="inline-flex flex-wrap items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-lg shadow-2xs">
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
-                        {authorName}
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-semibold">
-                        {c.createdAt ? format(new Date(c.createdAt), 'dd/MMM/yyyy, hh:mm a') : ''}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-800 leading-relaxed font-medium">{c.notes}</p>
-                    {c.scheduledAt && (
-                      <p className="text-[10px] text-amber-600 mt-1 flex flex-wrap items-center gap-1">
-                        <Calendar size={10} /> Scheduled: {format(new Date(c.scheduledAt), 'dd/MMM/yyyy')}
-                      </p>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Stage */}
-      {tab === 'stage' && (
-        <div className="space-y-4">
-          <div>
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Move to Stage</p>
-            <div className="flex flex-wrap gap-2">
-              {UI_STAGES.map(s => {
-                const backendStage = STAGE_MAPPINGS[s];
-                const isCurrent = BACKEND_TO_UI[fullLead.stage] === s;
-                return (
-                  <button key={s}
-                    onClick={() => !isCurrent && backendStage && handleStageChange(backendStage)}
-                    disabled={isCurrent || moveStage.isPending}
-                    className={clsx('flex items-center gap-1 text-xs px-3 py-1.5 rounded-full font-medium transition-all cursor-pointer border',
-                      isCurrent ? 'bg-purple-600 text-white border-purple-600 shadow' : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100 hover:text-gray-700')}>
-                    {isCurrent && <ChevronRight size={10} />}
-                    {s}
-                  </button>
-                );
-              })}
-            </div>
-            <p className="text-[10px] text-gray-400 mt-2">Click any stage to move this lead there.</p>
-          </div>
-
-          <div className="border-t border-gray-100 pt-3">
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Mark as Process Completed</p>
-            <button
-              onClick={() => handleStageChange('PROCESS_COMPLETED')}
-              disabled={fullLead.stage === 'PROCESS_COMPLETED' || moveStage.isPending}
-              className="text-xs px-3 py-1.5 rounded-full font-medium border bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-            >
-              Mark as Process Completed
-            </button>
-          </div>
-        </div>
-      )}
+        )}
       </div>
     </div>
   );

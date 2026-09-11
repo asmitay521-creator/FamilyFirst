@@ -1,0 +1,2 @@
+src/pages/Leads/index.tsx(2744,65): error TS2304: Cannot find name 'c'.
+src/pages/Leads/index.tsx(2766,51): error TS2304: Cannot find name 'c'.

@@ -73,6 +73,7 @@ const Documents      = lazyWithRetry(() => import('@pages/Documents'));
 const DeletionRequests = lazyWithRetry(() => import('@pages/DeletionRequests'));
 const GlobalSearch   = lazyWithRetry(() => import('@pages/Search'));
 const FirmProfile    = lazyWithRetry(() => import('@pages/FirmProfile'));
+const Management     = lazyWithRetry(() => import('@pages/Management'));
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
 
@@ -220,7 +221,7 @@ export default function App() {
         <Route path="contacts/:id" element={<Suspense fallback={<Loader />}><ContactDetail /></Suspense>} />
         <Route path="leads"        element={<PlanProtectedRoute feature="leads"><Suspense fallback={<Loader />}><Leads /></Suspense></PlanProtectedRoute>} />
         <Route path="leads/:id"    element={<PlanProtectedRoute feature="leads"><Suspense fallback={<Loader />}><LeadDetail /></Suspense></PlanProtectedRoute>} />
-        <Route path="seminars"     element={<PlanProtectedRoute feature="leads"><Suspense fallback={<Loader />}><Seminars /></Suspense></PlanProtectedRoute>} />
+        <Route path="seminars"     element={<OwnerRoute><PlanProtectedRoute feature="leads"><Suspense fallback={<Loader />}><Seminars /></Suspense></PlanProtectedRoute></OwnerRoute>} />
         <Route path="policies"     element={<Suspense fallback={<Loader />}><Policies /></Suspense>} />
         <Route path="emi-tracking" element={<Suspense fallback={<Loader />}><Policies /></Suspense>} />
         <Route path="policies/:id" element={<Suspense fallback={<Loader />}><PolicyDetail /></Suspense>} />
@@ -245,6 +246,10 @@ export default function App() {
         <Route path="employees/:id" element={<AdminOrAuthorizedRoute permission="manage_employees"><PlanProtectedRoute feature="employees"><Suspense fallback={<Loader />}><EmployeeDetail /></Suspense></PlanProtectedRoute></AdminOrAuthorizedRoute>} />
         <Route path="commissions"  element={<OwnerRoute><PlanProtectedRoute feature="commissions"><Suspense fallback={<Loader />}><Commissions /></Suspense></PlanProtectedRoute></OwnerRoute>} />
         <Route path="whatsapp/*"   element={<AdminOrAuthorizedRoute permission="manage_whatsapp"><PlanProtectedRoute feature="whatsapp"><Suspense fallback={<Loader />}><WhatsApp /></Suspense></PlanProtectedRoute></AdminOrAuthorizedRoute>} />
+        <Route path="management"   element={<Suspense fallback={<Loader />}><Management /></Suspense>} />
+        <Route path="management/leads" element={<Suspense fallback={<Loader />}><Management /></Suspense>} />
+        <Route path="management/seminars" element={<OwnerRoute><Suspense fallback={<Loader />}><Management /></Suspense></OwnerRoute>} />
+        <Route path="management/*" element={<Suspense fallback={<Loader />}><Management /></Suspense>} />
         <Route path="calendar"     element={<Suspense fallback={<Loader />}><Calendar /></Suspense>} />
         <Route path="settings"     element={<OwnerRoute><Suspense fallback={<Loader />}><Settings /></Suspense></OwnerRoute>} />
         <Route path="firm-profile" element={<OwnerRoute><PlanProtectedRoute feature="branding"><Suspense fallback={<Loader />}><FirmProfile /></Suspense></PlanProtectedRoute></OwnerRoute>} />

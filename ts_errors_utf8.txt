@@ -1,0 +1,155 @@
+﻿src/hooks/useContacts.ts(68,37): error TS2339: Property 'birthdays' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/hooks/useDashboard.ts(68,38): error TS2339: Property 'birthdays' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Claims/index.tsx(546,97): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(549,111): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(552,104): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(555,103): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(558,113): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(561,117): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(564,112): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(567,109): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(570,92): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(573,109): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(576,107): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(579,102): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(582,117): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(585,109): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(1993,157): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(1994,178): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(1995,162): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(1996,166): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(1997,176): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(1998,185): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(1999,176): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(2000,170): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(2001,148): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(2002,172): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(2003,169): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(2004,162): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(2005,184): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Claims/index.tsx(2006,175): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Contacts/ContactDetail.tsx(92,36): error TS2339: Property 'activity' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Contacts/ContactDetail.tsx(125,56): error TS2339: Property 'addAddress' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Contacts/ContactDetail.tsx(131,53): error TS2339: Property 'removeAddress' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Contacts/ContactDetail.tsx(137,59): error TS2339: Property 'addOccupation' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Contacts/ContactDetail.tsx(143,52): error TS2339: Property 'removeOccupation' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Contacts/ContactDetail.tsx(149,57): error TS2339: Property 'addRelationship' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Contacts/ContactDetail.tsx(155,52): error TS2339: Property 'removeRelationship' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Contacts/ContactDetail.tsx(161,39): error TS2339: Property 'inviteToPortal' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Contacts/ContactDetailModal.tsx(81,36): error TS2339: Property 'activity' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Contacts/ContactDetailModal.tsx(114,56): error TS2339: Property 'addAddress' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Contacts/ContactDetailModal.tsx(120,53): error TS2339: Property 'removeAddress' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Contacts/ContactDetailModal.tsx(126,59): error TS2339: Property 'addOccupation' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Contacts/ContactDetailModal.tsx(132,52): error TS2339: Property 'removeOccupation' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Contacts/ContactDetailModal.tsx(138,57): error TS2339: Property 'addRelationship' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Contacts/ContactDetailModal.tsx(144,52): error TS2339: Property 'removeRelationship' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Contacts/ContactDetailModal.tsx(150,39): error TS2339: Property 'inviteToPortal' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Contacts/index.tsx(839,36): error TS2339: Property 'activity' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Contacts/index.tsx(844,78): error TS2339: Property 'logInteraction' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Contacts/index.tsx(886,52): error TS2339: Property 'removeRelationship' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Contacts/index.tsx(1472,35): error TS2339: Property 'removeAddress' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Contacts/index.tsx(1472,79): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Contacts/index.tsx(1476,33): error TS2339: Property 'addAddress' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Contacts/index.tsx(1484,20): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Contacts/index.tsx(1491,35): error TS2339: Property 'removeOccupation' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Contacts/index.tsx(1491,81): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Contacts/index.tsx(1495,33): error TS2339: Property 'addOccupation' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Contacts/index.tsx(1499,20): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Contacts/index.tsx(1557,35): error TS2339: Property 'addAddress' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Contacts/index.tsx(1565,22): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Contacts/index.tsx(1569,35): error TS2339: Property 'addOccupation' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Contacts/index.tsx(1573,22): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Contacts/index.tsx(1624,37): error TS2339: Property 'addRelationship' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Contacts/index.tsx(2586,41): error TS2339: Property 'importCsv' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Employees/EmployeeDetail.tsx(195,16): error TS2339: Property 'data' does not exist on type '{}'.
+src/pages/Employees/EmployeeDetail.tsx(201,43): error TS2339: Property 'data' does not exist on type '{}'.
+src/pages/Employees/EmployeeDetail.tsx(204,35): error TS2339: Property 'data' does not exist on type '{}'.
+src/pages/Employees/EmployeeDetail.tsx(217,16): error TS2339: Property 'data' does not exist on type '{}'.
+src/pages/Employees/EmployeeDetail.tsx(220,35): error TS2339: Property 'data' does not exist on type '{}'.
+src/pages/Insurance/index.tsx(195,47): error TS2339: Property 'exportCsv' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Leads/index.tsx(1720,33): error TS2339: Property 'addAddress' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Leads/index.tsx(1728,20): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Leads/index.tsx(5426,33): error TS2339: Property 'get' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; }; }>; kanban: () => Promise<{ data: any; }>; ... 6 more ...; importCsv: (file: File) => any; }'.
+src/pages/Leads/index.tsx(5681,38): error TS2339: Property 'updateAssignee' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; }; }>; kanban: () => Promise<{ data: any; }>; ... 6 more ...; importCsv: (file: File) => any; }'.
+src/pages/Leads/index.tsx(5806,56): error TS2339: Property 'updateAssignee' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; }; }>; kanban: () => Promise<{ data: any; }>; ... 6 more ...; importCsv: (file: File) => any; }'.
+src/pages/Leads/LeadDetail.tsx(47,33): error TS2339: Property 'get' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; }; }>; kanban: () => Promise<{ data: any; }>; ... 6 more ...; importCsv: (file: File) => any; }'.
+src/pages/Policies/index.tsx(1204,25): error TS2339: Property 'logInteraction' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Policies/index.tsx(1208,18): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Policies/index.tsx(1239,25): error TS2339: Property 'logInteraction' does not exist on type '{ list: (params?: Record<string, any> | undefined) => Promise<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number; }; }>; get: (id: string) => Promise<...>; ... 4 more ...; remove: (id: string) => Promise<...>; }'.
+src/pages/Policies/index.tsx(1243,18): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/pages/Subscription/index.tsx(211,26): error TS2339: Property 'message' does not exist on type '{}'.
+src/services/index.ts(196,58): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(202,68): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(215,60): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(224,55): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(322,68): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(333,55): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(354,57): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(363,52): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(370,97): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(374,102): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(460,52): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(475,58): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(487,58): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(519,60): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(528,55): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(534,90): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(535,209): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(536,88): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(537,106): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(538,90): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(539,110): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(543,105): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(545,137): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(546,39): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(604,50): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(651,56): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(673,58): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(694,65): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(710,53): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(716,82): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(717,96): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(718,107): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(722,103): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(941,59): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(959,53): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(975,59): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(991,56): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(997,89): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(998,89): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(999,96): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1020,64): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1025,133): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1026,126): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1027,71): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1028,96): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1029,92): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1030,137): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1091,100): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1092,95): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1195,85): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1196,87): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1197,98): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1198,87): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1203,94): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1204,95): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1205,93): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1210,85): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1211,83): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1212,82): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1219,13): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1225,86): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1258,86): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1259,94): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1263,68): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1264,75): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1265,83): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1266,77): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1270,61): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1271,68): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1272,76): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1273,70): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1571,53): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1572,45): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1577,67): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/services/index.ts(1578,68): error TS7006: Parameter 'r' implicitly has an 'any' type.

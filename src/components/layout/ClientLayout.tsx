@@ -94,7 +94,7 @@ export default function ClientLayout() {
       </main>
 
       <footer className="text-center text-xs text-gray-400 py-4">
-        Powered by Insumitra · Insurance Agency Management
+        Powered by Family First · Insurance Agency Management
       </footer>
     </div>
   );

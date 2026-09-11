@@ -543,46 +543,46 @@ function ClaimEditForm({ initial, isPending, onSave, onCancel, employees }: {
       };
 
       if (claimFormFile) {
-        uploadPromises.push(documentsService.upload(claimFormFile, getMeta('CLAIM_FORM')).catch(e => console.error(e)));
+        uploadPromises.push(documentsService.upload(claimFormFile, getMeta('CLAIM_FORM')).catch((e: any) => console.error(e)));
       }
       if (dischargeSummaryFile) {
-        uploadPromises.push(documentsService.upload(dischargeSummaryFile, getMeta('DISCHARGE_SUMMARY')).catch(e => console.error(e)));
+        uploadPromises.push(documentsService.upload(dischargeSummaryFile, getMeta('DISCHARGE_SUMMARY')).catch((e: any) => console.error(e)));
       }
       if (otNotesFile) {
-        uploadPromises.push(documentsService.upload(otNotesFile, getMeta('OT_NOTES_IPD_PAPERS')).catch(e => console.error(e)));
+        uploadPromises.push(documentsService.upload(otNotesFile, getMeta('OT_NOTES_IPD_PAPERS')).catch((e: any) => console.error(e)));
       }
       if (hospitalBillFile) {
-        uploadPromises.push(documentsService.upload(hospitalBillFile, getMeta('HOSPITAL_BILL')).catch(e => console.error(e)));
+        uploadPromises.push(documentsService.upload(hospitalBillFile, getMeta('HOSPITAL_BILL')).catch((e: any) => console.error(e)));
       }
       if (pharmacyBillFile) {
-        uploadPromises.push(documentsService.upload(pharmacyBillFile, getMeta('PHARMACY_MEDICINES_BILL')).catch(e => console.error(e)));
+        uploadPromises.push(documentsService.upload(pharmacyBillFile, getMeta('PHARMACY_MEDICINES_BILL')).catch((e: any) => console.error(e)));
       }
       if (investigationBillFile) {
-        uploadPromises.push(documentsService.upload(investigationBillFile, getMeta('INVESTIGATION_LAB_BILL')).catch(e => console.error(e)));
+        uploadPromises.push(documentsService.upload(investigationBillFile, getMeta('INVESTIGATION_LAB_BILL')).catch((e: any) => console.error(e)));
       }
       if (bloodBagsBillFile) {
-        uploadPromises.push(documentsService.upload(bloodBagsBillFile, getMeta('BLOOD_ANESTHESIA_BILL')).catch(e => console.error(e)));
+        uploadPromises.push(documentsService.upload(bloodBagsBillFile, getMeta('BLOOD_ANESTHESIA_BILL')).catch((e: any) => console.error(e)));
       }
       if (labReportsFile) {
-        uploadPromises.push(documentsService.upload(labReportsFile, getMeta('IMPORTANT_LAB_REPORTS')).catch(e => console.error(e)));
+        uploadPromises.push(documentsService.upload(labReportsFile, getMeta('IMPORTANT_LAB_REPORTS')).catch((e: any) => console.error(e)));
       }
       if (billsFile) {
-        uploadPromises.push(documentsService.upload(billsFile, getMeta('IMP_BILLS')).catch(e => console.error(e)));
+        uploadPromises.push(documentsService.upload(billsFile, getMeta('IMP_BILLS')).catch((e: any) => console.error(e)));
       }
       if (otherImpDocsFile) {
-        uploadPromises.push(documentsService.upload(otherImpDocsFile, getMeta('OTHER_IMP_DOCUMENTS')).catch(e => console.error(e)));
+        uploadPromises.push(documentsService.upload(otherImpDocsFile, getMeta('OTHER_IMP_DOCUMENTS')).catch((e: any) => console.error(e)));
       }
       if (queryLetterFile) {
-        uploadPromises.push(documentsService.upload(queryLetterFile, getMeta('CLAIM_QUERY_LETTER')).catch(e => console.error(e)));
+        uploadPromises.push(documentsService.upload(queryLetterFile, getMeta('CLAIM_QUERY_LETTER')).catch((e: any) => console.error(e)));
       }
       if (replyDocsFile) {
-        uploadPromises.push(documentsService.upload(replyDocsFile, getMeta('REPLY_DOCUMENTS')).catch(e => console.error(e)));
+        uploadPromises.push(documentsService.upload(replyDocsFile, getMeta('REPLY_DOCUMENTS')).catch((e: any) => console.error(e)));
       }
       if (settlementLetterFile) {
-        uploadPromises.push(documentsService.upload(settlementLetterFile, getMeta('CLAIM_SETTLEMENT_LETTER')).catch(e => console.error(e)));
+        uploadPromises.push(documentsService.upload(settlementLetterFile, getMeta('CLAIM_SETTLEMENT_LETTER')).catch((e: any) => console.error(e)));
       }
       if (rejectionLetterFile) {
-        uploadPromises.push(documentsService.upload(rejectionLetterFile, getMeta('REJECTION_LETTER')).catch(e => console.error(e)));
+        uploadPromises.push(documentsService.upload(rejectionLetterFile, getMeta('REJECTION_LETTER')).catch((e: any) => console.error(e)));
       }
 
 
@@ -1573,7 +1573,49 @@ export default function Claims() {
   // Unified Filtered Claims Selector
   const filteredClaims = useMemo(() => {
     const sTerm = search.toLowerCase();
+    const userRole = String(authUser?.role || '').toUpperCase().trim();
+    const isOwnerOrAdmin = userRole === 'OWNER' || userRole === 'SUPERADMIN' || userRole === 'SUPER_ADMIN' || userRole === 'SUPER ADMIN' || userRole === 'ADMIN' || !userRole;
+    const isEmployeeRole = userRole === 'EMPLOYEE' && !isOwnerOrAdmin;
+
     return rawClaims.filter((c: any) => {
+      // Employee Role Data Isolation Safeguard:
+      if (isEmployeeRole) {
+        const currentUserId = String(authUser?.id || '').toLowerCase().trim();
+        const myEmp = (employees as any)?.find?.((e: any) => {
+          const eUid = String(e.userId || e.user?.id || e.id || '').toLowerCase().trim();
+          return eUid && eUid === currentUserId;
+        });
+        const validMyIds = new Set(
+          [currentUserId, myEmp?.id, myEmp?.userId, myEmp?.user?.id]
+            .filter(Boolean)
+            .map(id => String(id).toLowerCase().trim())
+        );
+
+        const myFirst = String(authUser?.firstName || '').toLowerCase().trim();
+        const myLast = String(authUser?.lastName || '').toLowerCase().trim();
+        const myFullName = `${myFirst} ${myLast}`.trim();
+        const myNames = [
+          myFullName,
+          myFirst,
+          (authUser as any)?.name ? String((authUser as any).name).toLowerCase().trim() : '',
+          myEmp?.name ? String(myEmp.name).toLowerCase().trim() : '',
+        ].filter((n: string) => n && n.length >= 3);
+
+        const assignedEmpId = String(c.assignedEmployeeId || c.assignedEmployee?.id || c.assignedEmployee?.userId || c.contact?.assignedEmployeeId || c.policy?.assignedEmployeeId || '').toLowerCase().trim();
+        const createdById = String(c.createdById || '').toLowerCase().trim();
+        const assignedById = String(c.assignedById || '').toLowerCase().trim();
+        const assignedToName = String(c.assignedToName || c.assignedEmployeeName || '').toLowerCase().trim();
+
+        const isAssignedToMe = (assignedEmpId && validMyIds.has(assignedEmpId)) ||
+          (assignedToName && myNames.some((mn: string) => assignedToName.includes(mn) || mn.includes(assignedToName)));
+        const isCreatedByMe = createdById && validMyIds.has(createdById);
+        const isAssignedByMe = assignedById && validMyIds.has(assignedById);
+
+        if (!isAssignedToMe && !isCreatedByMe && !isAssignedByMe) {
+          return false;
+        }
+      }
+
       const notes = getClaimNotesData(c.notes);
 
       // 1. Text Search (Client Name or Claim Number)
@@ -1633,7 +1675,7 @@ export default function Claims() {
 
       return true;
     });
-  }, [rawClaims, search, filterStatus, filterStartDate, filterEndDate, filterCompany, filterHospital, filterClaimType, analyticsDuration, filterAgent]);
+  }, [rawClaims, search, filterStatus, filterStartDate, filterEndDate, filterCompany, filterHospital, filterClaimType, analyticsDuration, filterAgent, authUser, employees]);
 
   // Client-side Sorting
   const sortedClaims = useMemo(() => {
@@ -1802,13 +1844,35 @@ export default function Claims() {
     enabled: !!selectedContact,
   });
 
-  const activeContactPolicies = contactDetail?.data?.policies ?? [];
+  const { data: policiesForPickerRes } = useQuery({
+    queryKey: ['policies-claims-picker', selectedContact?.id],
+    queryFn: () => policiesService.list(selectedContact?.id ? { contactId: selectedContact.id, limit: 100 } : { limit: 100 }),
+  });
 
+  const activeContactPolicies = useMemo(() => {
+    const fetchedPolicies = (policiesForPickerRes as any)?.data ?? policiesForPickerRes ?? [];
+    const contactPolicies = contactDetail?.data?.policies ?? [];
+
+    let combined: any[] = Array.isArray(fetchedPolicies) ? [...fetchedPolicies] : [];
+    if (Array.isArray(contactPolicies)) {
+      for (const cp of contactPolicies) {
+        if (!combined.some((p: any) => p.id === cp.id)) {
+          combined.push(cp);
+        }
+      }
+    }
+
+    if (selectedContact?.id) {
+      const filtered = combined.filter((p: any) => p.contactId === selectedContact.id || p.contact?.id === selectedContact.id);
+      if (filtered.length > 0) return filtered;
+    }
+    return combined;
+  }, [policiesForPickerRes, contactDetail, selectedContact?.id]);
 
   const createClaim = useCreateClaim();
   const updateClaim = useUpdateClaimStatus();
   const deleteClaim = useDeleteClaim();
-  
+
   const { data: companiesRes } = useQuery({
     queryKey: ['insurance-companies-for-hospitals'],
     queryFn: () => insuranceService.listCompanies(),
@@ -1842,6 +1906,39 @@ export default function Claims() {
     resolver: zodResolver(schema),
     defaultValues: { claimType: 'Cashless', intimatedAt: new Date().toISOString().split('T')[0] },
   });
+
+  // Auto-fetch policy for selected contact: auto-select if 1 policy, auto-open dropdown if multiple
+  useEffect(() => {
+    if (selectedContact?.id && activeContactPolicies.length > 0) {
+      if (activeContactPolicies.length === 1) {
+        const p = activeContactPolicies[0];
+        setSelectedPolicy(p);
+        setValue('policyId', p.id, { shouldValidate: true });
+        setValue('insuranceCompany', p.plan?.company?.name || '');
+        setValue('insuranceCompanyCategory', p.plan?.company?.category || 'Health');
+        setValue('insuranceProductName', p.plan?.name || '');
+        setValue('agentName', p.agent?.firstName ? `${p.agent.firstName} ${p.agent.lastName}` : '');
+        setValue('deathSumInsured', String(p.sumInsured || p.plan?.sumInsured || ''));
+        setPolicyDropdown(false);
+
+        const pNominees = Array.isArray(p.nominees) ? p.nominees : [];
+        setNewNominees(pNominees.map((n: any) => ({
+          name: n.name || '',
+          relationship: n.relationship || '',
+          phone: n.phone || '',
+          dob: n.dob ? n.dob.substring(0, 10) : '',
+          percentage: n.percentage || '',
+          comment: n.comment || ''
+        })));
+      } else if (activeContactPolicies.length > 1) {
+        if (!selectedPolicy || !activeContactPolicies.some((p: any) => p.id === selectedPolicy.id)) {
+          setSelectedPolicy(null);
+          setValue('policyId', '');
+          setPolicyDropdown(true);
+        }
+      }
+    }
+  }, [selectedContact?.id, activeContactPolicies]);
 
   // Watch calculations for create form
   const amtHospital = watch('amtHospital');
@@ -1990,20 +2087,20 @@ export default function Claims() {
         const uploadPromises: Promise<any>[] = [];
         const cId = rest.contactId || '';
         const pId = rest.policyId || '';
-        if (claimFormFile) uploadPromises.push(documentsService.upload(claimFormFile, { claimId, contactId: cId, policyId: pId, type: 'CLAIM_FORM' }).catch(err => console.error(err)));
-        if (dischargeSummaryFile) uploadPromises.push(documentsService.upload(dischargeSummaryFile, { claimId, contactId: cId, policyId: pId, type: 'DISCHARGE_SUMMARY' }).catch(err => console.error(err)));
-        if (otNotesFile) uploadPromises.push(documentsService.upload(otNotesFile, { claimId, contactId: cId, policyId: pId, type: 'OT_NOTES_IPD_PAPERS' }).catch(err => console.error(err)));
-        if (hospitalBillFile) uploadPromises.push(documentsService.upload(hospitalBillFile, { claimId, contactId: cId, policyId: pId, type: 'HOSPITAL_BILL' }).catch(err => console.error(err)));
-        if (pharmacyBillFile) uploadPromises.push(documentsService.upload(pharmacyBillFile, { claimId, contactId: cId, policyId: pId, type: 'PHARMACY_MEDICINES_BILL' }).catch(err => console.error(err)));
-        if (investigationBillFile) uploadPromises.push(documentsService.upload(investigationBillFile, { claimId, contactId: cId, policyId: pId, type: 'INVESTIGATION_LAB_BILL' }).catch(err => console.error(err)));
-        if (bloodBagsBillFile) uploadPromises.push(documentsService.upload(bloodBagsBillFile, { claimId, contactId: cId, policyId: pId, type: 'BLOOD_ANESTHESIA_BILL' }).catch(err => console.error(err)));
-        if (labReportsFile) uploadPromises.push(documentsService.upload(labReportsFile, { claimId, contactId: cId, policyId: pId, type: 'IMPORTANT_LAB_REPORTS' }).catch(err => console.error(err)));
-        if (billsFile) uploadPromises.push(documentsService.upload(billsFile, { claimId, contactId: cId, policyId: pId, type: 'IMP_BILLS' }).catch(err => console.error(err)));
-        if (otherImpDocsFile) uploadPromises.push(documentsService.upload(otherImpDocsFile, { claimId, contactId: cId, policyId: pId, type: 'OTHER_IMP_DOCUMENTS' }).catch(err => console.error(err)));
-        if (queryLetterFile) uploadPromises.push(documentsService.upload(queryLetterFile, { claimId, contactId: cId, policyId: pId, type: 'CLAIM_QUERY_LETTER' }).catch(err => console.error(err)));
-        if (replyDocsFile) uploadPromises.push(documentsService.upload(replyDocsFile, { claimId, contactId: cId, policyId: pId, type: 'REPLY_DOCUMENTS' }).catch(err => console.error(err)));
-        if (settlementLetterFile) uploadPromises.push(documentsService.upload(settlementLetterFile, { claimId, contactId: cId, policyId: pId, type: 'CLAIM_SETTLEMENT_LETTER' }).catch(err => console.error(err)));
-        if (rejectionLetterFile) uploadPromises.push(documentsService.upload(rejectionLetterFile, { claimId, contactId: cId, policyId: pId, type: 'REJECTION_LETTER' }).catch(err => console.error(err)));
+        if (claimFormFile) uploadPromises.push(documentsService.upload(claimFormFile, { claimId, contactId: cId, policyId: pId, type: 'CLAIM_FORM' }).catch((err: any) => console.error(err)));
+        if (dischargeSummaryFile) uploadPromises.push(documentsService.upload(dischargeSummaryFile, { claimId, contactId: cId, policyId: pId, type: 'DISCHARGE_SUMMARY' }).catch((err: any) => console.error(err)));
+        if (otNotesFile) uploadPromises.push(documentsService.upload(otNotesFile, { claimId, contactId: cId, policyId: pId, type: 'OT_NOTES_IPD_PAPERS' }).catch((err: any) => console.error(err)));
+        if (hospitalBillFile) uploadPromises.push(documentsService.upload(hospitalBillFile, { claimId, contactId: cId, policyId: pId, type: 'HOSPITAL_BILL' }).catch((err: any) => console.error(err)));
+        if (pharmacyBillFile) uploadPromises.push(documentsService.upload(pharmacyBillFile, { claimId, contactId: cId, policyId: pId, type: 'PHARMACY_MEDICINES_BILL' }).catch((err: any) => console.error(err)));
+        if (investigationBillFile) uploadPromises.push(documentsService.upload(investigationBillFile, { claimId, contactId: cId, policyId: pId, type: 'INVESTIGATION_LAB_BILL' }).catch((err: any) => console.error(err)));
+        if (bloodBagsBillFile) uploadPromises.push(documentsService.upload(bloodBagsBillFile, { claimId, contactId: cId, policyId: pId, type: 'BLOOD_ANESTHESIA_BILL' }).catch((err: any) => console.error(err)));
+        if (labReportsFile) uploadPromises.push(documentsService.upload(labReportsFile, { claimId, contactId: cId, policyId: pId, type: 'IMPORTANT_LAB_REPORTS' }).catch((err: any) => console.error(err)));
+        if (billsFile) uploadPromises.push(documentsService.upload(billsFile, { claimId, contactId: cId, policyId: pId, type: 'IMP_BILLS' }).catch((err: any) => console.error(err)));
+        if (otherImpDocsFile) uploadPromises.push(documentsService.upload(otherImpDocsFile, { claimId, contactId: cId, policyId: pId, type: 'OTHER_IMP_DOCUMENTS' }).catch((err: any) => console.error(err)));
+        if (queryLetterFile) uploadPromises.push(documentsService.upload(queryLetterFile, { claimId, contactId: cId, policyId: pId, type: 'CLAIM_QUERY_LETTER' }).catch((err: any) => console.error(err)));
+        if (replyDocsFile) uploadPromises.push(documentsService.upload(replyDocsFile, { claimId, contactId: cId, policyId: pId, type: 'REPLY_DOCUMENTS' }).catch((err: any) => console.error(err)));
+        if (settlementLetterFile) uploadPromises.push(documentsService.upload(settlementLetterFile, { claimId, contactId: cId, policyId: pId, type: 'CLAIM_SETTLEMENT_LETTER' }).catch((err: any) => console.error(err)));
+        if (rejectionLetterFile) uploadPromises.push(documentsService.upload(rejectionLetterFile, { claimId, contactId: cId, policyId: pId, type: 'REJECTION_LETTER' }).catch((err: any) => console.error(err)));
         if (uploadPromises.length > 0) {
           await Promise.all(uploadPromises);
         }
@@ -2116,7 +2213,7 @@ export default function Claims() {
     <div className="space-y-4">
       {/* Floating Right Action Panel */}
       <input type="file" ref={fileInputRef} onChange={handleImport} accept=".csv" className="hidden" />
-      <div className="fixed right-2 sm:right-3.5 top-60 sm:top-64 z-40 flex flex-col gap-2 bg-white/95 backdrop-blur-xl p-1.5 rounded-xl shadow-xl border border-slate-200/80 animate-fadeIn">
+      <div className="fixed right-3 sm:right-4 top-1/2 -translate-y-1/2 z-40 flex flex-col gap-2 bg-white/95 backdrop-blur-xl p-1.5 rounded-xl shadow-xl border border-slate-200/80 animate-fadeIn">
         {/* Import CSV */}
         <button
           type="button"
@@ -2957,17 +3054,17 @@ export default function Claims() {
                       <button
                         type="button"
                         onClick={() => setPolicyDropdown(v => !v)}
-                        className="input w-full text-left text-gray-700 bg-white mt-1 flex justify-between items-center"
+                        className="input w-full text-left text-gray-700 bg-white mt-1 flex justify-between items-center cursor-pointer"
                       >
-                        <span className={!selectedPolicy ? "text-gray-400" : ""}>
-                          {selectedPolicy ? selectedPolicy.policyNumber : 'Select Policy'}
+                        <span className={!selectedPolicy ? "text-gray-400 font-medium" : "font-semibold text-slate-800"}>
+                          {selectedPolicy ? `${selectedPolicy.policyNumber}${selectedPolicy.plan?.name ? ` (${selectedPolicy.plan.name})` : ''}` : 'Select Policy'}
                         </span>
-                        <span className="text-gray-400">▼</span>
+                        <span className="text-gray-400 text-xs">▼</span>
                       </button>
                       {policyDropdown && (
-                        <ul className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-44 overflow-y-auto">
+                        <ul className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-xl max-h-48 overflow-y-auto custom-scrollbar">
                           {activeContactPolicies.length === 0 ? (
-                            <li className="px-3 py-2 text-sm text-gray-400">No active policies</li>
+                            <li className="px-3 py-2.5 text-xs text-gray-400">No active policies found</li>
                           ) : (
                             activeContactPolicies.map((p: any) => (
                               <li key={p.id} onMouseDown={() => {
@@ -2980,6 +3077,31 @@ export default function Claims() {
                                 setValue('deathSumInsured', String(p.sumInsured || p.plan?.sumInsured || ''));
                                 setPolicyDropdown(false);
                                 
+                                if (!selectedContact && (p.contact || p.contactId)) {
+                                  if (p.contact) {
+                                    setSelectedContact({
+                                      id: p.contact.id || p.contactId,
+                                      firstName: p.contact.firstName || '',
+                                      lastName: p.contact.lastName || '',
+                                      phone: p.contact.phone || '',
+                                    });
+                                    setValue('contactId', p.contact.id || p.contactId, { shouldValidate: true });
+                                  } else if (p.contactId) {
+                                    contactsService.get(p.contactId).then((res: any) => {
+                                      const c = res?.data || res;
+                                      if (c?.id) {
+                                        setSelectedContact({
+                                          id: c.id,
+                                          firstName: c.firstName || '',
+                                          lastName: c.lastName || '',
+                                          phone: c.phone || '',
+                                        });
+                                        setValue('contactId', c.id, { shouldValidate: true });
+                                      }
+                                    }).catch((err: any) => console.warn(err));
+                                  }
+                                }
+                                
                                 const pNominees = Array.isArray(p.nominees) ? p.nominees : [];
                                 setNewNominees(pNominees.map((n: any) => ({
                                   name: n.name || '',
@@ -2989,9 +3111,12 @@ export default function Claims() {
                                   percentage: n.percentage || '',
                                   comment: n.comment || ''
                                 })));
-                              }} className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer">
-                                <span className="font-medium">{p.policyNumber}</span>
-                                {p.plan && <span className="text-gray-400 text-xs ml-auto">{p.plan.name}</span>}
+                              }} className="flex items-center justify-between px-3 py-2.5 text-xs hover:bg-purple-50 hover:text-purple-900 cursor-pointer border-b border-slate-100 last:border-0 transition-colors">
+                                <div>
+                                  <span className="font-bold text-slate-800 block">{p.policyNumber}</span>
+                                  {p.contact && <span className="text-[10px] text-slate-500 font-medium">{p.contact.firstName} {p.contact.lastName}</span>}
+                                </div>
+                                {p.plan && <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-100">{p.plan.name}</span>}
                               </li>
                             ))
                           )}

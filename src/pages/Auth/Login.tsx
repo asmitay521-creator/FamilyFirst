@@ -7,11 +7,14 @@ import { authService } from '@api/auth.service';
 import { useAuthStore } from '@store/auth.store';
 import { useLookupStore } from '@store/lookup.store';
 import { verifyEmployeeCredentials } from '../../utils/employeePasswordStorage';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { auth } from '../../services/firebase';
+import Modal from '@comps/common/Modal';
 import toast from 'react-hot-toast';
 import {
   Mail, Lock, Eye, EyeOff,
   ArrowRight, Briefcase, User, Shield,
-  Heart, Car, Home, Activity
+  Heart, Car, Home, Activity, CheckCircle, AlertCircle
 } from 'lucide-react';
 
 const schema = z.object({
@@ -26,6 +29,13 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [selectedRole, setSelectedRole] = useState<'owner' | 'employee'>('employee');
   const [rememberMe, setRememberMe] = useState(true);
+
+  // Forgot Password State
+  const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetSuccessMsg, setResetSuccessMsg] = useState('');
+  const [resetErrorMsg, setResetErrorMsg] = useState('');
 
   const { register, handleSubmit, formState: { errors } } = useForm<Form>({
     resolver: zodResolver(schema),
@@ -44,6 +54,44 @@ export default function Login() {
       navigate(target, { replace: true });
     }
   }, [token, user, navigate]);
+
+  const handleSendResetEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetErrorMsg('');
+    setResetSuccessMsg('');
+
+    let cleanEmail = resetEmail.trim();
+    if (!cleanEmail) {
+      setResetErrorMsg('Please enter your email address.');
+      return;
+    }
+    if (!cleanEmail.includes('@')) {
+      cleanEmail = `${cleanEmail}@gmail.com`;
+    }
+
+    setResetLoading(true);
+    try {
+      await sendPasswordResetEmail(auth, cleanEmail);
+      const successText = `Password reset link sent to ${cleanEmail}. Please check your inbox or spam folder.`;
+      setResetSuccessMsg(successText);
+      toast.success(`Password reset email sent to ${cleanEmail}`);
+    } catch (err: any) {
+      let msg = 'Failed to send password reset email. Please verify your email and try again.';
+      if (err.code === 'auth/user-not-found') {
+        msg = 'No user account found with this email address.';
+      } else if (err.code === 'auth/invalid-email') {
+        msg = 'Invalid email address format.';
+      } else if (err.code === 'auth/too-many-requests') {
+        msg = 'Too many attempts. Please wait a few minutes before trying again.';
+      } else if (err.message) {
+        msg = err.message;
+      }
+      setResetErrorMsg(msg);
+      toast.error(msg);
+    } finally {
+      setResetLoading(false);
+    }
+  };
 
   const onSubmit = async (data: Form) => {
     setLoading(true);
@@ -151,7 +199,7 @@ export default function Login() {
 
   return (
     <div
-      className="h-screen w-full flex items-center justify-center py-6 px-6 sm:px-10 select-none font-sans relative overflow-auto"
+      className="min-h-screen w-full flex items-center justify-center py-6 px-3 sm:px-8 select-none font-sans relative overflow-y-auto"
       style={{ background: 'radial-gradient(ellipse at 20% 50%, #7C3AED 0%, #5B21B6 30%, #4C1D95 60%, #2E1065 100%)' }}
     >
       {/* Ambient glow orbs */}
@@ -159,11 +207,11 @@ export default function Login() {
       <div className="absolute bottom-0 right-0 w-72 h-72 bg-indigo-400/20 rounded-full blur-3xl pointer-events-none" />
 
       {/* Main Card */}
-      <div className="relative z-10 w-full max-w-[960px] rounded-3xl shadow-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-2">
+      <div className="relative z-10 w-full max-w-[960px] rounded-3xl shadow-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-2 my-auto">
 
-        {/* ── LEFT PANEL ── */}
+        {/* ── LEFT PANEL (Desktop / Large Tablet) ── */}
         <div
-          className="relative flex flex-col justify-between p-6 sm:p-8 overflow-hidden"
+          className="relative hidden lg:flex flex-col justify-between p-6 sm:p-8 overflow-hidden"
           style={{ background: 'linear-gradient(160deg, #f8f4ff 0%, #ede8ff 40%, #ddd5f8 100%)' }}
         >
           {/* Subtle background circle */}
@@ -261,18 +309,18 @@ export default function Login() {
         </div>
 
         {/* ── RIGHT PANEL ── */}
-        <div className="bg-white flex flex-col justify-between p-6 sm:p-8">
+        <div className="bg-white flex flex-col justify-between p-5 sm:p-8">
           <div className="space-y-4 my-auto">
 
             {/* Logo */}
             <div className="text-center">
               <div className="inline-flex flex-col items-center mb-3">
-                <div className="w-20 h-20 rounded-2xl bg-white shadow-lg border border-purple-100 flex items-center justify-center mb-2">
-                  <img src="/FamilyFirstLogo.png" alt="Family First Insurance" className="w-16 h-16 object-contain" />
+                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white shadow-lg border border-purple-100 flex items-center justify-center mb-2">
+                  <img src="/FamilyFirstLogo.png" alt="Family First Insurance" className="w-12 h-12 sm:w-16 sm:h-16 object-contain" />
                 </div>
                 <p className="text-[9px] font-black tracking-widest text-purple-500 uppercase">FAMILY FIRST</p>
               </div>
-              <h2 className="text-2xl font-black text-slate-900 tracking-tight">
+              <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
                 {selectedRole === 'employee' ? 'Employee Login' : 'Owner Login'}
               </h2>
               <p className="text-xs text-slate-400 font-medium mt-1">
@@ -283,29 +331,29 @@ export default function Login() {
             </div>
 
             {/* Role Tabs */}
-            <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-2xl border border-slate-200">
+            <div className="grid grid-cols-2 gap-1.5 sm:gap-2 p-1 bg-slate-100 rounded-2xl border border-slate-200">
               <button
                 type="button"
                 onClick={() => setSelectedRole('owner')}
-                className={`py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                className={`py-2 sm:py-2.5 px-2 sm:px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 sm:gap-2 cursor-pointer ${
                   selectedRole === 'owner'
                     ? 'bg-purple-700 text-white shadow-md shadow-purple-700/20'
                     : 'text-slate-600 hover:text-purple-700 hover:bg-white/60'
                 }`}
               >
-                <User size={15} />
+                <User size={14} />
                 <span>Owner Login</span>
               </button>
               <button
                 type="button"
                 onClick={() => setSelectedRole('employee')}
-                className={`py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                className={`py-2 sm:py-2.5 px-2 sm:px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 sm:gap-2 cursor-pointer ${
                   selectedRole === 'employee'
                     ? 'bg-purple-700 text-white shadow-md shadow-purple-700/20'
                     : 'text-slate-600 hover:text-purple-700 hover:bg-white/60'
                 }`}
               >
-                <Briefcase size={15} />
+                <Briefcase size={14} />
                 <span>Employee Login</span>
               </button>
             </div>
@@ -325,7 +373,7 @@ export default function Login() {
                   <input
                     {...register('email')}
                     type="text"
-                    placeholder={selectedRole === 'employee' ? 'e.g. vaishu123@gmail.com, 9876543210' : 'e.g. superadmin123@gmail.com'}
+                    placeholder={selectedRole === 'employee' ? 'Enter username, email or mobile' : 'Enter email address'}
                     className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:bg-white focus:border-purple-500 focus:ring-3 focus:ring-purple-500/15 transition-all outline-none"
                   />
                 </div>
@@ -361,7 +409,7 @@ export default function Login() {
               </div>
 
               {/* Remember + Forgot */}
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
                 <label className="flex items-center gap-2 text-xs text-slate-600 font-semibold cursor-pointer">
                   <input
                     type="checkbox"
@@ -373,7 +421,11 @@ export default function Login() {
                 </label>
                 <button
                   type="button"
-                  onClick={() => toast.error('Please contact your administrator for password assistance.')}
+                  onClick={() => {
+                    setShowForgotPasswordModal(true);
+                    setResetErrorMsg('');
+                    setResetSuccessMsg('');
+                  }}
                   className="text-xs text-purple-700 font-bold hover:underline cursor-pointer"
                 >
                   Forgot Password?
@@ -404,6 +456,91 @@ export default function Login() {
         </div>
 
       </div>
+
+      {/* Forgot Password Modal */}
+      {showForgotPasswordModal && (
+        <Modal
+          open={showForgotPasswordModal}
+          onClose={() => {
+            setShowForgotPasswordModal(false);
+            setResetErrorMsg('');
+            setResetSuccessMsg('');
+            setResetEmail('');
+          }}
+          title="Reset Your Password"
+          icon={<Lock className="w-5 h-5 text-purple-600" />}
+          size="sm"
+        >
+          <form onSubmit={handleSendResetEmail} className="space-y-4 py-2">
+            <p className="text-xs text-slate-500 font-medium leading-relaxed">
+              Enter your registered email address below and we'll send you a secure Firebase link to reset your password.
+            </p>
+
+            {resetSuccessMsg && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-semibold text-emerald-800 flex items-start gap-2">
+                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <span>{resetSuccessMsg}</span>
+              </div>
+            )}
+
+            {resetErrorMsg && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs font-semibold text-rose-700 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <span>{resetErrorMsg}</span>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                Email Address
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                  <Mail size={15} />
+                </div>
+                <input
+                  type="email"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  placeholder="Enter your registered email address"
+                  required
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:bg-white focus:border-purple-500 focus:ring-3 focus:ring-purple-500/15 transition-all outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowForgotPasswordModal(false);
+                  setResetErrorMsg('');
+                  setResetSuccessMsg('');
+                  setResetEmail('');
+                }}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer"
+              >
+                Back to Login
+              </button>
+
+              <button
+                type="submit"
+                disabled={resetLoading}
+                className="px-5 py-2.5 rounded-xl text-white text-xs font-bold bg-purple-700 hover:bg-purple-800 shadow-md shadow-purple-700/20 transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {resetLoading ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Sending...</span>
+                  </>
+                ) : (
+                  <span>Send Reset Link</span>
+                )}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </div>
   );
 }

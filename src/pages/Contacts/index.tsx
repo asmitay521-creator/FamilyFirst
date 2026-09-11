@@ -7,7 +7,7 @@ import {
 import { useContacts, useCreateContact, useUpdateContact, useDeleteContact, useUpcomingBirthdays } from '@hooks/useContacts';
 import { deletionRequestsService } from '@api/deletionRequestsService';
 import { useLookupStore } from '@store/lookup.store';
-import { contactsService, policiesService, claimsService, leadsService, employeesService } from '@api/index';
+import { contactsService, policiesService, claimsService, leadsService, employeesService, getLocalLeads } from '@api/index';
 import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
 import DataTable, { Column } from '@comps/common/DataTable';
 import Modal from '@comps/common/Modal';
@@ -26,6 +26,10 @@ import * as XLSX from 'xlsx';
 import { CountryPhoneInput } from '@comps/common/CountryPhoneInput';
 import { DatalistInput } from '@comps/common/DatalistInput';
 import { getAssignableEmployees } from '../Leads';
+import { db } from '../../services/firebase';
+import { collection, onSnapshot } from 'firebase/firestore';
+
+const validEmpId = (id?: string | null) => (id && typeof id === 'string' && id.trim() && id !== 'undefined' && id !== 'null' ? id.trim() : undefined);
 
 const EDUCATION_OPTIONS = [
   'Metric',
@@ -244,7 +248,22 @@ export default function Contacts() {
     if (searchParams.get('action') === 'add') {
       openCustomerCreate();
     }
-  }, [searchParams]);
+    const state = location.state as { reopenContactId?: string; viewOnly?: boolean } | null;
+    if (state?.reopenContactId) {
+      setActiveTab('customers');
+      contactsService.get(state.reopenContactId).then((res) => {
+        const contact = res?.data?.data || res?.data || res;
+        if (contact) {
+          if (state.viewOnly) {
+            openLeadView(contact);
+          } else {
+            openLeadEdit(contact);
+          }
+        }
+      }).catch(() => {});
+      window.history.replaceState({}, document.title);
+    }
+  }, [searchParams, location.state]);
   const [editTarget, setEditTarget] = useState<Contact | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Contact | null>(null);
   const [editLeadId, setEditLeadId] = useState<string | null>(null);
@@ -278,6 +297,10 @@ export default function Contacts() {
   const [showProductDropdown, setShowProductDropdown] = useState(false);
   const [filterProducts, setFilterProducts] = useState<string[]>([]);
   const [excludeProduct, setExcludeProduct] = useState(false);
+  const [filterAgent, setFilterAgent] = useState('');
+  const [filterSource, setFilterSource] = useState('');
+  const [filterStage, setFilterStage] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
   const [selectedDetailId, setSelectedDetailId] = useState<string | null>(null);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const { user: authUser } = useAuthStore();
@@ -296,7 +319,7 @@ export default function Contacts() {
   // Customer modal state
   const [leadModalOpen, setLeadModalOpen] = useState(false);
   const [isViewMode, setIsViewMode] = useState(false);
-  const [activeLeadTab, setActiveLeadTab] = useState('Personal');
+  const [activeLeadTab, setActiveLeadTab] = useState('Product Interest');
 
   type PersonalFields = Record<string, any>;
 
@@ -377,6 +400,7 @@ export default function Contacts() {
 
   function parseLeadNotes(notesText?: string | null) {
     const res = {
+      leadStage: 'TO_CONTACT',
       leadStatus: 'INTERESTED',
       leadType: 'FRESH',
       cleanNotes: '',
@@ -388,7 +412,8 @@ export default function Contacts() {
     if (notesText.trim().startsWith('{')) {
       try {
         const parsed = JSON.parse(notesText);
-        res.leadStatus = parsed.leadStatus || 'INTERESTED';
+        res.leadStage = parsed.leadStage || parsed.stage || 'TO_CONTACT';
+        res.leadStatus = parsed.leadStatus || parsed.status || 'INTERESTED';
         res.leadType = parsed.leadType || 'FRESH';
         res.cleanNotes = parsed.cleanNotes || '';
         res.dependencyType = parsed.dependencyType || 'SELF';
@@ -425,7 +450,10 @@ export default function Contacts() {
     const assignedEmpName = assignedEmp ? `${assignedEmp.firstName || assignedEmp.user?.firstName || ''} ${assignedEmp.lastName || assignedEmp.user?.lastName || ''}`.trim() : '';
 
     return JSON.stringify({
+      leadStage: card.leadStage,
+      stage: card.leadStage,
       leadStatus: card.leadStatus,
+      status: card.leadStatus,
       leadType: card.leadType,
       dependencyType: card.dependencyType || 'SELF',
       dependentDetails: card.dependencyType === 'DEPENDENT' ? (card.dependentDetails || '') : '',
@@ -570,7 +598,6 @@ export default function Contacts() {
 
       const serializedNotes = serializeLeadNotes(card);
 
-      const validEmpId = (id?: string) => (id && /^[0-9a-fA-F]{24}$/.test(id.trim())) ? id.trim() : undefined;
       const body = {
         contactId: editContactId,
         interests,
@@ -789,6 +816,34 @@ export default function Contacts() {
     return map;
   }, [claimsRes]);
 
+  // Real-time listener for contacts updates (Firestore + BroadcastChannel)
+  useEffect(() => {
+    const isSuperAdmin = Boolean((user?.role === 'SUPER_ADMIN' || user?.role === 'SUPERADMIN' || user?.role === 'ADMIN' || user?.role === 'OWNER') );
+    let unsub: (() => void) | null = null;
+    try {
+      if (db && isSuperAdmin) {
+        unsub = onSnapshot(collection(db, 'contacts'), () => {
+          qc.invalidateQueries({ queryKey: ['contacts'] });
+        }, () => {});
+      }
+    } catch (e) {}
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        bc = new BroadcastChannel('insumitra_contacts_channel');
+        bc.onmessage = () => {
+          qc.invalidateQueries({ queryKey: ['contacts'] });
+        };
+      }
+    } catch (e) {}
+
+    return () => {
+      if (unsub) unsub();
+      if (bc) bc.close();
+    };
+  }, [qc, user]);
+
   // Log Interaction state
   const [interactionModalOpen, setInteractionModalOpen] = useState(false);
   const [interactionTarget, setInteractionTarget] = useState<any | null>(null);
@@ -893,7 +948,11 @@ export default function Contacts() {
       district: '',
       city: '',
       pincode: '',
-      streetAddress: ''
+      streetAddress: '',
+      bankName: '',
+      bankAccountNumber: '',
+      bankIfsc: '',
+      bankBranch: '',
     });
 
     const currentUser = useAuthStore.getState().user;
@@ -941,6 +1000,134 @@ export default function Contacts() {
     return { firstName: fn, middleName: mn, lastName: ln };
   };
 
+  const buildProductInterestCards = (contactObj: any, fallbackObj: any): ProductInterestCard[] => {
+    const target = contactObj || fallbackObj || {};
+    let backendInterests = (target.productInterests && target.productInterests.length > 0)
+      ? target.productInterests
+      : ((fallbackObj?.productInterests && fallbackObj.productInterests.length > 0)
+        ? fallbackObj.productInterests
+        : (target.interests || fallbackObj?.interests || target.interestedIn || fallbackObj?.interestedIn || target.product
+          ? [{
+              id: target.id || fallbackObj?.id || Math.random().toString(36).slice(2),
+              interests: target.interests || fallbackObj?.interests || target.interestedIn || fallbackObj?.interestedIn || (target.product ? [target.product] : []),
+              source: target.source || fallbackObj?.source || target.leadSource || fallbackObj?.leadSource,
+              assignedEmployeeId: target.assignedEmployeeId || fallbackObj?.assignedEmployeeId,
+              stage: target.leadStage || target.stage || fallbackObj?.leadStage || fallbackObj?.stage || 'TO_CONTACT',
+              notes: target.notes || fallbackObj?.notes,
+              consultations: target.consultations || fallbackObj?.consultations
+            }]
+          : []));
+
+    if (!backendInterests || backendInterests.length === 0) {
+      try {
+        const localLeads = getLocalLeads();
+        const contactId = target.id || fallbackObj?.id;
+        const matchedLeads = localLeads.filter((l: any) =>
+          (contactId && (l.contactId === contactId || l.contact?.id === contactId))
+        );
+        if (matchedLeads.length > 0) {
+          backendInterests = matchedLeads;
+        }
+      } catch (e) {}
+    }
+
+    const parseBackendInterests = (list: any): { interestedIn: string[]; otherProduct: string } => {
+      const rawList: string[] = Array.isArray(list) ? list : (typeof list === 'string' ? [list] : []);
+      const NEW_STANDARD_PRODUCTS = [
+        'Health Insurance',
+        'Life Insurance',
+        'Child Education',
+        'Jeevan Vima',
+        'Customize Financial Planning',
+        'Term Insurance',
+        'Mutual Funds',
+        'Child Saving Plan'
+      ];
+      const interestedIn: string[] = [];
+      const otherParts: string[] = [];
+      for (const raw of rawList) {
+        if (!raw || typeof raw !== 'string' || !raw.trim()) continue;
+        const trimmed = raw.trim();
+        const lower = trimmed.toLowerCase();
+
+        if (NEW_STANDARD_PRODUCTS.includes(trimmed)) {
+          if (!interestedIn.includes(trimmed)) interestedIn.push(trimmed);
+        } else if (lower.includes('health')) {
+          if (!interestedIn.includes('Health Insurance')) interestedIn.push('Health Insurance');
+        } else if (lower.includes('life') && !lower.includes('term')) {
+          if (!interestedIn.includes('Life Insurance')) interestedIn.push('Life Insurance');
+        } else if (lower.includes('child') && (lower.includes('edu') || lower.includes('education'))) {
+          if (!interestedIn.includes('Child Education')) interestedIn.push('Child Education');
+        } else if (lower.includes('jeevan') || lower.includes('vima') || lower.includes('bima')) {
+          if (!interestedIn.includes('Jeevan Vima')) interestedIn.push('Jeevan Vima');
+        } else if (lower.includes('financial') || lower.includes('customize')) {
+          if (!interestedIn.includes('Customize Financial Planning')) interestedIn.push('Customize Financial Planning');
+        } else if (lower.includes('term')) {
+          if (!interestedIn.includes('Term Insurance')) interestedIn.push('Term Insurance');
+        } else if (lower.includes('mutual') || lower.includes('fund')) {
+          if (!interestedIn.includes('Mutual Funds')) interestedIn.push('Mutual Funds');
+        } else if (lower.includes('child') && (lower.includes('sav') || lower.includes('plan'))) {
+          if (!interestedIn.includes('Child Saving Plan')) interestedIn.push('Child Saving Plan');
+        } else {
+          otherParts.push(trimmed);
+        }
+      }
+      if (otherParts.length > 0 && !interestedIn.includes('Other')) {
+        interestedIn.push('Other');
+      }
+      if (interestedIn.length === 0 && rawList.length > 0) {
+        interestedIn.push('Other');
+        if (otherParts.length === 0) otherParts.push(rawList.join(', '));
+      } else if (interestedIn.length === 0) {
+        interestedIn.push('Health Insurance');
+      }
+      return { interestedIn, otherProduct: otherParts.join(', ') };
+    };
+
+    if (!backendInterests || backendInterests.length === 0) {
+      return [newProductInterestCard()];
+    }
+
+    return backendInterests.map((lead: any) => {
+      const extra = parseLeadNotes(lead.notes);
+      const comments = (lead.consultations || []).map((c: any) => ({
+        text: c.notes || '',
+        author: c.author || 'System',
+        datetime: c.createdAt ? new Date(c.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
+      }));
+
+      const { interestedIn, otherProduct } = parseBackendInterests(lead.interests || lead.interestedIn || lead.product);
+
+      const expectedPremium = lead.premiumBudget ? String(lead.premiumBudget) : (lead.expectedPremium ? String(lead.expectedPremium) : '');
+
+      const rawStage = lead.leadStage || lead.stage || extra.leadStage || target.leadStage || target.stage || fallbackObj?.leadStage || fallbackObj?.stage || 'TO_CONTACT';
+      let leadStage = rawStage;
+      if (rawStage === 'OPEN') leadStage = 'TO_CONTACT';
+      else if (rawStage === 'PAYMENT_DONE') leadStage = 'PROCESS_COMPLETED';
+
+      const leadStatus = lead.leadStatus || lead.status || extra.leadStatus || target.leadStatus || target.status || fallbackObj?.leadStatus || fallbackObj?.status || 'INTERESTED';
+
+      return {
+        id: lead.id || Math.random().toString(36).slice(2),
+        collapsed: false,
+        interestedIn,
+        otherProduct,
+        descriptionDetails: extra.descriptionDetails || '',
+        leadStage,
+        leadStatus,
+        dependencyType: extra.dependencyType || 'SELF',
+        dependentDetails: extra.dependentDetails || '',
+        leadType: extra.leadType || 'FRESH',
+        leadSource: lead.source || lead.leadSource || target.source || target.leadSource || fallbackObj?.source || fallbackObj?.leadSource || 'Walk-in',
+        assignedEmployeeId: lead.assignedEmployeeId || '',
+        followUpDate: lead.followUpDate ? lead.followUpDate.split('T')[0] : '',
+        expectedPremium,
+        comments,
+        newComment: '',
+      };
+    });
+  };
+
   const openLeadEdit = async (leadOrContact: any) => {
     const contactId = leadOrContact.contactId || leadOrContact.id;
     if (!contactId) {
@@ -956,6 +1143,11 @@ export default function Contacts() {
     setLoadedContact(fallbackContact);
 
     const initialNames = extractNameFields(fallbackContact);
+
+    const fallbackBankName = fallbackContact.bankName || fallbackContact.bankDetails?.bankName || fallbackContact.contact?.bankName || fallbackContact.contact?.bankDetails?.bankName || '';
+    const fallbackBankAccountNumber = fallbackContact.bankAccountNumber || fallbackContact.bankDetails?.accountNumber || fallbackContact.bankDetails?.bankAccountNumber || fallbackContact.contact?.bankAccountNumber || fallbackContact.contact?.bankDetails?.accountNumber || '';
+    const fallbackBankIfsc = fallbackContact.bankIfsc || fallbackContact.ifscCode || fallbackContact.bankDetails?.ifscCode || fallbackContact.bankDetails?.bankIfsc || fallbackContact.contact?.bankIfsc || fallbackContact.contact?.ifscCode || '';
+    const fallbackBankBranch = fallbackContact.bankBranch || fallbackContact.branchName || fallbackContact.bankDetails?.branchName || fallbackContact.bankDetails?.bankBranch || fallbackContact.contact?.bankBranch || fallbackContact.contact?.branchName || '';
 
     setPersonalFields({
       firstName: initialNames.firstName,
@@ -985,10 +1177,16 @@ export default function Contacts() {
       district: '',
       city: '',
       pincode: '',
-      streetAddress: fallbackContact.notes || fallbackContact.contact?.notes || ''
+      streetAddress: fallbackContact.notes || fallbackContact.contact?.notes || '',
+      bankName: fallbackBankName,
+      bankAccountNumber: fallbackBankAccountNumber,
+      bankIfsc: fallbackBankIfsc,
+      bankBranch: fallbackBankBranch,
     });
 
-    setActiveLeadTab('Personal');
+    // Immediately populate product interests synchronously so they display instantly upon opening modal
+    setProductInterests(buildProductInterestCards(null, fallbackContact));
+    setActiveLeadTab('Product Interest');
     setLeadModalOpen(true);
 
     const toastId = toast.loading('Loading contact details...');
@@ -1002,6 +1200,11 @@ export default function Contacts() {
         const primaryOcc = contact.occupations?.find((o: any) => o.isPrimary) || contact.occupations?.[0];
 
         const updatedNames = extractNameFields(contact, fallbackContact);
+
+        const fetchedBankName = contact.bankName || contact.bankDetails?.bankName || fallbackBankName;
+        const fetchedBankAccountNumber = contact.bankAccountNumber || contact.bankDetails?.accountNumber || contact.bankDetails?.bankAccountNumber || fallbackBankAccountNumber;
+        const fetchedBankIfsc = contact.bankIfsc || contact.ifscCode || contact.bankDetails?.ifscCode || contact.bankDetails?.bankIfsc || fallbackBankIfsc;
+        const fetchedBankBranch = contact.bankBranch || contact.branchName || contact.bankDetails?.branchName || contact.bankDetails?.bankBranch || fallbackBankBranch;
 
         setPersonalFields({
           isDependent: !!(contact.isDependent ?? fallbackContact.isDependent),
@@ -1033,14 +1236,18 @@ export default function Contacts() {
           district: primaryAddr?.district || '',
           city: primaryAddr?.city || '',
           pincode: primaryAddr?.pincode || '',
-          streetAddress: primaryAddr?.line1 || contact.notes || fallbackContact.notes || ''
+          streetAddress: primaryAddr?.line1 || contact.notes || fallbackContact.notes || '',
+          bankName: fetchedBankName,
+          bankAccountNumber: fetchedBankAccountNumber,
+          bankIfsc: fetchedBankIfsc,
+          bankBranch: fetchedBankBranch,
         });
 
         const lead = contact.productInterests?.[0] || (leadOrContact.contactId ? leadOrContact : null);
         setLeadInfoFields({
           profileType: activeTab === 'customers' ? 'Client Profile' : 'Lead Profile',
           leadStatus: lead?.stage || 'OPEN',
-          interestedIn: lead?.interests || ['Health'],
+          interestedIn: lead?.interests || ['Health Insurance'],
           leadSource: lead?.source || 'Walk-in',
           assignedEmployeeId: lead?.assignedEmployeeId || '',
           followUpDate: lead?.followUpDate ? lead.followUpDate.split('T')[0] : '',
@@ -1117,84 +1324,11 @@ export default function Contacts() {
         if (lifeEntries.length > 0) parsedPolicies.push({ policyType: 'Life', entries: lifeEntries });
         setPolicies(parsedPolicies);
 
-        const backendInterests = contact.productInterests || [];
-        const mappedInterests: ProductInterestCard[] = backendInterests.map((lead: any) => {
-          const extra = parseLeadNotes(lead.notes);
-          const comments = (lead.consultations || []).map((c: any) => ({
-            text: c.notes || '',
-            author: c.author || 'System',
-            datetime: c.createdAt ? new Date(c.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
-          }));
-
-          const parseBackendInterests = (list: string[] = []): { interestedIn: string[]; otherProduct: string } => {
-            const STANDARD_PRODUCTS = ['Health', 'Life', 'Term', 'Accident Policy', 'Motor', 'Mutual Funds', 'Porting'];
-            const interestedIn: string[] = [];
-            const otherParts: string[] = [];
-            for (const raw of list) {
-              if (!raw || !raw.trim()) continue;
-              const trimmed = raw.trim();
-              const lower = trimmed.toLowerCase();
-              if (lower.includes('health')) {
-                if (!interestedIn.includes('Health')) interestedIn.push('Health');
-              } else if (lower.includes('life') && !lower.includes('term')) {
-                if (!interestedIn.includes('Life')) interestedIn.push('Life');
-              } else if (lower.includes('term')) {
-                if (!interestedIn.includes('Term')) interestedIn.push('Term');
-              } else if (lower.includes('accident')) {
-                if (!interestedIn.includes('Accident Policy')) interestedIn.push('Accident Policy');
-              } else if (lower.includes('motor') || lower.includes('car') || lower.includes('vehicle') || lower.includes('bike')) {
-                if (!interestedIn.includes('Motor')) interestedIn.push('Motor');
-              } else if (lower.includes('mutual') || lower.includes('fund')) {
-                if (!interestedIn.includes('Mutual Funds')) interestedIn.push('Mutual Funds');
-              } else if (lower.includes('port')) {
-                if (!interestedIn.includes('Porting')) interestedIn.push('Porting');
-              } else if (STANDARD_PRODUCTS.includes(trimmed)) {
-                if (!interestedIn.includes(trimmed)) interestedIn.push(trimmed);
-              } else {
-                otherParts.push(trimmed);
-              }
-            }
-            if (otherParts.length > 0 && !interestedIn.includes('Other')) {
-              interestedIn.push('Other');
-            }
-            if (interestedIn.length === 0) {
-              interestedIn.push('Health');
-            }
-            return { interestedIn, otherProduct: otherParts.join(', ') };
-          };
-
-          const { interestedIn, otherProduct } = parseBackendInterests(lead.interests || []);
-
-          const expectedPremium = lead.premiumBudget ? String(lead.premiumBudget) : '';
-          let leadStage = 'TO_CONTACT';
-          if (lead.stage === 'OPEN') leadStage = 'TO_CONTACT';
-          else if (lead.stage === 'PAYMENT_DONE') leadStage = 'PROCESS_COMPLETED';
-          else leadStage = lead.stage;
-
-          return {
-            id: lead.id,
-            collapsed: true,
-            interestedIn,
-            otherProduct,
-            descriptionDetails: extra.descriptionDetails || '',
-            leadStage,
-            leadStatus: extra.leadStatus,
-            dependencyType: extra.dependencyType || 'SELF',
-            dependentDetails: extra.dependentDetails || '',
-            leadType: extra.leadType,
-            leadSource: lead.source || 'Walk-in',
-            assignedEmployeeId: lead.assignedEmployeeId || '',
-            followUpDate: lead.followUpDate ? lead.followUpDate.split('T')[0] : '',
-            expectedPremium,
-            comments,
-            newComment: '',
-          };
-        });
-
-        setProductInterests(mappedInterests);
+        // Synchronously update product interests with fetched contact data
+        setProductInterests(buildProductInterestCards(contact, fallbackContact));
       }
       toast.dismiss(toastId);
-    } catch (err) {
+    } catch(err: any) {
       toast.dismiss(toastId);
     }
   };
@@ -1370,8 +1504,11 @@ export default function Contacts() {
 
       let contactId = editContactId;
       if (editContactId) {
-        const validEmpId = (id?: string) => (id && /^[0-9a-fA-F]{24}$/.test(id.trim())) ? id.trim() : undefined;
         const chosenEmpId = validEmpId(leadInfoFields.assignedEmployeeId) || validEmpId(productInterests[0]?.assignedEmployeeId);
+
+        const chosenSource = productInterests[0]?.leadSource || leadInfoFields.leadSource || 'Walk-in';
+        const chosenStage = productInterests[0]?.leadStage || 'TO_CONTACT';
+        const chosenStatus = productInterests[0]?.leadStatus || 'INTERESTED';
 
         const updateBody: any = {
           firstName,
@@ -1379,8 +1516,14 @@ export default function Contacts() {
           phone: cleanPhone,
           isDependent: !!personalFields.isDependent,
           dependentNo: personalFields.isDependent ? personalFields.dependentNo : undefined,
+          assignedEmployeeId: chosenEmpId || undefined,
+          assignedByName: chosenEmpId ? getEmployeeName(chosenEmpId) : undefined,
+          source: chosenSource,
+          leadSource: chosenSource,
+          stage: chosenStage,
+          leadStage: chosenStage,
+          leadStatus: chosenStatus,
         };
-        if (chosenEmpId) updateBody.assignedEmployeeId = chosenEmpId;
         if (personalFields.middleName?.trim()) updateBody.middleName = personalFields.middleName.trim();
         if (cleanAltPhone) updateBody.alternatePhone = cleanAltPhone;
         if (personalFields.email?.trim()) updateBody.email = personalFields.email.trim();
@@ -1398,6 +1541,16 @@ export default function Contacts() {
         if (personalFields.annualIncome) updateBody.annualIncome = Number(personalFields.annualIncome);
         if (mergedTags && mergedTags.length > 0) updateBody.tags = mergedTags;
         if (personalFields.streetAddress?.trim()) updateBody.notes = personalFields.streetAddress.trim();
+        updateBody.bankName = personalFields.bankName || '';
+        updateBody.bankAccountNumber = personalFields.bankAccountNumber || '';
+        updateBody.bankIfsc = personalFields.bankIfsc || '';
+        updateBody.bankBranch = personalFields.bankBranch || '';
+        updateBody.bankDetails = {
+          bankName: personalFields.bankName || '',
+          accountNumber: personalFields.bankAccountNumber || '',
+          ifscCode: personalFields.bankIfsc || '',
+          branchName: personalFields.bankBranch || '',
+        };
 
         await contactsService.update(editContactId, updateBody);
 
@@ -1405,7 +1558,7 @@ export default function Contacts() {
         if (loadedContact) {
           const oldAddresses = loadedContact.addresses || [];
           for (const addr of oldAddresses) {
-            await contactsService.removeAddress(editContactId, addr.id).catch(err => console.error('Failed to remove old address:', err));
+            await contactsService.removeAddress(editContactId, addr.id).catch((err: any) => console.error('Failed to remove old address:', err));
           }
         }
         if (personalFields.state || personalFields.city || personalFields.pincode || personalFields.streetAddress) {
@@ -1417,14 +1570,14 @@ export default function Contacts() {
             pincode: personalFields.pincode || 'N/A',
             country: 'India',
             isPrimary: true,
-          }).catch(err => console.error('Failed to add new address:', err));
+          }).catch((err: any) => console.error('Failed to add new address:', err));
         }
 
         // Update Occupation: clean up old occupations, then create the new primary occupation
         if (loadedContact) {
           const oldOccs = loadedContact.occupations || [];
           for (const occ of oldOccs) {
-            await contactsService.removeOccupation(editContactId, occ.id).catch(err => console.error('Failed to remove old occupation:', err));
+            await contactsService.removeOccupation(editContactId, occ.id).catch((err: any) => console.error('Failed to remove old occupation:', err));
           }
         }
         if (personalFields.occupationType || personalFields.companyName || personalFields.annualIncome) {
@@ -1432,15 +1585,34 @@ export default function Contacts() {
             type: personalFields.occupationType || 'SALARIED',
             companyName: personalFields.companyName || undefined,
             isPrimary: true,
-          }).catch(err => console.error('Failed to add new occupation:', err));
+          }).catch((err: any) => console.error('Failed to add new occupation:', err));
         }
       } else {
+        const currentUser = useAuthStore.getState().user;
+        const curEmp = employeesList.find((e: any) => e.userId === currentUser?.id || e.id === currentUser?.id || e.user?.id === currentUser?.id);
+        const curEmpId = curEmp?.userId || curEmp?.id || currentUser?.id;
+        const curEmpName = currentUser?.firstName ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim() : (currentUser?.email || '');
+        const chosenEmpId = validEmpId(leadInfoFields.assignedEmployeeId) || validEmpId(productInterests[0]?.assignedEmployeeId) || (currentUser?.role === 'EMPLOYEE' ? curEmpId : undefined);
+
+        const chosenSource = productInterests[0]?.leadSource || leadInfoFields.leadSource || 'Walk-in';
+        const chosenStage = productInterests[0]?.leadStage || 'TO_CONTACT';
+        const chosenStatus = productInterests[0]?.leadStatus || 'INTERESTED';
+
         const contactBody: any = {
           firstName,
           lastName,
           phone: cleanPhone,
           isDependent: !!personalFields.isDependent,
           dependentNo: personalFields.isDependent ? personalFields.dependentNo : undefined,
+          assignedEmployeeId: chosenEmpId || undefined,
+          createdById: currentUser?.id,
+          createdByName: curEmpName,
+          assignedByName: chosenEmpId ? getEmployeeName(chosenEmpId) : curEmpName,
+          source: chosenSource,
+          leadSource: chosenSource,
+          stage: chosenStage,
+          leadStage: chosenStage,
+          leadStatus: chosenStatus,
         };
         if (personalFields.middleName?.trim()) contactBody.middleName = personalFields.middleName.trim();
         if (cleanAltPhone) contactBody.alternatePhone = cleanAltPhone;
@@ -1459,6 +1631,16 @@ export default function Contacts() {
         if (personalFields.annualIncome) contactBody.annualIncome = Number(personalFields.annualIncome);
         if (mergedTags && mergedTags.length > 0) contactBody.tags = mergedTags;
         if (personalFields.streetAddress?.trim()) contactBody.notes = personalFields.streetAddress.trim();
+        contactBody.bankName = personalFields.bankName || '';
+        contactBody.bankAccountNumber = personalFields.bankAccountNumber || '';
+        contactBody.bankIfsc = personalFields.bankIfsc || '';
+        contactBody.bankBranch = personalFields.bankBranch || '';
+        contactBody.bankDetails = {
+          bankName: personalFields.bankName || '',
+          accountNumber: personalFields.bankAccountNumber || '',
+          ifscCode: personalFields.bankIfsc || '',
+          branchName: personalFields.bankBranch || '',
+        };
 
         const contactRes = await contactsService.create(contactBody);
         const createdContactObj = contactRes?.data ?? contactRes;
@@ -1478,7 +1660,7 @@ export default function Contacts() {
               pincode: personalFields.pincode || 'N/A',
               country: 'India',
               isPrimary: true,
-            }).catch(err => console.error('Failed to add address:', err));
+            }).catch((err: any) => console.error('Failed to add address:', err));
           }
 
           if (personalFields.occupationType || personalFields.companyName || personalFields.annualIncome) {
@@ -1486,7 +1668,7 @@ export default function Contacts() {
               type: personalFields.occupationType || 'SALARIED',
               companyName: personalFields.companyName || undefined,
               isPrimary: true,
-            }).catch(err => console.error('Failed to add occupation:', err));
+            }).catch((err: any) => console.error('Failed to add occupation:', err));
           }
         }
       }
@@ -1594,13 +1776,12 @@ export default function Contacts() {
           .map((p: string) => (p === 'Other' && card.otherProduct ? card.otherProduct : p))
           .filter(Boolean);
 
-        const interests = rawInterests.length > 0 ? rawInterests : ['Health'];
+        const interests = rawInterests.length > 0 ? rawInterests : ['Health Insurance'];
 
         let stage = card.leadStage && card.leadStage !== 'OPEN' ? card.leadStage : 'TO_CONTACT';
 
         const serializedNotes = serializeLeadNotes(card);
 
-        const validEmpId = (id?: string) => (id && /^[0-9a-fA-F]{24}$/.test(id.trim())) ? id.trim() : undefined;
         const body = {
           contactId: contactId!,
           interests,
@@ -1634,6 +1815,45 @@ export default function Contacts() {
 
       // Await all sub-resource updates concurrently
       await Promise.all(subResourcePromises);
+
+      // Persist productInterests to contact object in localStorage / Firestore
+      const allLeadObjects = productInterests.map(card => {
+        const rawInterests = (card.interestedIn || [])
+          .map((p: string) => (p === 'Other' && card.otherProduct ? card.otherProduct : p))
+          .filter(Boolean);
+        return {
+          id: card.id,
+          interests: rawInterests.length > 0 ? rawInterests : ['Health Insurance'],
+          stage: card.leadStage || 'TO_CONTACT',
+          leadStage: card.leadStage || 'TO_CONTACT',
+          leadStatus: card.leadStatus || 'INTERESTED',
+          source: card.leadSource || 'Walk-in',
+          leadSource: card.leadSource || 'Walk-in',
+          assignedEmployeeId: card.assignedEmployeeId,
+          notes: serializeLeadNotes(card),
+          premiumBudget: Number(card.expectedPremium) || undefined,
+          followUpDate: card.followUpDate,
+        };
+      });
+
+      const chosenAssignedEmpId = validEmpId(productInterests[0]?.assignedEmployeeId) || validEmpId(leadInfoFields.assignedEmployeeId);
+      const chosenSource = productInterests[0]?.leadSource || leadInfoFields.leadSource || 'Walk-in';
+      const chosenStage = productInterests[0]?.leadStage || 'TO_CONTACT';
+      const chosenStatus = productInterests[0]?.leadStatus || 'INTERESTED';
+
+      if (contactId && allLeadObjects.length > 0) {
+        await contactsService.update(contactId, {
+          source: chosenSource,
+          leadSource: chosenSource,
+          stage: chosenStage,
+          leadStage: chosenStage,
+          leadStatus: chosenStatus,
+          assignedEmployeeId: chosenAssignedEmpId || undefined,
+          assignedByName: chosenAssignedEmpId ? getEmployeeName(chosenAssignedEmpId) : undefined,
+          productInterests: allLeadObjects,
+          interests: Array.from(new Set(allLeadObjects.flatMap(l => l.interests))),
+        });
+      }
 
       if (createdPolicies.length > 0) {
         setLoadedContact((prev: any) => prev ? {
@@ -1718,10 +1938,20 @@ export default function Contacts() {
   const openCreate = () => {
     setFormErrors({});
     setPersonalFields({
+      isDependent: false,
+      dependentNo: '',
+      firstName: '',
+      middleName: '',
+      lastName: '',
       fullName: '',
       gender: '',
       maritalStatus: '',
       dateOfBirth: '',
+      age: '',
+      height: '',
+      weight: '',
+      pan: '',
+      panNumber: '',
       declaredMedicalHistory: [],
       notDeclaredMedicalHistory: [],
       medicalHistoryDetails: '',
@@ -1738,7 +1968,11 @@ export default function Contacts() {
       district: '',
       city: '',
       pincode: '',
-      streetAddress: ''
+      streetAddress: '',
+      bankName: '',
+      bankAccountNumber: '',
+      bankIfsc: '',
+      bankBranch: '',
     });
 
     const currentUser = useAuthStore.getState().user;
@@ -1759,7 +1993,7 @@ export default function Contacts() {
     setPolicies([]);
     setSelectedCampaigns([]);
     setEditContactId(null);
-    setActiveLeadTab('Personal');
+    setActiveLeadTab('Product Interest');
     setLeadModalOpen(true);
   };
 
@@ -1798,8 +2032,8 @@ export default function Contacts() {
       ? [...rawContacts]
       : [];
 
-    // Merge registered employees into Contacts list ONLY for owner or admin
-    if (user?.role === 'OWNER' || user?.role === 'SUPERADMIN' || user?.role === 'SUPER_ADMIN') {
+    // Merge registered employees into Contacts list to keep them in contacts
+    {
       const cleanPhone = (p?: string) => String(p || '').replace(/\D/g, '').slice(-10);
       const cleanEmail = (e?: string) => String(e || '').toLowerCase().trim();
 
@@ -1902,6 +2136,7 @@ export default function Contacts() {
         const isAssignedToMe = assignedEmpId ? validMyIds.includes(assignedEmpId) : false;
         const isAssignedByMe = (assignedById && validMyIds.includes(assignedById)) || (assignedByName && myNames.some((mn: string) => assignedByName.includes(mn) || mn.includes(assignedByName)));
         const isCreatedByMe = (createdById && validMyIds.includes(createdById)) || (createdByName && myNames.some((mn: string) => createdByName.includes(mn) || mn.includes(createdByName)));
+        const hasContactsPerm = (user as any)?.permissions?.includes('contacts') || (user as any)?.permissions?.includes('all') || !(user as any)?.permissions || (user as any)?.permissions?.length === 0;
 
         if (!isAssignedToMe && !hasMySubResource && !isAssignedByMe && !isCreatedByMe) {
           return false;
@@ -1956,6 +2191,32 @@ export default function Contacts() {
         if (!ok) return false;
       }
 
+      // Advanced Agent Filter
+      if (filterAgent) {
+        const itemEmpId = item.assignedEmployeeId || item.assignedTo?.id || item.assignedEmployee?.id;
+        if (itemEmpId !== filterAgent) return false;
+      }
+
+      // Advanced Source Filter
+      if (filterSource) {
+        const itemSource = item.source || item.leadSource || (item.productInterests?.[0]?.source) || (item.productInterests?.[0]?.leadSource);
+        if (!itemSource || String(itemSource).toLowerCase() !== filterSource.toLowerCase()) return false;
+      }
+
+      // Advanced Stage Filter
+      if (filterStage) {
+        const extra = parseLeadNotes(item.notes);
+        const itemStage = item.leadStage || item.stage || extra.leadStage || (item.productInterests?.[0]?.stage) || (item.productInterests?.[0]?.leadStage);
+        if (!itemStage || String(itemStage).toLowerCase() !== filterStage.toLowerCase()) return false;
+      }
+
+      // Advanced Status Filter
+      if (filterStatus) {
+        const extra = parseLeadNotes(item.notes);
+        const itemStatus = item.leadStatus || item.status || extra.leadStatus || (item.productInterests?.[0]?.status) || (item.productInterests?.[0]?.leadStatus);
+        if (!itemStatus || String(itemStatus).toLowerCase() !== filterStatus.toLowerCase()) return false;
+      }
+
       const tags = item.tags || item.contact?.tags || [];
       const hasTag = (tag: string) => tags.some((t: string) => t.toLowerCase() === tag.toLowerCase());
 
@@ -2005,9 +2266,38 @@ export default function Contacts() {
           if (!ok) return false;
         }
       }
+      // Search term filtering
+      if (search && search.trim() !== '') {
+        const q = search.toLowerCase().trim();
+        const firstName = String(item.firstName || item.contact?.firstName || '').toLowerCase();
+        const lastName = String(item.lastName || item.contact?.lastName || '').toLowerCase();
+        const fullName = `${firstName} ${lastName}`.trim();
+        const phone = String(item.phone || item.mobile || item.contact?.phone || '').toLowerCase();
+        const altPhone = String(item.alternatePhone || item.contact?.alternatePhone || '').toLowerCase();
+        const email = String(item.email || item.contact?.email || '').toLowerCase();
+        const city = String(item.city || item.address?.city || item.contact?.city || '').toLowerCase();
+        const id = String(item.id || item.contactId || item._id || '').toLowerCase();
+        const leadStage = String(item.leadStage || '').toLowerCase();
+        const leadStatus = String(item.leadStatus || '').toLowerCase();
+
+        const matches =
+          fullName.includes(q) ||
+          firstName.includes(q) ||
+          lastName.includes(q) ||
+          phone.includes(q) ||
+          altPhone.includes(q) ||
+          email.includes(q) ||
+          city.includes(q) ||
+          id.includes(q) ||
+          leadStage.includes(q) ||
+          leadStatus.includes(q);
+
+        if (!matches) return false;
+      }
+
       return true;
     });
-  }, [activeTab, contactsRes, birthdayRes, selectedFilters, policyMap, claimMap, dateFrom, dateTo, filterProducts, excludeProduct]);
+  }, [search, activeTab, contactsRes, birthdayRes, selectedFilters, policyMap, claimMap, dateFrom, dateTo, filterProducts, excludeProduct, filterAgent, filterSource, filterStage, filterStatus]);
 
   // Client-side Sorting Memo
   const sortedAndFilteredData = useMemo(() => {
@@ -2104,12 +2394,7 @@ export default function Contacts() {
         );
       }
     },
-    {
-      key: 'followUpDate',
-      label: 'NEXT FOLLOW-UP',
-      sortable: true,
-      render: r => <span className="text-slate-600 text-xs font-semibold">{r.followUpDate ? format(new Date(r.followUpDate), 'dd/MMM/yyyy') : '—'}</span>
-    },
+
     {
       key: 'assignedTo',
       label: 'ASSIGNED EMPLOYEE',
@@ -2177,25 +2462,10 @@ export default function Contacts() {
                 Pick Contact
               </button>
             )}
-            <a
-              href={`https://wa.me/${r.phone?.replace(/\D/g, '')}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold flex items-center justify-center cursor-pointer shadow-md shadow-emerald-500/20 hover:shadow-lg hover:scale-105 transition-all"
-              title="WhatsApp"
-            >
-              <MessageCircle size={14} />
-            </a>
-            <a
-              href={`tel:${r.phone}`}
-              className="p-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold flex items-center justify-center cursor-pointer shadow-md shadow-blue-500/20 hover:shadow-lg hover:scale-105 transition-all"
-              title="Call"
-            >
-              <Phone size={14} />
-            </a>
+
             {canEditContacts && (
               <button
-                onClick={() => openEdit(r)}
+                onClick={() => openLeadEdit(r)}
                 className="p-2 rounded-xl bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 text-white font-bold flex items-center justify-center cursor-pointer shadow-md shadow-purple-500/20 hover:shadow-lg hover:scale-105 transition-all"
                 title="Edit Contact"
               >
@@ -2357,25 +2627,10 @@ export default function Contacts() {
       label: 'ACTIONS',
       render: r => (
         <div className="flex gap-1.5 justify-start items-center" onClick={e => e.stopPropagation()}>
-          <a
-            href={`https://wa.me/${r.phone?.replace(/\D/g, '')}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="p-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold flex items-center justify-center cursor-pointer shadow-md shadow-emerald-500/20 hover:shadow-lg hover:scale-105 transition-all"
-            title="WhatsApp"
-          >
-            <MessageCircle size={14} />
-          </a>
-          <a
-            href={`tel:${r.phone}`}
-            className="p-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold flex items-center justify-center cursor-pointer shadow-md shadow-blue-500/20 hover:shadow-lg hover:scale-105 transition-all"
-            title="Call"
-          >
-            <Phone size={14} />
-          </a>
+
           {canEditContacts && (
             <button
-              onClick={() => openEdit(r)}
+              onClick={() => openLeadEdit(r)}
               className="p-2 rounded-xl bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 text-white font-bold flex items-center justify-center cursor-pointer shadow-md shadow-purple-500/20 hover:shadow-lg hover:scale-105 transition-all"
               title="Edit Contact"
             >
@@ -2468,22 +2723,7 @@ export default function Contacts() {
       label: 'ACTIONS',
       render: r => (
         <div className="flex gap-1.5 justify-start items-center" onClick={e => e.stopPropagation()}>
-          <a
-            href={`https://wa.me/${r.phone?.replace(/\D/g, '')}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="p-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold flex items-center justify-center cursor-pointer shadow-md shadow-emerald-500/20 hover:shadow-lg hover:scale-105 transition-all"
-            title="WhatsApp"
-          >
-            <MessageCircle size={14} />
-          </a>
-          <a
-            href={`tel:${r.phone}`}
-            className="p-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold flex items-center justify-center cursor-pointer shadow-md shadow-blue-500/20 hover:shadow-lg hover:scale-105 transition-all"
-            title="Call"
-          >
-            <Phone size={14} />
-          </a>
+
         </div>
       )
     }
@@ -2536,7 +2776,7 @@ export default function Contacts() {
       />
 
       {/* Floating Right Action Panel (Import CSV, Import Directory & Add Buttons) */}
-      <div className="fixed right-2 sm:right-3.5 top-60 sm:top-64 z-40 flex flex-col gap-2 bg-white/95 backdrop-blur-xl p-1.5 rounded-xl shadow-xl border border-slate-200/80 animate-fadeIn">
+      <div className="fixed right-3 sm:right-4 top-1/2 -translate-y-1/2 z-40 flex flex-col gap-2 bg-white/95 backdrop-blur-xl p-1.5 rounded-xl shadow-xl border border-slate-200/80 animate-fadeIn">
         {/* Import CSV */}
         <button
           type="button"
@@ -2550,18 +2790,7 @@ export default function Contacts() {
           </span>
         </button>
 
-        {/* Import Directory */}
-        <button
-          type="button"
-          onClick={() => setDirImportOpen(true)}
-          className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-tr from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white flex items-center justify-center transition-all hover:scale-105 shadow-xs cursor-pointer group relative"
-          title="Import Phone Directory"
-        >
-          <Users size={14} strokeWidth={2.2} />
-          <span className="absolute right-full mr-2.5 px-2.5 py-1 rounded-lg bg-slate-900/90 backdrop-blur-md text-white text-[10px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-all pointer-events-none shadow-lg border border-slate-800">
-            Import Phone Directory
-          </span>
-        </button>
+
 
         {/* Add Contact */}
         <button
@@ -2656,13 +2885,13 @@ export default function Contacts() {
 
       {/* Advanced Filters Panel */}
       {showAdvancedFilters && (
-        <div className="card grid grid-cols-1 sm:grid-cols-4 gap-4 bg-gradient-to-r from-slate-50 via-blue-50/20 to-slate-50 rounded-2xl border border-slate-200/70 p-4 mb-2 shadow-sm animate-fadeIn">
+        <div className="card grid grid-cols-1 sm:grid-cols-5 gap-3 bg-gradient-to-r from-slate-50 via-purple-50/30 to-slate-50 rounded-2xl border border-slate-200/80 p-3.5 mb-2 shadow-sm animate-fadeIn">
           <div>
             <label className="label text-[10px] font-bold text-slate-400 uppercase tracking-wider">Assigned Agent</label>
             <select
-              value={leadInfoFields.assignedEmployeeId}
-              onChange={e => setLeadInfoFields(prev => ({ ...prev, assignedEmployeeId: e.target.value }))}
-              className="input text-xs font-semibold"
+              value={filterAgent}
+              onChange={e => { setFilterAgent(e.target.value); setPage(1); }}
+              className="input text-xs font-semibold py-1.5"
             >
               <option value="">All Agents</option>
               {employeesList.map((emp: any) => {
@@ -2679,40 +2908,85 @@ export default function Contacts() {
           <div>
             <label className="label text-[10px] font-bold text-slate-400 uppercase tracking-wider">Lead Source</label>
             <select
-              value={leadInfoFields.leadSource}
-              onChange={e => setLeadInfoFields(prev => ({ ...prev, leadSource: e.target.value }))}
-              className="input text-xs font-semibold"
+              value={filterSource}
+              onChange={e => { setFilterSource(e.target.value); setPage(1); }}
+              className="input text-xs font-semibold py-1.5"
             >
-              <option value="By Agent">By Agent</option>
+              <option value="">All Sources</option>
+              <option value="Walk-in">Walk-in</option>
               <option value="Online">Online</option>
               <option value="Referral">Referral</option>
-              <option value="Walk-in">Walk-in</option>
+              <option value="By Agent">By Agent</option>
             </select>
           </div>
           <div>
-            <label className="label text-[10px] font-bold text-slate-400 uppercase tracking-wider">Product Type</label>
-            <div className="flex flex-wrap items-center gap-2 mt-1">
+            <label className="label text-[10px] font-bold text-slate-400 uppercase tracking-wider">Lead Stage</label>
+            <select
+              value={filterStage}
+              onChange={e => { setFilterStage(e.target.value); setPage(1); }}
+              className="input text-xs font-semibold py-1.5"
+            >
+              <option value="">All Stages</option>
+              <option value="TO_CONTACT">To Contact</option>
+              <option value="CONTACTED">Contacted</option>
+              <option value="PROPOSAL_SENT">Proposal Sent</option>
+              <option value="LOGIN_IN_PROGRESS">Login in Progress</option>
+              <option value="PROCESS_COMPLETED">Process Completed</option>
+            </select>
+          </div>
+          <div>
+            <label className="label text-[10px] font-bold text-slate-400 uppercase tracking-wider">Lead Status</label>
+            <select
+              value={filterStatus}
+              onChange={e => { setFilterStatus(e.target.value); setPage(1); }}
+              className="input text-xs font-semibold py-1.5"
+            >
+              <option value="">All Statuses</option>
+              <option value="INTERESTED">Interested</option>
+              <option value="NOT_INTERESTED">Not Interested</option>
+              <option value="HOT">Hot</option>
+              <option value="VERY_HOT">Very Hot</option>
+            </select>
+          </div>
+          <div>
+            <label className="label text-[10px] font-bold text-slate-400 uppercase tracking-wider">Product Interest</label>
+            <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
               <select
                 value={filterProducts[0] || 'ALL'}
-                onChange={e => setFilterProducts(e.target.value === 'ALL' ? [] : [e.target.value])}
-                className="input py-1.5 text-xs font-semibold flex-1"
+                onChange={e => { setFilterProducts(e.target.value === 'ALL' ? [] : [e.target.value]); setPage(1); }}
+                className="input py-1.5 text-xs font-semibold flex-1 min-w-[110px]"
               >
-                <option value="ALL">All Categories</option>
-                <option value="HEALTH">Health</option>
-                <option value="LIFE">Life</option>
-                <option value="MF">MF (Mutual Funds)</option>
-                <option value="ACCIDENT">Accident</option>
-                <option value="OTHER">Other</option>
+                <option value="ALL">All Products</option>
+                <option value="Health Insurance">Health Insurance</option>
+                <option value="Life Insurance">Life Insurance</option>
+                <option value="Child Education">Child Education</option>
+                <option value="Jeevan Vima">Jeevan Vima</option>
+                <option value="Customize Financial Planning">Customize Financial Planning</option>
+                <option value="Term Insurance">Term Insurance</option>
+                <option value="Mutual Funds">Mutual Funds</option>
+                <option value="Child Saving Plan">Child Saving Plan</option>
+                <option value="Other">Other</option>
               </select>
-              <label className="flex flex-wrap items-center gap-1.5 cursor-pointer select-none text-[10px] font-extrabold text-slate-600 bg-white border border-slate-200 px-2 py-1.5 rounded-lg shadow-2xs shrink-0 hover:bg-slate-50 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={excludeProduct}
-                  onChange={e => setExcludeProduct(e.target.checked)}
-                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
-                />
-                <span>Exclude</span>
-              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterAgent('');
+                  setFilterSource('');
+                  setFilterStage('');
+                  setFilterStatus('');
+                  setFilterProducts([]);
+                  setExcludeProduct(false);
+                  setDateFrom('');
+                  setDateTo('');
+                  setSelectedFilters([]);
+                  setSearch('');
+                  setPage(1);
+                }}
+                className="inline-flex items-center justify-center gap-1 text-[11px] font-extrabold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 px-2.5 py-1.5 rounded-lg shadow-2xs cursor-pointer transition-all hover:scale-105 shrink-0"
+                title="Clear all filters"
+              >
+                Clear
+              </button>
             </div>
           </div>
         </div>
@@ -2929,21 +3203,29 @@ export default function Contacts() {
         </div>
       </Modal>
 
-      <Modal
-        open={leadModalOpen}
-        onClose={closeLeadModal}
-        title={
-          editContactId
-            ? (activeTab === 'customers' ? "Edit Customer Profile" : "Edit Contact Profile")
-            : (activeTab === 'customers' ? "Add New Customer" : "Add New Contact")
-        }
-        subtitle={
-          editContactId
-            ? (activeTab === 'customers' ? "Update customer profile, family details, and policies." : "Update contact profile, family details, and address.")
-            : (activeTab === 'customers' ? "Manage customer profile, family details, and policies." : "Manage contact profile, family details, and address.")
-        }
-        size="2xl"
-        actions={
+      {(() => {
+        const isEditingCustomer = !!(
+          (loadedContact?.policies && loadedContact.policies.length > 0) ||
+          (policyMap[editContactId || '']?.length > 0) ||
+          (loadedContact?.tags || []).some((t: string) => t?.toLowerCase() === 'customer') ||
+          activeTab === 'customers'
+        );
+        return (
+          <Modal
+            open={leadModalOpen}
+            onClose={closeLeadModal}
+            title={
+              editContactId
+                ? (isEditingCustomer ? "Edit Customer Profile" : "Edit Contact Profile")
+                : (activeTab === 'customers' ? "Add New Customer" : "Add New Contact")
+            }
+            subtitle={
+              editContactId
+                ? (isEditingCustomer ? "Update customer profile, family details, and policies." : "Update contact profile, family details, and address.")
+                : (activeTab === 'customers' ? "Manage customer profile, family details, and policies." : "Manage contact profile, family details, and address.")
+            }
+            size="2xl"
+            actions={
           <div className="flex gap-2.5 mr-1">
             {isViewMode ? (
                 <button
@@ -2977,7 +3259,7 @@ export default function Contacts() {
 
           {/* Modal sub-navigation tabs */}
           <div className="flex bg-slate-200/60 p-1.5 rounded-2xl mt-0 mb-3 gap-2 border border-slate-200/80 overflow-x-auto shadow-2xs">
-            {['Personal', 'Family'].map(tab => (
+            {['Product Interest', 'Personal', 'Family'].map(tab => (
               <button
                 key={tab}
                 type="button"
@@ -3083,28 +3365,40 @@ export default function Contacts() {
                       {!card.collapsed && (
                         <div className="p-4 space-y-4 bg-white">
 
-                          {/* Interested In — toggle buttons */}
+                          {/* Interested In — Dropdown & Toggle buttons */}
                           <div>
                             <div className="flex items-center justify-between mb-2">
-                              <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Interested In</label>
+                              <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Product Interest *</label>
                               {isExisting && (
                                 <span className="text-[10px] text-slate-400 font-medium italic">
                                   Category fixed for existing records. Change status below or click "+ Add Product Interest" for a new product.
                                 </span>
                               )}
                             </div>
+
+
                             <div className="flex flex-wrap gap-2">
-                              {['Health', 'Life', 'Term', 'Accident Policy', 'Motor', 'Mutual Funds', 'Porting', 'Other'].map(prod => {
+                              {[
+                                'Health Insurance',
+                                'Life Insurance',
+                                'Child Education',
+                                'Jeevan Vima',
+                                'Customize Financial Planning',
+                                'Term Insurance',
+                                'Mutual Funds',
+                                'Child Saving Plan',
+                                'Other'
+                              ].map(prod => {
                                 const isSel = card.interestedIn.includes(prod);
-                                const isAlreadySelected = false;
                                 const PILL_COLORS: Record<string, string> = {
-                                  Health: isSel ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100',
-                                  Life: isSel ? 'bg-purple-600 border-blue-600 text-white' : 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100',
-                                  Term: isSel ? 'bg-violet-600 border-violet-600 text-white' : 'bg-violet-50 border-violet-200 text-violet-700 hover:bg-violet-100',
-                                  'Accident Policy': isSel ? 'bg-orange-600 border-orange-600 text-white' : 'bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100',
-                                  Motor: isSel ? 'bg-rose-600 border-rose-600 text-white' : 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100',
+                                  'Health Insurance': isSel ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100',
+                                  'Life Insurance': isSel ? 'bg-purple-600 border-purple-600 text-white' : 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100',
+                                  'Child Education': isSel ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100',
+                                  'Jeevan Vima': isSel ? 'bg-amber-600 border-amber-600 text-white' : 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100',
+                                  'Customize Financial Planning': isSel ? 'bg-blue-600 border-blue-600 text-white' : 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100',
+                                  'Term Insurance': isSel ? 'bg-violet-600 border-violet-600 text-white' : 'bg-violet-50 border-violet-200 text-violet-700 hover:bg-violet-100',
                                   'Mutual Funds': isSel ? 'bg-cyan-600 border-cyan-600 text-white' : 'bg-cyan-50 border-cyan-200 text-cyan-700 hover:bg-cyan-100',
-                                  Porting: isSel ? 'bg-yellow-500 border-yellow-500 text-white' : 'bg-yellow-50 border-yellow-200 text-yellow-700 hover:bg-yellow-100',
+                                  'Child Saving Plan': isSel ? 'bg-rose-600 border-rose-600 text-white' : 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100',
                                   Other: isSel ? 'bg-slate-700 border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100',
                                 };
                                 let btnStyle = PILL_COLORS[prod] || (isSel ? 'bg-slate-700 text-white border-slate-700' : 'bg-white border-slate-200 text-slate-600');
@@ -4707,7 +5001,8 @@ export default function Contacts() {
             </fieldset>
           </div>
         </form>
-      </Modal>
+      </Modal>);
+      })()}
 
       {/* Import from Phone Directory Modal */}
       <Modal open={dirImportOpen} onClose={() => setDirImportOpen(false)} title="Import from Phone Directory">
@@ -4772,7 +5067,7 @@ export default function Contacts() {
         contactId={selectedDetailId}
         onEditClick={(c) => {
           setDetailModalOpen(false);
-          openEdit(c);
+          openLeadEdit(c);
         }}
       />
     </div>

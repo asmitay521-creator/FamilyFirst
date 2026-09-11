@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Plus, AlertTriangle, AlertCircle, Users, Target, CalendarCheck, FileText, ShieldCheck, Search, ChevronDown, X, UserPlus, UserCheck } from 'lucide-react';
+import { Plus, AlertTriangle, AlertCircle, Users, Target, CalendarCheck, FileText, ShieldCheck, Search, ChevronDown, X, UserPlus, UserCheck, User, Briefcase, Landmark } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { employeesService, subscriptionsService, contactsService } from '@api/index';
 import Modal from '@comps/common/Modal';
@@ -71,6 +71,7 @@ export default function EmployeesLayout() {
   const isOverview = location.pathname === '/employees' || location.pathname === '/employees/';
   const user      = useAuthStore(s => s.user);
   const [modalOpen, setModalOpen] = useState(false);
+  const [activeModalTab, setActiveModalTab] = useState<'personal' | 'job' | 'targets' | 'bank'>('personal');
   const qc = useQueryClient();
 
   const canEditEmployees = canEditModule(user, 'employees');
@@ -91,8 +92,8 @@ export default function EmployeesLayout() {
   const maxUsers         = sub?.plan?.maxUsers ?? 1;
   const activeUsersCount = empMeta?.meta?.total ?? 0;
   const usagePercentage  = maxUsers > 0 ? (activeUsersCount / maxUsers) * 100 : 0;
-  const isLimitReached   = maxUsers !== -1 && activeUsersCount >= maxUsers;
-  const isNearLimit      = maxUsers !== -1 && usagePercentage >= 80 && usagePercentage < 100;
+  const isLimitReached   = false;
+  const isNearLimit      = false;
 
   const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<CreateForm>({
     resolver: zodResolver(createSchema),
@@ -263,6 +264,7 @@ export default function EmployeesLayout() {
     mutationFn: (body: CreateForm) => employeesService.create(body),
     onSuccess: (res: any, variables: CreateForm) => {
       qc.invalidateQueries({ queryKey: ['employees'] });
+      qc.invalidateQueries({ queryKey: ['contacts'] });
       const newEmpId = res?.data?.id || res?.id;
       if (variables.password) {
         saveStoredEmployeePassword(
@@ -345,7 +347,28 @@ export default function EmployeesLayout() {
         </div>
       )}
 
-      {/* Sub-page Navigation Tabs */}
+      {/* Floating Right Action Panel (Vertical layout matching Claim/Contact pages) */}
+      {canEditEmployees && (
+        <div className="fixed right-3 sm:right-4 top-1/2 -translate-y-1/2 z-40 flex flex-col gap-2 bg-white/95 backdrop-blur-xl p-1.5 rounded-xl shadow-xl border border-slate-200/80 animate-fadeIn">
+          <button
+            type="button"
+            onClick={openCreateModal}
+            disabled={isLimitReached}
+            className={clsx(
+              "w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-tr from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white flex items-center justify-center transition-all hover:scale-105 shadow-xs cursor-pointer group relative",
+              isLimitReached && "opacity-50 cursor-not-allowed"
+            )}
+            title="New Employee"
+          >
+            <Plus size={14} strokeWidth={2.2} />
+            <span className="absolute right-full mr-2.5 px-2.5 py-1 rounded-lg bg-slate-900/90 backdrop-blur-md text-white text-[10px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-all pointer-events-none shadow-lg border border-slate-800">
+              New Employee
+            </span>
+          </button>
+        </div>
+      )}
+
+      {/* Sub-page Navigation Tabs & Actions */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 pb-3">
         <div className="flex flex-wrap items-center gap-2 overflow-x-auto custom-scrollbar">
           {[
@@ -379,297 +402,400 @@ export default function EmployeesLayout() {
         </div>
       </div>
 
-      {/* Floating Right Action Panel (Add Employee) */}
-      {canEditEmployees && (
-        <div className="fixed right-2 sm:right-3.5 top-60 sm:top-64 z-40 flex flex-col gap-2 bg-white/95 backdrop-blur-xl p-1.5 rounded-xl shadow-xl border border-slate-200/80 animate-fadeIn">
-          <button
-            type="button"
-            onClick={openCreateModal}
-            disabled={isLimitReached}
-            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-tr from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white flex items-center justify-center transition-all hover:scale-105 shadow-xs cursor-pointer group relative disabled:opacity-60 disabled:cursor-not-allowed"
-            title={isLimitReached ? 'Limit reached. Upgrade plan to add more user seats.' : 'Add Employee'}
-          >
-            <UserPlus size={14} strokeWidth={2.2} />
-            <span className="absolute right-full mr-2.5 px-2.5 py-1 rounded-lg bg-slate-900/90 backdrop-blur-md text-white text-[10px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-all pointer-events-none shadow-lg border border-slate-800">
-              Add Employee
-            </span>
-          </button>
-        </div>
-      )}
+
 
       {/* Sub-page rendered here */}
       <Outlet />
 
       {/* ── Create Employee Modal ──────────────────────────────────────────── */}
       <Modal open={modalOpen} onClose={() => { setModalOpen(false); reset(); setSelectedContactId(''); setContactSearch(''); setIsContactDropdownOpen(false); }} title="New Employee" size="xl">
-        <form onSubmit={handleSubmit(async body => { try { await createEmployee.mutateAsync(body); } catch {} })} className="space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="col-span-2 bg-slate-50 p-3 rounded-xl border border-slate-200/60 relative">
-              <label className="label font-bold text-slate-700 block mb-1.5">
-                Link Existing Employee / Contact (Select or Promote)
-              </label>
+        <form onSubmit={handleSubmit(async body => { try { await createEmployee.mutateAsync(body); } catch {} })} className="space-y-4">
+          
+          {/* Link / Promote Combobox Section */}
+          <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/60 relative">
+            <label className="label font-bold text-slate-700 block mb-1.5">
+              Link Existing Employee / Contact (Select or Promote)
+            </label>
 
-              {/* Direct Searchable Combobox */}
-              <div ref={contactDropdownRef} className="relative">
-                <div className="relative">
-                  <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                  <input
-                    type="text"
-                    className="w-full bg-white border border-slate-300 rounded-xl pl-10 pr-10 py-2.5 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all shadow-2xs"
-                    placeholder="Search or select employee / contact (e.g. Vaishnavi, Asmita, Super Admin)..."
-                    value={contactSearch}
-                    onFocus={() => setIsContactDropdownOpen(true)}
-                    onClick={() => setIsContactDropdownOpen(true)}
-                    onChange={e => {
-                      setContactSearch(e.target.value);
+            {/* Direct Searchable Combobox */}
+            <div ref={contactDropdownRef} className="relative">
+              <div className="relative">
+                <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                <input
+                  type="text"
+                  className="w-full bg-white border border-slate-300 rounded-xl pl-10 pr-10 py-2.5 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all shadow-2xs"
+                  placeholder="Search or select employee / contact (e.g. Vaishnavi, Asmita, Super Admin)..."
+                  value={contactSearch}
+                  onFocus={() => setIsContactDropdownOpen(true)}
+                  onClick={() => setIsContactDropdownOpen(true)}
+                  onChange={e => {
+                    setContactSearch(e.target.value);
+                    setIsContactDropdownOpen(true);
+                    if (!e.target.value.trim()) {
+                      setSelectedContactId('');
+                      setValue('contactId', '');
+                    }
+                  }}
+                />
+                {contactSearch ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      selectContactItem(null);
                       setIsContactDropdownOpen(true);
-                      if (!e.target.value.trim()) {
-                        setSelectedContactId('');
-                        setValue('contactId', '');
-                      }
                     }}
-                  />
-                  {contactSearch ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        selectContactItem(null);
-                        setIsContactDropdownOpen(true);
-                      }}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
-                      title="Clear selection"
-                    >
-                      <X size={12} />
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setIsContactDropdownOpen(!isContactDropdownOpen)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                    >
-                      <ChevronDown
-                        size={15}
-                        className={`transition-transform duration-150 ${isContactDropdownOpen ? 'rotate-180' : ''}`}
-                      />
-                    </button>
-                  )}
-                </div>
-
-                {/* Dropdown Options List */}
-                {isContactDropdownOpen && (
-                  <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-2 animate-fadeIn text-xs max-h-64 overflow-y-auto custom-scrollbar divide-y divide-slate-100">
-                    <button
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        selectContactItem(null);
-                      }}
-                      className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-colors select-none cursor-pointer flex items-center justify-between mb-1 ${
-                        !selectedContactId ? 'bg-purple-50 text-purple-700' : 'text-slate-600 hover:bg-slate-50'
-                      }`}
-                    >
-                      <span>-- None / Create New Employee Manually --</span>
-                      {!selectedContactId && <span className="text-purple-600 font-bold">✓</span>}
-                    </button>
-
-                    {filteredCombinedList.length === 0 ? (
-                      <div className="px-3 py-4 text-center text-slate-400 font-semibold italic text-xs">
-                        No matching employees or contacts found {contactSearch ? `for "${contactSearch}"` : ''}
-                      </div>
-                    ) : (
-                      filteredCombinedList.map((item) => {
-                        const isSel = item.id === selectedContactId;
-                        const fullName = `${item.firstName || ''} ${item.lastName || ''}`.trim() || 'Unnamed';
-                        const isEmployee = item.sourceType === 'EMPLOYEE';
-
-                        return (
-                          <button
-                            key={`${item.sourceType}-${item.id}`}
-                            type="button"
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              selectContactItem(item);
-                            }}
-                            className={`w-full text-left px-3 py-2.5 rounded-xl transition-all flex items-center justify-between gap-2 select-none cursor-pointer group ${
-                              isSel ? 'bg-purple-50 border border-purple-200 text-purple-900' : 'hover:bg-slate-50 text-slate-700'
-                            }`}
-                          >
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-bold text-slate-800 text-xs truncate group-hover:text-purple-700 transition-colors">
-                                  {fullName}
-                                </span>
-                                <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded tracking-wider uppercase ${
-                                  isEmployee
-                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                    : 'bg-purple-50 text-purple-700 border border-purple-200'
-                                }`}>
-                                  {isEmployee ? (item.role || 'EMPLOYEE') : (item.role || 'CONTACT')}
-                                </span>
-                                {item.designation && (
-                                  <span className="text-[10px] text-slate-400 font-medium truncate">
-                                    • {item.designation}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-3 text-[11px] text-slate-400 font-medium mt-0.5 flex-wrap">
-                                {item.phone && <span>📱 {item.phone}</span>}
-                                {item.email && <span className="truncate">✉️ {item.email}</span>}
-                              </div>
-                            </div>
-                            <div className="shrink-0 flex items-center gap-1.5">
-                              <span className={`text-[10px] font-bold px-2.5 py-1 rounded-lg transition-colors ${
-                                isSel
-                                  ? 'bg-purple-600 text-white'
-                                  : isEmployee
-                                    ? 'bg-emerald-100/80 text-emerald-800 group-hover:bg-emerald-600 group-hover:text-white'
-                                    : 'bg-purple-100/80 text-purple-800 group-hover:bg-purple-600 group-hover:text-white'
-                              }`}>
-                                {isSel ? 'Selected ✓' : isEmployee ? 'Autofill' : 'Promote'}
-                              </span>
-                            </div>
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
+                    title="Clear selection"
+                  >
+                    <X size={12} />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsContactDropdownOpen(!isContactDropdownOpen)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    <ChevronDown
+                      size={15}
+                      className={`transition-transform duration-150 ${isContactDropdownOpen ? 'rotate-180' : ''}`}
+                    />
+                  </button>
                 )}
               </div>
-            </div>
-            <div>
-              <label className="label">First Name <span className="text-red-500">*</span></label>
-              <input {...register('firstName')} className="input" placeholder="Ravi" />
-              {errors.firstName && <p className="text-xs text-red-500 mt-1">{errors.firstName.message}</p>}
-            </div>
-            <div>
-              <label className="label">Last Name <span className="text-red-500">*</span></label>
-              <input {...register('lastName')} className="input" placeholder="Sharma" />
-              {errors.lastName && <p className="text-xs text-red-500 mt-1">{errors.lastName.message}</p>}
-            </div>
-            <div>
-              <label className="label">Email <span className="text-red-500">*</span></label>
-              <input {...register('email')} type="email" className="input" placeholder="ravi@agency.com" />
-              {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email.message}</p>}
-            </div>
-            <div>
-              <label className="label">Phone <span className="text-red-500">*</span></label>
-              <input
-                {...register('phone', {
-                  onChange: (e) => {
-                    const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
-                    setValue('phone', digits);
-                  }
-                })}
-                type="tel"
-                className="input"
-                placeholder="10-digit mobile number"
-                maxLength={10}
-                inputMode="numeric"
-              />
-              {errors.phone && <p className="text-xs text-red-500 mt-1">{errors.phone.message}</p>}
-            </div>
-            <div>
-              <label className="label">Password <span className="text-red-500">*</span></label>
-              <input {...register('password')} type="password" className="input" placeholder="Min 8 characters" />
-              {errors.password && <p className="text-xs text-red-500 mt-1">{errors.password.message}</p>}
-            </div>
-            <div>
-              <label className="label">Aadhaar Number <span className="text-red-500">*</span></label>
-              <input
-                {...register('aadhaarNumber', {
-                  onChange: (e) => {
-                    const digits = e.target.value.replace(/\D/g, '').slice(0, 12);
-                    setValue('aadhaarNumber', digits);
-                  }
-                })}
-                type="text"
-                className="input"
-                placeholder="12-digit Aadhaar number"
-                maxLength={12}
-                inputMode="numeric"
-              />
-              {errors.aadhaarNumber && <p className="text-xs text-red-500 mt-1">{errors.aadhaarNumber.message}</p>}
-            </div>
-            <div>
-              <label className="label">Designation</label>
-              <input {...register('designation')} className="input" placeholder="Sales Agent" />
-            </div>
-            <div>
-              <label className="label">Department</label>
-              <input {...register('department')} className="input" placeholder="Life Insurance" />
-            </div>
-            <div>
-              <label className="label">Gender</label>
-              <select {...register('gender')} className="input">
-                <option value="">Select gender</option>
-                <option value="MALE">Male</option>
-                <option value="FEMALE">Female</option>
-                <option value="OTHER">Other</option>
-              </select>
-            </div>
-            <div>
-              <label className="label">Date of Joining</label>
-              <DatePicker {...register('dateOfJoining')} className="input" />
-            </div>
-            <div>
-              <label className="label">Date of Birth</label>
-              <DatePicker {...register('dateOfBirth')} className="input" />
-            </div>
-            <div>
-              <label className="label">Base Salary (₹)</label>
-              <input {...register('baseSalary')} type="number" className="input" placeholder="e.g. 30000" />
-            </div>
-            <div>
-              <label className="label">Bonus Planned (₹)</label>
-              <input {...register('bonusPlanned')} type="number" className="input" placeholder="e.g. 5000" />
-            </div>
-            <div>
-              <label className="label">Monthly Sales Target (₹)</label>
-              <input {...register('monthlyTarget')} type="number" className="input" placeholder="e.g. 100000" />
-            </div>
-            <div>
-              <label className="label">Daily Calls Target</label>
-              <input {...register('callsTarget')} type="number" className="input" placeholder="e.g. 30" />
-            </div>
-            <div>
-              <label className="label">Proposal Target</label>
-              <input {...register('visitsTarget')} type="number" className="input" placeholder="e.g. 5" />
-            </div>
-            <div className="col-span-2 border-t border-slate-100 pt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="col-span-3">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Bank Details</h3>
-              </div>
-              <div>
-                <label className="label">Bank Name</label>
-                <input {...register('bankName')} className="input text-xs" placeholder="e.g. HDFC Bank" />
-              </div>
-              <div>
-                <label className="label">Account Number</label>
-                <input {...register('bankAccountNumber')} className="input text-xs" placeholder="e.g. 50100123" />
-              </div>
-              <div>
-                <label className="label">IFSC Code</label>
-                <input {...register('bankIfscCode')} className="input text-xs" placeholder="e.g. HDFC0000123" />
-              </div>
-              <div>
-                <label className="label">Branch Name</label>
-                <input {...register('bankBranch')} className="input text-xs" placeholder="e.g. Connaught Place" />
-              </div>
-              <div>
-                <label className="label">Account Type</label>
-                <select {...register('bankAccountType')} className="input text-xs">
-                  <option value="">Select type</option>
-                  <option value="Savings">Savings</option>
-                  <option value="Current">Current</option>
-                </select>
-              </div>
+
+              {/* Dropdown Options List */}
+              {isContactDropdownOpen && (
+                <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-2 animate-fadeIn text-xs max-h-56 overflow-y-auto custom-scrollbar divide-y divide-slate-100">
+                  <button
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      selectContactItem(null);
+                    }}
+                    className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-colors select-none cursor-pointer flex items-center justify-between mb-1 ${
+                      !selectedContactId ? 'bg-purple-50 text-purple-700' : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span>-- None / Create New Employee Manually --</span>
+                    {!selectedContactId && <span className="text-purple-600 font-bold">✓</span>}
+                  </button>
+
+                  {filteredCombinedList.length === 0 ? (
+                    <div className="px-3 py-4 text-center text-slate-400 font-semibold italic text-xs">
+                      No matching employees or contacts found {contactSearch ? `for "${contactSearch}"` : ''}
+                    </div>
+                  ) : (
+                    filteredCombinedList.map((item) => {
+                      const isSel = item.id === selectedContactId;
+                      const fullName = `${item.firstName || ''} ${item.lastName || ''}`.trim() || 'Unnamed';
+                      const isEmployee = item.sourceType === 'EMPLOYEE';
+
+                      return (
+                        <button
+                          key={`${item.sourceType}-${item.id}`}
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            selectContactItem(item);
+                          }}
+                          className={`w-full text-left px-3 py-2.5 rounded-xl transition-all flex items-center justify-between gap-2 select-none cursor-pointer group ${
+                            isSel ? 'bg-purple-50 border border-purple-200 text-purple-900' : 'hover:bg-slate-50 text-slate-700'
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-slate-800 text-xs truncate group-hover:text-purple-700 transition-colors">
+                                {fullName}
+                              </span>
+                              <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded tracking-wider uppercase ${
+                                isEmployee
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  : 'bg-purple-50 text-purple-700 border border-purple-200'
+                              }`}>
+                                {isEmployee ? (item.role || 'EMPLOYEE') : (item.role || 'CONTACT')}
+                              </span>
+                              {item.designation && (
+                                <span className="text-[10px] text-slate-400 font-medium truncate">
+                                  • {item.designation}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-3 text-[11px] text-slate-400 font-medium mt-0.5 flex-wrap">
+                              {item.phone && <span>📱 {item.phone}</span>}
+                              {item.email && <span className="truncate">✉️ {item.email}</span>}
+                            </div>
+                          </div>
+                          <div className="shrink-0 flex items-center gap-1.5">
+                            <span className={`text-[10px] font-bold px-2.5 py-1 rounded-lg transition-colors ${
+                              isSel
+                                ? 'bg-purple-600 text-white'
+                                : isEmployee
+                                  ? 'bg-emerald-100/80 text-emerald-800 group-hover:bg-emerald-600 group-hover:text-white'
+                                  : 'bg-purple-100/80 text-purple-800 group-hover:bg-purple-600 group-hover:text-white'
+                            }`}>
+                              {isSel ? 'Selected ✓' : isEmployee ? 'Autofill' : 'Promote'}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              )}
             </div>
           </div>
-          <div className="flex flex-wrap justify-end gap-2 pt-2">
-            <button type="button" className="btn-secondary" onClick={() => { setModalOpen(false); reset(); }}>Cancel</button>
-            <button type="submit" className="btn-primary" disabled={createEmployee.isPending}>
-              {createEmployee.isPending ? 'Saving…' : 'Create Employee'}
+
+          {/* Sub-Tabs Header Navigation Bar */}
+          <div className="flex border-b border-slate-200 bg-slate-100/70 p-1 rounded-2xl gap-1">
+            <button
+              type="button"
+              onClick={() => setActiveModalTab('personal')}
+              className={clsx(
+                "flex-1 py-2 px-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer select-none",
+                activeModalTab === 'personal'
+                  ? "bg-white text-purple-700 shadow-sm border border-slate-200/80"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+              )}
+            >
+              <User size={14} /> Personal & Account
+              {(errors.firstName || errors.lastName || errors.email || errors.phone || errors.password || errors.aadhaarNumber) && (
+                <span className="w-2 h-2 rounded-full bg-rose-500" title="Has errors" />
+              )}
             </button>
+            <button
+              type="button"
+              onClick={() => setActiveModalTab('job')}
+              className={clsx(
+                "flex-1 py-2 px-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer select-none",
+                activeModalTab === 'job'
+                  ? "bg-white text-purple-700 shadow-sm border border-slate-200/80"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+              )}
+            >
+              <Briefcase size={14} /> Job & Role
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveModalTab('targets')}
+              className={clsx(
+                "flex-1 py-2 px-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer select-none",
+                activeModalTab === 'targets'
+                  ? "bg-white text-purple-700 shadow-sm border border-slate-200/80"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+              )}
+            >
+              <Target size={14} /> Targets & Salary
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveModalTab('bank')}
+              className={clsx(
+                "flex-1 py-2 px-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer select-none",
+                activeModalTab === 'bank'
+                  ? "bg-white text-purple-700 shadow-sm border border-slate-200/80"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+              )}
+            >
+              <Landmark size={14} /> Bank Details
+            </button>
+          </div>
+
+          {/* Sub-Tabs Content Panel with CONSTANT HEIGHT to prevent pop-up size changes */}
+          <div className="h-[340px] sm:h-[360px] overflow-y-auto custom-scrollbar p-3 border border-slate-100 rounded-2xl bg-white">
+            {/* Tab 1: Personal & Account */}
+            {activeModalTab === 'personal' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 animate-fadeIn">
+                <div>
+                  <label className="label">First Name <span className="text-red-500">*</span></label>
+                  <input {...register('firstName')} className="input" placeholder="Ravi" />
+                  {errors.firstName && <p className="text-xs text-red-500 mt-1">{errors.firstName.message}</p>}
+                </div>
+                <div>
+                  <label className="label">Last Name <span className="text-red-500">*</span></label>
+                  <input {...register('lastName')} className="input" placeholder="Sharma" />
+                  {errors.lastName && <p className="text-xs text-red-500 mt-1">{errors.lastName.message}</p>}
+                </div>
+                <div>
+                  <label className="label">Email <span className="text-red-500">*</span></label>
+                  <input {...register('email')} type="email" className="input" placeholder="ravi@agency.com" />
+                  {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email.message}</p>}
+                </div>
+                <div>
+                  <label className="label">Phone <span className="text-red-500">*</span></label>
+                  <input
+                    {...register('phone', {
+                      onChange: (e) => {
+                        const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
+                        setValue('phone', digits);
+                      }
+                    })}
+                    type="tel"
+                    className="input"
+                    placeholder="10-digit mobile number"
+                    maxLength={10}
+                    inputMode="numeric"
+                  />
+                  {errors.phone && <p className="text-xs text-red-500 mt-1">{errors.phone.message}</p>}
+                </div>
+                <div>
+                  <label className="label">Password <span className="text-red-500">*</span></label>
+                  <input {...register('password')} type="password" className="input" placeholder="Min 8 characters" />
+                  {errors.password && <p className="text-xs text-red-500 mt-1">{errors.password.message}</p>}
+                </div>
+                <div>
+                  <label className="label">Aadhaar Number <span className="text-red-500">*</span></label>
+                  <input
+                    {...register('aadhaarNumber', {
+                      onChange: (e) => {
+                        const digits = e.target.value.replace(/\D/g, '').slice(0, 12);
+                        setValue('aadhaarNumber', digits);
+                      }
+                    })}
+                    type="text"
+                    className="input"
+                    placeholder="12-digit Aadhaar number"
+                    maxLength={12}
+                    inputMode="numeric"
+                  />
+                  {errors.aadhaarNumber && <p className="text-xs text-red-500 mt-1">{errors.aadhaarNumber.message}</p>}
+                </div>
+                <div>
+                  <label className="label">Gender</label>
+                  <select {...register('gender')} className="input">
+                    <option value="">Select gender</option>
+                    <option value="MALE">Male</option>
+                    <option value="FEMALE">Female</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Date of Birth</label>
+                  <DatePicker {...register('dateOfBirth')} className="input" />
+                </div>
+              </div>
+            )}
+
+            {/* Tab 2: Job & Role */}
+            {activeModalTab === 'job' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 animate-fadeIn">
+                <div>
+                  <label className="label">Designation</label>
+                  <input {...register('designation')} className="input" placeholder="Sales Agent" />
+                </div>
+                <div>
+                  <label className="label">Department</label>
+                  <input {...register('department')} className="input" placeholder="Life Insurance" />
+                </div>
+                <div className="col-span-2">
+                  <label className="label">Date of Joining</label>
+                  <DatePicker {...register('dateOfJoining')} className="input" />
+                </div>
+              </div>
+            )}
+
+            {/* Tab 3: Targets & Salary */}
+            {activeModalTab === 'targets' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 animate-fadeIn">
+                <div>
+                  <label className="label">Base Salary (₹)</label>
+                  <input {...register('baseSalary')} type="number" className="input" placeholder="e.g. 30000" />
+                </div>
+                <div>
+                  <label className="label">Bonus Planned (₹)</label>
+                  <input {...register('bonusPlanned')} type="number" className="input" placeholder="e.g. 5000" />
+                </div>
+                <div>
+                  <label className="label">Monthly Sales Target (₹)</label>
+                  <input {...register('monthlyTarget')} type="number" className="input" placeholder="e.g. 100000" />
+                </div>
+                <div>
+                  <label className="label">Daily Calls Target</label>
+                  <input {...register('callsTarget')} type="number" className="input" placeholder="e.g. 30" />
+                </div>
+                <div className="col-span-2">
+                  <label className="label">Proposal Target</label>
+                  <input {...register('visitsTarget')} type="number" className="input" placeholder="e.g. 5" />
+                </div>
+              </div>
+            )}
+
+            {/* Tab 4: Bank Details */}
+            {activeModalTab === 'bank' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 animate-fadeIn">
+                <div>
+                  <label className="label">Bank Name</label>
+                  <input {...register('bankName')} className="input" placeholder="e.g. HDFC Bank" />
+                </div>
+                <div>
+                  <label className="label">Account Number</label>
+                  <input {...register('bankAccountNumber')} className="input" placeholder="e.g. 50100123" />
+                </div>
+                <div>
+                  <label className="label">IFSC Code</label>
+                  <input {...register('bankIfscCode')} className="input" placeholder="e.g. HDFC0000123" />
+                </div>
+                <div>
+                  <label className="label">Branch Name</label>
+                  <input {...register('bankBranch')} className="input" placeholder="e.g. Connaught Place" />
+                </div>
+                <div className="col-span-2">
+                  <label className="label">Account Type</label>
+                  <select {...register('bankAccountType')} className="input">
+                    <option value="">Select type</option>
+                    <option value="Savings">Savings</option>
+                    <option value="Current">Current</option>
+                  </select>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Modal Footer Controls */}
+          <div className="flex flex-wrap justify-between items-center gap-2 pt-4 border-t border-slate-200/80">
+            <div className="flex items-center gap-2">
+              {activeModalTab !== 'personal' && (
+                <button
+                  type="button"
+                  className="btn-secondary text-xs"
+                  onClick={() => {
+                    if (activeModalTab === 'job') setActiveModalTab('personal');
+                    else if (activeModalTab === 'targets') setActiveModalTab('job');
+                    else if (activeModalTab === 'bank') setActiveModalTab('targets');
+                  }}
+                >
+                  ← Back
+                </button>
+              )}
+              {activeModalTab !== 'bank' && (
+                <button
+                  type="button"
+                  className="btn-secondary text-xs"
+                  onClick={() => {
+                    if (activeModalTab === 'personal') setActiveModalTab('job');
+                    else if (activeModalTab === 'job') setActiveModalTab('targets');
+                    else if (activeModalTab === 'targets') setActiveModalTab('bank');
+                  }}
+                >
+                  Next →
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button type="button" className="btn-secondary" onClick={() => { setModalOpen(false); reset(); }}>Cancel</button>
+              <button
+                type="submit"
+                className="btn-primary"
+                disabled={createEmployee.isPending}
+                onClick={() => {
+                  if (errors.firstName || errors.lastName || errors.email || errors.phone || errors.password || errors.aadhaarNumber) {
+                    setActiveModalTab('personal');
+                  }
+                }}
+              >
+                {createEmployee.isPending ? 'Saving…' : 'Create Employee'}
+              </button>
+            </div>
           </div>
         </form>
       </Modal>

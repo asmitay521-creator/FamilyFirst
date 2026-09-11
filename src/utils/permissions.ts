@@ -12,6 +12,11 @@ export function hasModulePermission(user: any, moduleKey: string, action: Permis
   if (user.role !== 'EMPLOYEE') return false;
 
   const perms: string[] = user.permissions || [];
+  if (!Array.isArray(perms) || perms.length === 0) {
+    if (action === 'all') return false;
+    return true;
+  }
+
   const viewKey   = `view_${moduleKey}`;
   const editKey   = `edit_${moduleKey}`;
   const manageKey = `manage_${moduleKey}`;

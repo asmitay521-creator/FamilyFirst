@@ -347,7 +347,7 @@ function FontSizePanel() {
     <div className="space-y-6">
       <div>
         <h3 className="text-sm font-semibold text-gray-900 mb-1">Font Size Control</h3>
-        <p className="text-xs text-gray-500">Adjust the app's base text size. Especially useful when using Insumitra on a phone or tablet. Your preference is saved automatically.</p>
+        <p className="text-xs text-gray-500">Adjust the app's base text size. Especially useful when using Family First on a phone or tablet. Your preference is saved automatically.</p>
       </div>
 
       {/* Size picker */}
@@ -469,8 +469,8 @@ export default function Insurance() {
   });
   const planModalPlans = planModalPlansRes?.data || [];
 
-  const companyList: any[] = companies?.data ?? companies ?? [];
-  const planList: any[]    = plans?.data ?? plans ?? [];
+  const companyList: any[] = Array.isArray(companies?.data) ? companies.data : (Array.isArray(companies) ? companies : []);
+  const planList: any[] = Array.isArray(plans?.data) ? plans.data : (Array.isArray(plans) ? plans : []);
 
   const companiesByCategory = useMemo(() => {
     const grouped: Record<string, any[]> = { 'Health - SAHI': [], 'General': [], 'Life': [], 'Other': [] };

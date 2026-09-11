@@ -785,6 +785,49 @@ salarySlip2FileName: '',
   const filteredPolicies = useMemo(() => {
     let list: Policy[] = Array.isArray(data) ? data : (Array.isArray((data as any)?.data) ? (data as any).data : (Array.isArray((data as any)?.items) ? (data as any).items : []));
 
+    // Employee Role Data Isolation Safeguard:
+    const userRole = String(user?.role || '').toUpperCase().trim();
+    const isOwnerOrAdmin = userRole === 'OWNER' || userRole === 'SUPERADMIN' || userRole === 'SUPER_ADMIN' || userRole === 'SUPER ADMIN' || userRole === 'ADMIN' || !userRole;
+    const isEmployeeRole = userRole === 'EMPLOYEE' && !isOwnerOrAdmin;
+
+    if (isEmployeeRole) {
+      const currentUserId = String(user?.id || '').toLowerCase().trim();
+      const empList = Array.isArray(employeeResults?.data) ? employeeResults.data : (Array.isArray(employeeResults) ? employeeResults : []);
+      const myEmp = empList.find((e: any) => {
+        const eUid = String(e.userId || e.user?.id || e.id || '').toLowerCase().trim();
+        return eUid && eUid === currentUserId;
+      });
+      const validMyIds = new Set(
+        [currentUserId, myEmp?.id, myEmp?.userId, myEmp?.user?.id]
+          .filter(Boolean)
+          .map(id => String(id).toLowerCase().trim())
+      );
+
+      const myFirst = String(user?.firstName || '').toLowerCase().trim();
+      const myLast = String(user?.lastName || '').toLowerCase().trim();
+      const myFullName = `${myFirst} ${myLast}`.trim();
+      const myNames = [
+        myFullName,
+        myFirst,
+        (user as any)?.name ? String((user as any).name).toLowerCase().trim() : '',
+        myEmp?.name ? String(myEmp.name).toLowerCase().trim() : '',
+      ].filter((n: string) => n && n.length >= 3);
+
+      list = list.filter((p: any) => {
+        const assignedEmpId = String(p.assignedEmployeeId || p.assignedEmployee?.id || p.assignedEmployee?.userId || p.contact?.assignedEmployeeId || '').toLowerCase().trim();
+        const createdById = String(p.createdById || '').toLowerCase().trim();
+        const assignedById = String(p.assignedById || '').toLowerCase().trim();
+        const assignedToName = String(p.assignedToName || p.assignedEmployeeName || '').toLowerCase().trim();
+
+        const isAssignedToMe = (assignedEmpId && validMyIds.has(assignedEmpId)) ||
+          (assignedToName && myNames.some((mn: string) => assignedToName.includes(mn) || mn.includes(assignedToName)));
+        const isCreatedByMe = createdById && validMyIds.has(createdById);
+        const isAssignedByMe = assignedById && validMyIds.has(assignedById);
+
+        return isAssignedToMe || isCreatedByMe || isAssignedByMe;
+      });
+    }
+
     // Quick Select filters
     if (selectedQuickFilter !== 'ALL') {
       if (['FRESH', 'PORT', 'RENEWAL'].includes(selectedQuickFilter)) {
@@ -861,7 +904,7 @@ salarySlip2FileName: '',
     }
 
     return list;
-  }, [data, selectedQuickFilter, search, appliedFilters]);
+  }, [data, selectedQuickFilter, search, appliedFilters, user, employeeResults]);
 
   // Client-side Sorting Logic
   const sortedPolicies = useMemo(() => {
@@ -1129,7 +1172,7 @@ salarySlip2FileName: '',
             ifscCode: prev.ifscCode || fullContact.ifscCode || fullContact.bankIfsc || '',
           }));
         }
-      }).catch(err => console.warn('[Policy Edit] fetch contact error:', err));
+      }).catch((err: any) => console.warn('[Policy Edit] fetch contact error:', err));
     }
 
     if (p.plan) {
@@ -1205,7 +1248,7 @@ salarySlip2FileName: '',
           type: 'WHATSAPP_MESSAGE',
           notes: `Sent Policy Document (Policy #${policy.policyNumber}) via WhatsApp`,
           date: new Date().toISOString()
-        }).catch(err => console.warn('[WhatsApp Log Interaction Error]:', err));
+        }).catch((err: any) => console.warn('[WhatsApp Log Interaction Error]:', err));
       }
       const rawPhone = policy.contact?.phone || (policy as any).phone || '';
       const cleanPhone = rawPhone.replace(/[^0-9]/g, '');
@@ -1240,7 +1283,7 @@ salarySlip2FileName: '',
           type: 'NOTE',
           notes: `Downloaded Policy Document (Policy #${policy.policyNumber})`,
           date: new Date().toISOString()
-        }).catch(err => console.warn('[Download Log Interaction Error]:', err));
+        }).catch((err: any) => console.warn('[Download Log Interaction Error]:', err));
       }
 
       // 1. Try to fetch documents attached to this policy from document service
@@ -1262,7 +1305,7 @@ salarySlip2FileName: '',
       }
 
       // 2. Generate and download a formatted Policy Overview & Proposal Certificate Document
-      const clientName = policy.contact ? `${policy.contact.firstName || ''} ${policy.contact.lastName || ''}`.trim() : ((policy as any).clientName || 'Client Profile');
+      const clientName = policy.contact ? `${policy.contact.firstName || ''} ${policy.contact.lastName || ''}`.trim() : ((policy as any).clientName || 'Client');
       const planName = policy.plan?.name || 'Insurance Plan';
       const companyName = policy.plan?.company?.name || 'Insurance Provider';
       const extra = parseExtraNotes(policy.notes);
@@ -1867,7 +1910,7 @@ salarySlip2FileName: '',
         try {
           const names = personalDetails.fullName.trim().split(' ');
           const firstName = names[0];
-          const lastName = names.slice(1).join(' ') || undefined;
+          const lastName = names.slice(1).join(' ') || '';
           const createdContactRes = await contactsService.create({
             firstName,
             lastName,
@@ -1886,7 +1929,7 @@ salarySlip2FileName: '',
         try {
           const names = personalDetails.fullName.trim().split(' ');
           const firstName = names[0];
-          const lastName = names.slice(1).join(' ') || undefined;
+          const lastName = names.slice(1).join(' ') || '';
           await contactsService.update(effectiveContactId, {
             firstName: firstName || undefined,
             lastName,
@@ -1907,7 +1950,7 @@ salarySlip2FileName: '',
           if (firstContact?.id) {
             effectiveContactId = firstContact.id;
           } else {
-            const defContact = await contactsService.create({ firstName: personalDetails.fullName || 'Client', lastName: 'Profile' } as any);
+            const defContact = await contactsService.create({ firstName: personalDetails.fullName || 'Client', lastName: '' } as any);
             effectiveContactId = (defContact?.data ?? defContact)?.id;
           }
         } catch (fErr) {
@@ -1979,7 +2022,7 @@ salarySlip2FileName: '',
         startDate: startDate ? new Date(startDate).toISOString() : new Date().toISOString(),
         endDate: endDate ? new Date(endDate).toISOString() : new Date(Date.now() + 365 * 86400000).toISOString(),
         notes: extraNotes.trim(),
-        clientName: personalDetails.fullName || 'Client Profile',
+        clientName: personalDetails.fullName || 'Client',
         phone: personalDetails.phone || '',
         contact: selectedContact ? {
           id: selectedContact.id,
@@ -1989,7 +2032,7 @@ salarySlip2FileName: '',
         } : {
           id: effectiveContactId || 'c_def',
           firstName: personalDetails.fullName?.split(' ')[0] || 'Client',
-          lastName: personalDetails.fullName?.split(' ').slice(1).join(' ') || 'Profile',
+          lastName: personalDetails.fullName?.split(' ').slice(1).join(' ') || '',
           phone: personalDetails.phone || ''
         },
         plan: selectedPlan ? {
@@ -2072,7 +2115,7 @@ salarySlip2FileName: '',
     <div className="space-y-4">
       {/* Floating Right Action Panel */}
       <input type="file" ref={fileInputRef} onChange={handleImport} accept=".csv" className="hidden" />
-      <div className="fixed right-2 sm:right-3.5 top-60 sm:top-64 z-40 flex flex-col gap-2 bg-white/95 backdrop-blur-xl p-1.5 rounded-xl shadow-xl border border-slate-200/80 animate-fadeIn">
+      <div className="fixed right-3 sm:right-4 top-1/2 -translate-y-1/2 z-40 flex flex-col gap-2 bg-white/95 backdrop-blur-xl p-1.5 rounded-xl shadow-xl border border-slate-200/80 animate-fadeIn">
         {/* Import CSV */}
         <button
           type="button"
@@ -2116,50 +2159,8 @@ salarySlip2FileName: '',
             />
           </div>
 
-          {/* Right Side: Quick Select Category Filters, Column Picker & Filters Toggle */}
-          <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-            {/* Quick Type Filters */}
-            <button
-              onClick={() => { setSelectedQuickFilter('ALL'); setPage(1); }}
-              className={clsx(
-                'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border shadow-2xs shrink-0 whitespace-nowrap',
-                selectedQuickFilter === 'ALL'
-                  ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
-                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-              )}
-            >
-              All Types
-            </button>
-            {['HEALTH', 'LIFE', 'GENERAL', 'ACCIDENT', 'FRESH', 'PORT', 'RENEWAL'].map(cat => {
-              const isSel = selectedQuickFilter === cat;
-              return (
-                <button
-                  key={cat}
-                  onClick={() => { setSelectedQuickFilter(cat); setPage(1); }}
-                  className={clsx(
-                    'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border shadow-2xs shrink-0 whitespace-nowrap',
-                    isSel
-                      ? 'bg-purple-50 text-purple-700 border-purple-200 shadow-sm'
-                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                  )}
-                >
-                  {cat === 'HEALTH' ? 'Health' : cat === 'LIFE' ? 'Life' : cat === 'ACCIDENT' ? 'Accident' : cat.charAt(0) + cat.slice(1).toLowerCase()}
-                </button>
-              );
-            })}
-
-            {/* Advanced Filters Toggle Button */}
-            <button
-              onClick={() => setFiltersOpen(!filtersOpen)}
-              className={clsx(
-                "p-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-700 cursor-pointer shadow-2xs transition-all shrink-0",
-                filtersOpen && "bg-purple-50 border-purple-200 text-purple-700"
-              )}
-              title="Advanced Filters"
-            >
-              <Filter size={14} />
-            </button>
-          </div>
+          {/* Right Side: Quick Action or Empty Placeholder */}
+          <div className="flex items-center gap-1.5 shrink-0 ml-auto" />
         </div>
       </div>
 
@@ -2200,134 +2201,6 @@ salarySlip2FileName: '',
             </div>
           )}
 
-          {filtersOpen && (
-            <div className="card bg-gray-50/50 p-5 rounded-xl border border-slate-200 shadow-sm mt-2 mb-4 animate-fadeIn">
-              <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-200/70">
-                <h3 className="text-sm font-bold text-slate-800 flex flex-wrap items-center gap-2">
-                  <Filter size={16} className="text-blue-600" />
-                  Advanced Filters
-                </h3>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-4">
-
-                {/* Agency */}
-                <div>
-                  <label className="label">Select Agency</label>
-                  <select className="input text-xs w-full bg-white shadow-2xs" value={tempFilters.agency} onChange={e => setTempFilters({ ...tempFilters, agency: e.target.value })}>
-                    <option value="">All Agencies</option>
-                    {agencyRes?.data?.map((ag: any) => (
-                      <option key={ag.id} value={ag.agentCode}>{ag.name} ({ag.agentCode || 'N/A'})</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Company */}
-                <div>
-                  <label className="label">Select Company</label>
-                  <select className="input text-xs w-full bg-white shadow-2xs" value={tempFilters.company} onChange={e => setTempFilters({ ...tempFilters, company: e.target.value })}>
-                    <option value="">All Companies</option>
-                    {filterCompaniesOptions.map(comp => (
-                      <option key={comp} value={comp}>{comp}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Plan */}
-                <div>
-                  <label className="label">Select Plan</label>
-                  <select className="input text-xs w-full bg-white shadow-2xs" value={tempFilters.plan} onChange={e => setTempFilters({ ...tempFilters, plan: e.target.value })}>
-                    <option value="">All Plans</option>
-                    {filterPlansOptions.map((p: any) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Status */}
-                <div>
-                  <label className="label">Policy Status</label>
-                  <select className="input text-xs w-full bg-white shadow-2xs" value={tempFilters.status} onChange={e => setTempFilters({ ...tempFilters, status: e.target.value })}>
-                    <option value="">All Statuses</option>
-                    <option value="ACTIVE">Active</option>
-                    <option value="INACTIVE">Inactive</option>
-                    <option value="EXPIRED">Expired</option>
-                    <option value="PENDING">Pending</option>
-                  </select>
-                </div>
-
-                {/* Policy Type */}
-                <div>
-                  <label className="label">Policy Type</label>
-                  <select className="input text-xs w-full bg-white shadow-2xs" value={tempFilters.policyType} onChange={e => setTempFilters({ ...tempFilters, policyType: e.target.value })}>
-                    <option value="">All Types</option>
-                    <option value="FRESH">Fresh</option>
-                    <option value="PORT">Port</option>
-                    <option value="RENEWAL">Renewal</option>
-                  </select>
-                </div>
-
-                {/* Sum Insured Range */}
-                <div>
-                  <label className="label">Sum Insured Range</label>
-                  <div className="flex gap-2 items-center">
-                    <input type="number" placeholder="Min" className="input text-xs w-full bg-white shadow-2xs" value={tempFilters.sumInsuredMin} onChange={e => setTempFilters({ ...tempFilters, sumInsuredMin: e.target.value })} />
-                    <span className="text-gray-400 font-bold">-</span>
-                    <input type="number" placeholder="Max" className="input text-xs w-full bg-white shadow-2xs" value={tempFilters.sumInsuredMax} onChange={e => setTempFilters({ ...tempFilters, sumInsuredMax: e.target.value })} />
-                  </div>
-                </div>
-
-                {/* Premium Range */}
-                <div>
-                  <label className="label">Premium Range</label>
-                  <div className="flex gap-2 items-center">
-                    <input type="number" placeholder="Min" className="input text-xs w-full bg-white shadow-2xs" value={tempFilters.premiumMin} onChange={e => setTempFilters({ ...tempFilters, premiumMin: e.target.value })} />
-                    <span className="text-gray-400 font-bold">-</span>
-                    <input type="number" placeholder="Max" className="input text-xs w-full bg-white shadow-2xs" value={tempFilters.premiumMax} onChange={e => setTempFilters({ ...tempFilters, premiumMax: e.target.value })} />
-                  </div>
-                </div>
-
-                {/* Start Date Range */}
-                <div>
-                  <label className="label">Policy Start Date</label>
-                  <div className="flex gap-2 items-center">
-                    <DatePicker className="input text-xs w-full shadow-2xs" value={tempFilters.startDateFrom} onChange={val => setTempFilters({ ...tempFilters, startDateFrom: val })} title="From" />
-                    <span className="text-gray-400 font-bold">-</span>
-                    <DatePicker className="input text-xs w-full shadow-2xs" value={tempFilters.startDateTo} onChange={val => setTempFilters({ ...tempFilters, startDateTo: val })} title="To" />
-                  </div>
-                </div>
-
-                {/* End Date Range */}
-                <div>
-                  <label className="label">Policy End Date</label>
-                  <div className="flex gap-2 items-center">
-                    <DatePicker className="input text-xs w-full shadow-2xs" value={tempFilters.endDateFrom} onChange={val => setTempFilters({ ...tempFilters, endDateFrom: val })} title="From" />
-                            <DatePicker className="input text-xs w-full shadow-2xs" value={tempFilters.endDateTo} onChange={val => setTempFilters({ ...tempFilters, endDateTo: val })} title="To" />
-                  </div>
-                </div>
-
-              </div>
-
-              {/* Actions */}
-              <div className="flex flex-wrap justify-end gap-3 mt-6 pt-4 border-t border-slate-200/70">
-                <button
-                  type="button"
-                  onClick={() => { setTempFilters(defaultFilters); setAppliedFilters(defaultFilters); setPage(1); }}
-                  className="px-6 py-2 text-xs font-bold text-slate-600 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 transition-colors shadow-2xs"
-                >
-                  Reset
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setAppliedFilters(tempFilters); setPage(1); }}
-                  className="px-6 py-2 text-xs font-extrabold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-xl transition-all shadow-md shadow-blue-500/20 hover:scale-105"
-                >
-                  Apply Filters
-                </button>
-              </div>
-            </div>
-          )}
-
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
             <DataTable
               columns={COLS}
@@ -2355,16 +2228,16 @@ salarySlip2FileName: '',
         size="2xl"
         footerActions={
           !isViewMode && (
-            <div className="flex items-center justify-between w-full">
+            <div className="flex flex-wrap items-center justify-between w-full gap-2">
               <div className="flex items-center gap-2 text-xs text-slate-500 font-semibold">
                 <Info size={15} className="text-purple-600 shrink-0" />
                 <span className="hidden sm:inline">Make sure all details are accurate before saving</span>
               </div>
-              <div className="flex items-center gap-2.5 ml-auto">
+              <div className="flex items-center gap-2 ml-auto w-full sm:w-auto justify-end">
                 <button
                   type="button"
                   onClick={() => closeModal()}
-                  className="px-4 py-2.5 rounded-xl text-xs font-extrabold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 transition-all cursor-pointer shadow-2xs"
+                  className="px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-extrabold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 transition-all cursor-pointer shadow-2xs"
                 >
                   Cancel
                 </button>
@@ -2372,7 +2245,7 @@ salarySlip2FileName: '',
                   type="submit"
                   form="policy-proposal-form"
                   disabled={createPolicy.isPending || updatePolicy.isPending}
-                  className="px-6 py-2.5 rounded-xl text-xs font-black text-white shadow-lg transition-all hover:scale-[1.02] active:scale-98 cursor-pointer flex items-center gap-2"
+                  className="px-4 sm:px-6 py-2 sm:py-2.5 rounded-xl text-xs font-black text-white shadow-lg transition-all hover:scale-[1.02] active:scale-98 cursor-pointer flex items-center justify-center gap-2"
                   style={{
                     background: 'linear-gradient(135deg, #5B2BA8 0%, #743BC4 100%)',
                     boxShadow: '0 4px 14px rgba(91, 43, 168, 0.4)',
@@ -2381,7 +2254,7 @@ salarySlip2FileName: '',
                   <Save size={16} />
                   {createPolicy.isPending || updatePolicy.isPending
                     ? (editTarget ? 'Updating Policy...' : 'Submitting Policy...')
-                    : editTarget ? 'Update Policy (पॉलिसी अपडेट करा)' : 'Submit Policy (पॉलिसी सबमिट करा)'}
+                    : editTarget ? 'Update Policy' : 'Submit Policy'}
                 </button>
               </div>
             </div>
@@ -2390,12 +2263,12 @@ salarySlip2FileName: '',
       >
         <form id="policy-proposal-form" onSubmit={handleSubmit(onSubmit)} className="space-y-3">
           {/* Sub-navigation 5 Tabs Header */}
-          <div className="flex bg-slate-200/60 p-1.5 rounded-2xl mb-3 gap-2 border border-slate-200/80 overflow-x-auto shadow-2xs custom-scrollbar">
+          <div className="flex bg-slate-200/60 p-1 sm:p-1.5 rounded-2xl mb-3 gap-1.5 sm:gap-2 border border-slate-200/80 overflow-x-auto shadow-2xs custom-scrollbar">
             <button
               type="button"
               onClick={() => setActivePolicyTab('personalProfile')}
               className={clsx(
-                'px-4 py-2.5 rounded-xl text-xs font-extrabold tracking-wide transition-all cursor-pointer whitespace-nowrap flex items-center gap-2',
+                'px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-[11px] sm:text-xs font-extrabold tracking-wide transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 sm:gap-2',
                 activePolicyTab === 'personalProfile'
                   ? 'text-white shadow-md scale-[1.02]'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
@@ -2409,7 +2282,7 @@ salarySlip2FileName: '',
               type="button"
               onClick={() => setActivePolicyTab('familyDetails')}
               className={clsx(
-                'px-4 py-2.5 rounded-xl text-xs font-extrabold tracking-wide transition-all cursor-pointer whitespace-nowrap flex items-center gap-2',
+                'px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-[11px] sm:text-xs font-extrabold tracking-wide transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 sm:gap-2',
                 activePolicyTab === 'familyDetails'
                   ? 'text-white shadow-md scale-[1.02]'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
@@ -2424,7 +2297,7 @@ salarySlip2FileName: '',
               type="button"
               onClick={() => setActivePolicyTab('nomineeDetails')}
               className={clsx(
-                'px-4 py-2.5 rounded-xl text-xs font-extrabold tracking-wide transition-all cursor-pointer whitespace-nowrap flex items-center gap-2',
+                'px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-[11px] sm:text-xs font-extrabold tracking-wide transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 sm:gap-2',
                 activePolicyTab === 'nomineeDetails'
                   ? 'text-white shadow-md scale-[1.02]'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
@@ -2438,7 +2311,7 @@ salarySlip2FileName: '',
               type="button"
               onClick={() => setActivePolicyTab('kycDocuments')}
               className={clsx(
-                'px-4 py-2.5 rounded-xl text-xs font-extrabold tracking-wide transition-all cursor-pointer whitespace-nowrap flex items-center gap-2',
+                'px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-[11px] sm:text-xs font-extrabold tracking-wide transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 sm:gap-2',
                 activePolicyTab === 'kycDocuments'
                   ? 'text-white shadow-md scale-[1.02]'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
@@ -2450,7 +2323,7 @@ salarySlip2FileName: '',
             </button>
           </div>
 
-          <div className="h-[520px] overflow-y-auto pr-2 custom-scrollbar space-y-4">
+          <div className="h-[360px] sm:h-[440px] md:h-[500px] overflow-y-auto pr-1 sm:pr-2 custom-scrollbar space-y-4">
             <fieldset disabled={isViewMode} className="min-w-0 border-0 p-0 m-0 w-full space-y-4">
               {/* ════════════════ TAB 1: Personal & Profile Details (Contains ONLY Personal Info) ════════════════ */}
               {activePolicyTab === 'personalProfile' && (

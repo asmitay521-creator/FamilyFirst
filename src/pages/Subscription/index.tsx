@@ -128,7 +128,7 @@ function FeedbackForm() {
         </div>
         <div>
           <h3 className="text-sm font-semibold text-gray-900">Feature Feedback / Request</h3>
-          <p className="text-[10px] text-gray-400">Help us build what matters to you. Feedback is shared with the Insumitra team.</p>
+          <p className="text-[10px] text-gray-400">Help us build what matters to you. Feedback is shared with the Family First team.</p>
         </div>
       </div>
       {/* Star rating */}
@@ -205,7 +205,7 @@ export default function Subscription() {
   /* ─ Upgrade mutation ─ */
   const upgrade = useMutation({
     mutationFn: (planId: string) => subscriptionsService.upgrade(planId),
-    onSuccess:  (res) => {
+    onSuccess:  (res: any) => {
       qc.invalidateQueries({ queryKey: ['subscription'] });
       qc.invalidateQueries({ queryKey: ['limits'] });
       toast.success(res?.message ?? 'Plan upgraded!');

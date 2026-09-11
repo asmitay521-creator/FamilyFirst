@@ -191,7 +191,7 @@ export default function EmployeeDetail() {
 
   const updateTargets = useMutation({
     mutationFn: (body: TargetForm) => employeesService.updateEmployeeProfile(id!, body),
-    onSuccess: (res) => {
+    onSuccess: (res: any) => {
       if (res?.data) {
         qc.setQueryData(['employee', id], (old: any) => {
           if (!old) return old;
@@ -213,7 +213,7 @@ export default function EmployeeDetail() {
 
   const updatePermissions = useMutation({
     mutationFn: (body: PermissionForm) => employeesService.updateRole(id!, body),
-    onSuccess: (res) => {
+    onSuccess: (res: any) => {
       if (res?.data) {
         qc.setQueryData(['employee', id], (old: any) => {
           if (!old) return old;

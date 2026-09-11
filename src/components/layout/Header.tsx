@@ -1,4 +1,4 @@
-import { Bell, ChevronDown, User, Settings, LogOut, Camera, Users, Shield, FileText, TrendingUp } from 'lucide-react';
+import { Bell, ChevronDown, User, Settings, LogOut, Camera, Users, Shield, FileText, TrendingUp, Menu } from 'lucide-react';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { notificationsService } from '@api/index';
@@ -34,15 +34,18 @@ export default function Header({ title, setMobileOpen }: { title?: string, setMo
     <header className="h-16 bg-[#FFFFFF] backdrop-blur-md flex items-center px-3 sm:px-6 gap-3 sm:gap-4 sticky top-0 z-20 shrink-0 transition-all duration-200 border-b border-[#E9E7F2]">
 
       {/* Page title / breadcrumb */}
-      {title && (
-        <div className="flex flex-wrap items-center gap-2.5 shrink-0 hidden sm:flex">
-          <span className="text-xs font-semibold tracking-wide uppercase text-[#68708A]">Family First</span>
-          <svg width="10" height="10" viewBox="0 0 12 12" fill="none" className="shrink-0 opacity-60">
-            <path d="M4.5 3L7.5 6L4.5 9" stroke="#68708A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <h1 className="text-sm font-bold text-[#1D2035] tracking-tight">{title}</h1>
-        </div>
-      )}
+      <div className="flex items-center gap-2.5 shrink-0">
+
+        {title && (
+          <div className="flex items-center gap-2.5 shrink-0">
+            <span className="text-xs font-semibold tracking-wide uppercase text-[#68708A] hidden sm:inline">Family First</span>
+            <svg width="10" height="10" viewBox="0 0 12 12" fill="none" className="shrink-0 opacity-60 hidden sm:block">
+              <path d="M4.5 3L7.5 6L4.5 9" stroke="#68708A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <h1 className="text-sm font-bold text-[#1D2035] tracking-tight">{title}</h1>
+          </div>
+        )}
+      </div>
 
       {/* Right actions */}
       <div className="flex flex-wrap items-center gap-2 ml-auto">
@@ -107,7 +110,7 @@ export default function Header({ title, setMobileOpen }: { title?: string, setMo
                           if (recordId) {
                             setShowNotifPop(false);
                             if (n.type === 'TASK_ASSIGNED' || recordType?.toLowerCase() === 'task') {
-                              navigate('/workspace');
+                              navigate(user?.role === 'EMPLOYEE' ? '/contacts' : '/workspace');
                             } else if (recordType) {
                               const path = recordType.toLowerCase() === 'contact' ? 'contacts' : recordType.toLowerCase() === 'lead' ? 'leads' : recordType.toLowerCase() === 'policy' ? 'policies' : 'claims';
                               navigate(`/${path}/${recordId}`);

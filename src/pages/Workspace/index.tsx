@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@store/auth.store';
 import {
   useWorkspaceData,
@@ -73,23 +73,47 @@ export default function Workspace() {
   const { data: claimsRes } = useClaims({ limit: 1000 });
   const { data: leadsRes } = useLeads({ limit: 1000 });
 
-  // Real-time Firestore Leads listener
   const [firestoreLeads, setFirestoreLeads] = useState<any[]>([]);
+  const qc = useQueryClient();
+
   useEffect(() => {
-    let unsub: (() => void) | null = null;
+    const isSuperAdmin = Boolean((user?.role === 'SUPER_ADMIN' || user?.role === 'SUPERADMIN' || user?.role === 'ADMIN' || user?.role === 'OWNER') );
+    if (!isSuperAdmin) return;
+
+    let unsubLeads: (() => void) | null = null;
     try {
-      unsub = onSnapshot(collection(db, 'leads'), (snap) => {
+      unsubLeads = onSnapshot(collection(db, 'leads'), (snap) => {
         const list: any[] = [];
         snap.forEach(docSnap => {
           list.push({ id: docSnap.id, ...docSnap.data() });
         });
         setFirestoreLeads(list);
-      });
+      }, () => {});
     } catch (e) {}
+
+    let unsubContacts: (() => void) | null = null;
+    try {
+      unsubContacts = onSnapshot(collection(db, 'contacts'), () => {
+        qc.invalidateQueries({ queryKey: ['contacts'] });
+      }, () => {});
+    } catch (e) {}
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        bc = new BroadcastChannel('insumitra_contacts_channel');
+        bc.onmessage = () => {
+          qc.invalidateQueries({ queryKey: ['contacts'] });
+        };
+      }
+    } catch (e) {}
+
     return () => {
-      if (unsub) unsub();
+      if (unsubLeads) unsubLeads();
+      if (unsubContacts) unsubContacts();
+      if (bc) bc.close();
     };
-  }, []);
+  }, [qc, user]);
 
   // Active tab state
   const [activeTab, setActiveTab] = useState<TabType>('overview');
@@ -140,11 +164,11 @@ export default function Workspace() {
   const [selectedEmployeeUserId, setSelectedEmployeeUserId] = useState<string | null>(null);
   const [isEmployeeModalOpen, setIsEmployeeModalOpen] = useState(false);
 
-  // Query for selected employee workspace data (when admin selects an employee)
+  // Query for selected employee workspace data (when an employee is selected)
   const { data: selectedEmpWsRes } = useQuery({
     queryKey: ['workspace', 'employee-data', selectedEmployeeUserId],
     queryFn: () => selectedEmployeeUserId ? workspaceService.getEmployeeData(selectedEmployeeUserId) : null,
-    enabled: !!selectedEmployeeUserId && (user?.role === 'OWNER' || user?.role === 'SUPERADMIN'),
+    enabled: !!selectedEmployeeUserId,
     staleTime: 30_000,
   });
 
@@ -152,6 +176,17 @@ export default function Workspace() {
   const logToday = workspaceData?.dailyLog;
   const isClockedIn = !!logToday?.checkIn && !logToday?.checkOut;
   const isClockedOut = !!logToday?.checkIn && !!logToday?.checkOut;
+
+  // Sync logToday data to form state when loaded
+  useEffect(() => {
+    if (logToday) {
+      if (logToday.callsMade !== undefined && callsMade === 0) setCallsMade(Number(logToday.callsMade) || 0);
+      if (logToday.visitsCompleted !== undefined && visitsCompleted === 0) setVisitsCompleted(Number(logToday.visitsCompleted) || 0);
+      if (logToday.premiumCollected !== undefined && premiumCollected === 0) setPremiumCollected(Number(logToday.premiumCollected) || 0);
+      if (logToday.nextDayPlan && !nextDayPlan) setNextDayPlan(logToday.nextDayPlan);
+      if (logToday.notes && !notes) setNotes(logToday.notes);
+    }
+  }, [logToday]);
 
   const handleClockIn = () => {
     if (isClockedOut) {
@@ -183,12 +218,6 @@ export default function Workspace() {
       nextDayPlan
     }, {
       onSuccess: () => {
-        // Reset and clear the EOD form fields upon submit
-        setNotes('');
-        setCallsMade(0);
-        setVisitsCompleted(0);
-        setPremiumCollected(0);
-        setNextDayPlan('');
         refetch();
       }
     });
@@ -252,7 +281,7 @@ export default function Workspace() {
     });
   };
 
-  const employeesList = (employeesRes?.data?.data || employeesRes?.data || []) as any[];
+  const employeesList = ((employeesRes as any)?.data?.data || (employeesRes as any)?.data || employeesRes || []) as any[];
   const selectedEmployeeObj = employeesList.find((e: any) => (e.user?.id || e.userId || e.id) === selectedEmployeeUserId);
 
   const rawContacts = useMemo(() => contactsRes?.data ?? [], [contactsRes]);
@@ -316,8 +345,9 @@ export default function Workspace() {
       const isAssignedTo = assignedEmpId ? targetIds.includes(String(assignedEmpId)) : false;
       const isAssignedBy = (assignedById && targetIds.includes(String(assignedById))) || (assignedByName && myNames.some((mn: string) => assignedByName.includes(mn) || mn.includes(assignedByName)));
       const isCreatedBy = (createdById && targetIds.includes(String(createdById))) || (createdByName && myNames.some((mn: string) => createdByName.includes(mn) || mn.includes(createdByName)));
+      const isUnassignedAgencyContact = !assignedEmpId && !assignedById && !createdById;
 
-      return isAssignedTo || isAssignedBy || isCreatedBy;
+      return isAssignedTo || isAssignedBy || isCreatedBy || isUnassignedAgencyContact;
     });
   }, [rawContacts, isOwnerOrAdmin, selectedEmployeeUserId, myValidIds, myNames]);
 
@@ -352,11 +382,15 @@ export default function Workspace() {
       const createdById = l.createdById || extra?.createdById;
       const createdByName = (l.createdByName || extra?.createdByName || '').toLowerCase().trim();
 
+      const contactFullName = `${l.contact?.firstName || ''} ${l.contact?.lastName || ''}`.toLowerCase().trim();
+      const rawLeadName = (l.fullName || l.name || l.clientName || '').toLowerCase().trim();
+      const isClientNameMe = myNames.some((mn: string) => mn.length > 2 && (contactFullName.includes(mn) || rawLeadName.includes(mn) || mn.includes(contactFullName) || mn.includes(rawLeadName)));
+
       const isAssignedTo = assignedEmpId ? targetIds.includes(String(assignedEmpId)) : false;
       const isAssignedBy = (assignedById && targetIds.includes(String(assignedById))) || (assignedByName && myNames.some((mn: string) => assignedByName.includes(mn) || mn.includes(assignedByName)));
       const isCreatedBy = (createdById && targetIds.includes(String(createdById))) || (createdByName && myNames.some((mn: string) => createdByName.includes(mn) || mn.includes(createdByName)));
 
-      return isAssignedTo || isAssignedBy || isCreatedBy;
+      return isAssignedTo || isAssignedBy || isCreatedBy || isClientNameMe;
     });
   }, [combinedLeads, isOwnerOrAdmin, selectedEmployeeUserId, myValidIds, myNames]);
 
@@ -684,8 +718,8 @@ export default function Workspace() {
           <Target className="w-4 h-4" /> My Targets &amp; Commissions
         </button>
 
-        {/* Admin "View Employee Workspace" Button Next to My Targets Tab */}
-        {(user?.role === 'OWNER' || user?.role === 'SUPERADMIN') && (
+        {/* "View Employee Workspace" Button Next to My Targets Tab (Owner/Admin only) */}
+        {isOwnerOrAdmin && (
           <div className="relative ml-auto flex flex-wrap items-center gap-2">
             {selectedEmployeeUserId ? (
               <button

@@ -202,6 +202,8 @@ export default function Calendar() {
     // Firestore listener
     let unsubscribeFirestore: (() => void) | null = null;
     try {
+      const isSuperAdmin = Boolean((user?.role === 'SUPER_ADMIN' || user?.role === 'SUPERADMIN' || user?.role === 'ADMIN' || user?.role === 'OWNER') );
+      if (isSuperAdmin) {
       const leadsCol = collection(db, 'leads');
       unsubscribeFirestore = onSnapshot(leadsCol, (snapshot) => {
         const firestoreList: any[] = [];
@@ -236,13 +238,14 @@ export default function Calendar() {
         if (firestoreList.length >= 0) {
           setWebLeads(prev => [...firestoreList, ...prev.filter(p => !p.id.startsWith('fs_'))]);
         }
-      });
+      }, () => {});
+      } // Closing if (isSuperAdmin)
     } catch {}
 
     return () => {
       if (unsubscribeFirestore) unsubscribeFirestore();
     };
-  }, []);
+  }, [user]);
 
   // Fetch backend leads
   const { data: kanbanRes } = useQuery({
@@ -591,53 +594,6 @@ export default function Calendar() {
   return (
     <div className="space-y-4 animate-fade-in pb-10">
 
-      {/* Floating Right Action Panel (Task & Event Creation) */}
-      <div className="fixed right-2 sm:right-3.5 top-60 sm:top-64 z-40 flex flex-col gap-2 bg-white/95 backdrop-blur-xl p-1.5 rounded-xl shadow-xl border border-slate-200/80 animate-fadeIn">
-        {/* Add Task */}
-        <button
-          type="button"
-          onClick={() => {
-            const dateStr = format(selectedDate, 'yyyy-MM-dd');
-            setTaskStartDate(dateStr);
-            setTaskDueDate(dateStr);
-            setTaskModalOpen(true);
-          }}
-          className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-tr from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white flex items-center justify-center transition-all hover:scale-105 shadow-xs cursor-pointer group relative"
-          title="Add Task"
-        >
-          <CheckSquare size={14} strokeWidth={2.2} />
-          <span className="absolute right-full mr-2.5 px-2.5 py-1 rounded-lg bg-slate-900/90 backdrop-blur-md text-white text-[10px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-all pointer-events-none shadow-lg border border-slate-800">
-            Add Task
-          </span>
-        </button>
-
-        {/* New Event */}
-        <button
-          type="button"
-          onClick={() => {
-            const dateStr = format(selectedDate, 'yyyy-MM-dd');
-            reset({
-              title: '',
-              eventType: 'OTHER',
-              isAllDay: false,
-              startDate: dateStr,
-              startTime: '09:00',
-              endDate: dateStr,
-              endTime: '10:00',
-              description: ''
-            });
-            setModalOpen(true);
-          }}
-          className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-tr from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white flex items-center justify-center transition-all hover:scale-105 shadow-xs cursor-pointer group relative"
-          title="New Event"
-        >
-          <Plus size={14} strokeWidth={2.2} />
-          <span className="absolute right-full mr-2.5 px-2.5 py-1 rounded-lg bg-slate-900/90 backdrop-blur-md text-white text-[10px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-all pointer-events-none shadow-lg border border-slate-800">
-            New Event
-          </span>
-        </button>
-      </div>
-
       {/* ── Hero Header Bar ─────────────────────────────────────────────────── */}
       <div
         className="relative overflow-hidden rounded-3xl p-6 shadow-xl border border-[#5B2BA8]/30"
@@ -650,51 +606,53 @@ export default function Calendar() {
         <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-4">
 
           {/* Left: nav + title */}
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={handlePrev}
-              aria-label="Previous"
-              className="w-8 h-8 flex items-center justify-center rounded-xl bg-white/15 hover:bg-white/25 text-white transition-all border border-white/20 backdrop-blur-sm cursor-pointer"
-            >
-              <ChevronLeft size={15} />
-            </button>
+          <div className="flex flex-wrap items-center justify-between sm:justify-start gap-2">
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={handlePrev}
+                aria-label="Previous"
+                className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/15 hover:bg-white/25 text-white transition-all border border-white/20 backdrop-blur-sm cursor-pointer shrink-0"
+              >
+                <ChevronLeft size={15} />
+              </button>
 
-            <div className="text-center min-w-[160px]">
-              <h2 className="text-lg font-extrabold text-white tracking-tight leading-none">
-                {viewMode === 'month'
-                  ? format(currentDate, 'MMMM yyyy')
-                  : `${format(days[0], 'dd/MMM/yyyy')} – ${format(days[days.length - 1], 'dd/MMM/yyyy')}`}
-              </h2>
-              <p className="text-white/60 text-[11px] mt-0.5 font-medium">
-                {format(new Date(), 'EEEE, dd/MMM/yyyy')}
-              </p>
+              <div className="text-center min-w-[140px] sm:min-w-[160px] flex flex-col justify-center px-1">
+                <h2 className="text-base sm:text-lg font-extrabold text-white tracking-tight leading-none">
+                  {viewMode === 'month'
+                    ? format(currentDate, 'MMMM yyyy')
+                    : `${format(days[0], 'dd/MMM/yyyy')} – ${format(days[days.length - 1], 'dd/MMM/yyyy')}`}
+                </h2>
+                <p className="text-white/60 text-[10px] sm:text-[11px] mt-0.5 font-medium">
+                  {format(new Date(), 'EEEE, dd/MMM/yyyy')}
+                </p>
+              </div>
+
+              <button
+                onClick={handleNext}
+                aria-label="Next"
+                className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/15 hover:bg-white/25 text-white transition-all border border-white/20 backdrop-blur-sm cursor-pointer shrink-0"
+              >
+                <ChevronRight size={15} />
+              </button>
             </div>
 
             <button
-              onClick={handleNext}
-              aria-label="Next"
-              className="w-8 h-8 flex items-center justify-center rounded-xl bg-white/15 hover:bg-white/25 text-white transition-all border border-white/20 backdrop-blur-sm cursor-pointer"
-            >
-              <ChevronRight size={15} />
-            </button>
-
-            <button
               onClick={goToToday}
-              className="ml-1 px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-[10px] sm:text-xs font-bold border border-white/20 backdrop-blur-sm transition-all cursor-pointer"
+              className="h-8 px-3 flex items-center justify-center rounded-lg bg-white/20 hover:bg-white/30 text-white text-xs font-bold border border-white/20 backdrop-blur-sm transition-all cursor-pointer select-none"
             >
               Today
             </button>
           </div>
 
-          {/* Centre/Right: view-mode pills */}
-          <div className="flex items-center bg-white/10 backdrop-blur-sm p-1 rounded-xl border border-white/15 gap-1">
+          {/* Center: view-mode pills */}
+          <div className="flex flex-wrap items-center justify-center bg-white/10 backdrop-blur-sm p-0.5 rounded-lg border border-white/15 gap-1">
             {(['month', 'week', 'threeDays'] as const).map(mode => (
               <button
                 key={mode}
                 type="button"
                 onClick={() => setViewMode(mode)}
                 className={clsx(
-                  'px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer',
+                  'flex items-center justify-center h-7 px-2.5 sm:px-3 rounded-md text-xs font-bold transition-all cursor-pointer select-none',
                   viewMode === mode
                     ? 'bg-white text-[#5B2BA8] shadow-sm font-extrabold'
                     : 'text-white/70 hover:text-white hover:bg-white/10'
@@ -704,11 +662,52 @@ export default function Calendar() {
               </button>
             ))}
           </div>
+
+          {/* Right: Action Buttons (Add Task & New Event) */}
+          <div className="flex items-center justify-end gap-2 flex-wrap sm:flex-nowrap">
+            <button
+              type="button"
+              onClick={() => {
+                const dateStr = format(selectedDate, 'yyyy-MM-dd');
+                setTaskStartDate(dateStr);
+                setTaskDueDate(dateStr);
+                setTaskModalOpen(true);
+              }}
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg bg-white/20 hover:bg-white/30 text-white text-xs font-bold border border-white/20 backdrop-blur-sm transition-all cursor-pointer"
+              title="Add Task"
+            >
+              <CheckSquare size={14} strokeWidth={2.2} />
+              <span>Add Task</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const dateStr = format(selectedDate, 'yyyy-MM-dd');
+                reset({
+                  title: '',
+                  eventType: 'OTHER',
+                  isAllDay: false,
+                  startDate: dateStr,
+                  startTime: '09:00',
+                  endDate: dateStr,
+                  endTime: '10:00',
+                  description: ''
+                });
+                setModalOpen(true);
+              }}
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg bg-white text-[#5B2BA8] hover:bg-white/90 text-xs font-bold transition-all cursor-pointer shadow-sm"
+              title="New Event"
+            >
+              <Plus size={14} strokeWidth={2.2} />
+              <span>New Event</span>
+            </button>
+          </div>
         </div>
       </div>
 
       {/* ── Category Filter Bar ─────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-2 bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm">
+      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 bg-white px-3 sm:px-4 py-2.5 sm:py-3 rounded-2xl border border-slate-100 shadow-sm">
         <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mr-1">Filters:</span>
         {Object.entries(EVENT_TYPE_LABELS).map(([key, label]) => {
           const isChecked = visibleCategories.includes(key);
@@ -716,7 +715,7 @@ export default function Calendar() {
             <label
               key={key}
               className={clsx(
-                'flex items-center gap-1.5 cursor-pointer select-none rounded-full py-1 px-3 text-xs font-semibold border transition-all',
+                'flex items-center gap-1.5 cursor-pointer select-none rounded-full py-1 px-2.5 sm:px-3 text-[11px] sm:text-xs font-semibold border transition-all',
                 isChecked
                   ? (FILTER_ACTIVE[key] ?? 'bg-slate-100 text-slate-600 border-slate-300') + ' shadow-sm'
                   : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300 hover:text-slate-600'
@@ -744,8 +743,9 @@ export default function Calendar() {
       {/* ── Main Grid: Calendar + Sidebar ───────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-5 items-start">
 
-        {/* ── Left: Calendar Grid ─────────────────────────────────────────── */}
-        <div className="lg:col-span-3 overflow-hidden rounded-2xl border border-slate-100 shadow-sm bg-white">
+        {/* ── Left: Calendar Grid Container ─────────────────────────────────────────── */}
+        <div className="lg:col-span-3 overflow-x-auto custom-scrollbar rounded-2xl border border-slate-100 shadow-sm bg-white">
+          <div className="min-w-[550px] sm:min-w-0">
 
           {/* Day-of-week header row */}
           <div className={clsx(
@@ -996,6 +996,7 @@ export default function Calendar() {
             })}
           </div>
         </div>
+      </div>
 
         {/* ── Right Sidebar ──────────────────────────────────────────────────── */}
         <div className="space-y-4">

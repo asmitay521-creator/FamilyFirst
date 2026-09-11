@@ -57,7 +57,7 @@ export const useLookupStore = create<LookupState>((set, get) => ({
   loadEmployees: async (force = false) => {
     if (get().employees.length > 0 && !force) return;
     try {
-      const res = await employeesService.list({ limit: 100 });
+      const res: any = await employeesService.list({ limit: 100 });
       const raw = res?.data?.data || res?.data || [];
       const empList = Array.isArray(raw) ? raw : (Array.isArray(res?.data) ? res.data : []);
       set({ employees: empList });
@@ -101,6 +101,10 @@ export const useLookupStore = create<LookupState>((set, get) => ({
     if (!force && s.companies.length > 0 && s.plans.length > 0 && s.employees.length > 0 && s.tenantDetails) {
       return;
     }
+    const { useAuthStore } = await import('./auth.store');
+    const token = useAuthStore.getState().accessToken;
+    if (!token || token.startsWith('auth-token-') || token.startsWith('demo-')) return;
+
     set({ loading: true, error: null });
     try {
       await Promise.all([
