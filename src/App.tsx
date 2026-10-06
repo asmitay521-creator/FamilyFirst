@@ -9,6 +9,7 @@ import ClientLayout from '@comps/layout/ClientLayout';
 
 // Auth pages
 import Login from '@pages/Auth/Login';
+import ForgotPassword from '@pages/Auth/ForgotPassword';
 
 // Robust lazy import with automatic retry on network change / connection drop
 const lazyWithRetry = (importFn: () => Promise<any>) =>
@@ -74,6 +75,7 @@ const DeletionRequests = lazyWithRetry(() => import('@pages/DeletionRequests'));
 const GlobalSearch   = lazyWithRetry(() => import('@pages/Search'));
 const FirmProfile    = lazyWithRetry(() => import('@pages/FirmProfile'));
 const Management     = lazyWithRetry(() => import('@pages/Management'));
+const PublicLeadForm = lazyWithRetry(() => import('@pages/PublicLeadForm'));
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
 
@@ -180,6 +182,11 @@ export default function App() {
     <Routes>
       {/* Public */}
       <Route path="/login" element={<Login />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/yojana" element={<Suspense fallback={<Loader />}><PublicLeadForm /></Suspense>} />
+      <Route path="/offer" element={<Suspense fallback={<Loader />}><PublicLeadForm /></Suspense>} />
+      <Route path="/pension-plan" element={<Suspense fallback={<Loader />}><PublicLeadForm /></Suspense>} />
+      <Route path="/lead-form" element={<Suspense fallback={<Loader />}><PublicLeadForm /></Suspense>} />
 
       {/* SuperAdmin */}
       <Route path="/superadmin/login" element={<SuperAdminLogin />} />
