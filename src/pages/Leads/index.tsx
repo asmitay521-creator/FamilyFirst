@@ -220,6 +220,72 @@ function parseLeadNotes(notes?: string | null): Record<string, any> {
   }
 }
 
+// ── Lead Name & Product Sanitizers ──────────────────────────────────────────
+export function sanitizeLeadName(raw?: string): string {
+  if (!raw) return '';
+  let trimmed = String(raw).trim();
+  if (!trimmed || trimmed.toLowerCase() === 'website lead' || trimmed.toLowerCase() === 'lead' || trimmed.toLowerCase() === 'web user' || trimmed.toLowerCase() === 'health checkup lead') return '';
+  
+  // 1. Remove repeated halves (e.g. "Abhishek Kore Abhishek Kore" -> "Abhishek Kore")
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  if (words.length >= 2 && words.length % 2 === 0) {
+    const half = words.length / 2;
+    const firstHalf = words.slice(0, half).join(' ');
+    const secondHalf = words.slice(half).join(' ');
+    if (firstHalf.toLowerCase() === secondHalf.toLowerCase()) {
+      trimmed = firstHalf;
+    }
+  }
+
+  // 2. Remove consecutive duplicate words (e.g. "Abhishek Abhishek" -> "Abhishek")
+  const uniqueWords: string[] = [];
+  const currentWords = trimmed.split(/\s+/).filter(Boolean);
+  for (let i = 0; i < currentWords.length; i++) {
+    if (i === 0 || currentWords[i].toLowerCase() !== currentWords[i - 1].toLowerCase()) {
+      uniqueWords.push(currentWords[i]);
+    }
+  }
+  return uniqueWords.join(' ').trim();
+}
+
+export function extractLeadProductName(lead: any): string {
+  if (!lead) return '—';
+
+  // 1. Direct plan object with meaningful name
+  if (lead.plan && typeof lead.plan === 'object' && lead.plan.name && lead.plan.name !== 'Financial Planning' && lead.plan.name !== 'Financial Advisory') {
+    return lead.plan.name;
+  }
+
+  // 2. Direct interests array
+  if (Array.isArray(lead.interests) && lead.interests.length > 0) {
+    const valid = lead.interests.filter((i: any) => i && typeof i === 'string' && i.trim() && i !== 'Financial Planning' && i !== 'Financial Advisory');
+    if (valid.length > 0) return valid.join(', ');
+  }
+
+  // 3. Direct productInterests array
+  if (Array.isArray(lead.productInterests) && lead.productInterests.length > 0) {
+    const valid = lead.productInterests.map((p: any) => typeof p === 'object' ? (p.product || p.name || p.interest) : p).filter((p: any) => p && typeof p === 'string' && p.trim() && p !== 'Financial Planning');
+    if (valid.length > 0) return valid.join(', ');
+  }
+
+  // 4. Dedicated product fields
+  if (lead.product && lead.product !== 'Financial Planning') return lead.product;
+  if (lead.planName && lead.planName !== 'Financial Planning') return lead.planName;
+  if (lead.serviceRequired && lead.serviceRequired !== 'Financial Planning' && lead.serviceRequired !== 'Financial Advisory') return lead.serviceRequired;
+  if (lead.service && lead.service !== 'Financial Planning' && lead.service !== 'Financial Advisory') return lead.service;
+  if (lead.requirement && lead.requirement !== 'Financial Planning') return lead.requirement;
+
+  // 5. Check notes for product names (e.g. "WhatsApp Lead: ...")
+  if (typeof lead.notes === 'string') {
+    const m = lead.notes.match(/WhatsApp Lead:\s*([^.\n\r]+?)\s*चौकशी/i) || lead.notes.match(/Customer Lead:\s*([^.\n\r]+)/i);
+    if (m && m[1]) return m[1].trim();
+  }
+
+  if (lead.plan?.name) return lead.plan.name;
+  if (Array.isArray(lead.interests) && lead.interests.length > 0) return lead.interests.join(', ');
+  return '—';
+}
+
 // ── Robust Contact Details Extractor ──────────────────────────────────────────
 export function getLeadContactDetails(leadOrContact: any, allLeadsList?: any[], allContactsList?: any[]) {
   if (!leadOrContact) {
@@ -287,17 +353,29 @@ export function getLeadContactDetails(leadOrContact: any, allLeadsList?: any[], 
   }
   const email = String(rawEmail || '').trim();
 
-  // 3. Name extraction
+  // 3. Name extraction with duplication prevention
   let rawName = '';
 
+  const buildCleanName = (first?: string, last?: string) => {
+    const f = (first || '').trim();
+    const l = (last || '').trim();
+    if (!f && !l) return '';
+    if (!l) return f;
+    if (!f) return l;
+    if (f.toLowerCase() === l.toLowerCase()) return f;
+    if (f.toLowerCase().includes(l.toLowerCase())) return f;
+    return `${f} ${l}`.trim();
+  };
+
   const allNameCandidates = [
-    c.name, c.fullName, c.firstName ? `${c.firstName} ${c.lastName || ''}`.trim() : '',
-    leadOrContact.name, leadOrContact.fullName,
-    leadOrContact.firstName ? `${leadOrContact.firstName} ${leadOrContact.lastName || ''}`.trim() : '',
-    notesData.name, notesData.fullName,
-    notesData.firstName ? `${notesData.firstName} ${notesData.lastName || ''}`.trim() : '',
-    notesData.contact?.name, notesData.contact?.fullName,
-    notesData.contact?.firstName ? `${notesData.contact.firstName} ${notesData.contact.lastName || ''}`.trim() : '',
+    c.fullName, c.name,
+    leadOrContact.fullName, leadOrContact.name,
+    buildCleanName(c.firstName, c.lastName),
+    buildCleanName(leadOrContact.firstName, leadOrContact.lastName),
+    notesData.fullName, notesData.name,
+    buildCleanName(notesData.firstName, notesData.lastName),
+    notesData.contact?.fullName, notesData.contact?.name,
+    buildCleanName(notesData.contact?.firstName, notesData.contact?.lastName),
     c.clientName, c.customerName, c.contactName, c.personName, c.displayName,
     leadOrContact.clientName, leadOrContact.customerName, leadOrContact.contactName, leadOrContact.personName,
     leadOrContact.userName, leadOrContact.leadName, leadOrContact.prospectName,
@@ -310,17 +388,9 @@ export function getLeadContactDetails(leadOrContact: any, allLeadsList?: any[], 
 
   for (const cand of allNameCandidates) {
     if (cand && typeof cand === 'string') {
-      const trimmed = cand.trim();
-      if (
-        trimmed &&
-        trimmed.toLowerCase() !== 'website lead' &&
-        trimmed.toLowerCase() !== 'web user' &&
-        trimmed.toLowerCase() !== 'lead' &&
-        trimmed.toLowerCase() !== 'null' &&
-        trimmed.toLowerCase() !== 'undefined' &&
-        trimmed.toLowerCase() !== 'health checkup lead'
-      ) {
-        rawName = trimmed;
+      const sanitized = sanitizeLeadName(cand);
+      if (sanitized) {
+        rawName = sanitized;
         break;
       }
     }
@@ -329,8 +399,8 @@ export function getLeadContactDetails(leadOrContact: any, allLeadsList?: any[], 
   if (!rawName && typeof leadOrContact.notes === 'string') {
     const match = leadOrContact.notes.match(/(?:Client\s*Name|Customer\s*Name|Contact\s*Name|Contact\s*Person|Applicant\s*Name|Insured\s*Name|Full\s*Name|User\s*Name|Name|Client|Customer|Contact)\s*[:=–-]\s*([A-Za-z0-9\s.]+)(?:,|\n|;|$|\})/i);
     if (match && match[1]) {
-      const parsed = match[1].trim();
-      if (parsed && parsed.toLowerCase() !== 'website lead' && parsed.toLowerCase() !== 'web user' && parsed.toLowerCase() !== 'lead') {
+      const parsed = sanitizeLeadName(match[1]);
+      if (parsed) {
         rawName = parsed;
       }
     }
@@ -1510,21 +1580,39 @@ export default function Leads() {
       }
 
       const hasRealName = rawName && rawName.toLowerCase() !== 'website lead' && rawName.toLowerCase() !== 'lead';
-      const fullName = hasRealName ? rawName : 'Website Lead';
+      const cleanRawName = sanitizeLeadName(rawName);
+      const fullName = cleanRawName || (hasRealName ? rawName : 'Website Lead');
       const parts = fullName.split(/\s+/).filter(Boolean);
       const firstName = clientObj.firstName || item.firstName || (hasRealName ? parts[0] : '');
       const lastName = clientObj.lastName || item.lastName || (hasRealName ? parts.slice(1).join(' ') : '');
-      const service = item.serviceRequired || item.service || item.plan?.name || (item.interests && item.interests[0]) || 'Financial Advisory';
+      
+      let service = (Array.isArray(item.interests) && item.interests[0]) ||
+        (Array.isArray(item.productInterests) && (typeof item.productInterests[0] === 'object' ? item.productInterests[0].name || item.productInterests[0].product : item.productInterests[0])) ||
+        item.plan?.name ||
+        item.product ||
+        item.planName ||
+        item.serviceRequired ||
+        item.service ||
+        item.requirement ||
+        'Term Insurance';
+
+      if (typeof item.notes === 'string') {
+        const m = item.notes.match(/WhatsApp Lead:\s*([^.\n\r]+?)\s*चौकशी/i) || item.notes.match(/Customer Lead:\s*([^.\n\r]+)/i);
+        if (m && m[1]) service = m[1].trim();
+      }
+
       const phone = rawPhone;
       const email = (item.email || item.mail || clientObj.email || '').trim();
       const sUpper = (service || '').toUpperCase();
-      const category = sUpper.includes('HEALTH') || sUpper.includes('MEDICLAIM')
+      const category = (sUpper.includes('HEALTH') || sUpper.includes('MEDICLAIM') || sUpper.includes('आरोग्य'))
         ? 'HEALTH'
         : (sUpper.includes('MUTUAL') || sUpper.includes('MF') || sUpper.includes('WEALTH') || sUpper.includes('SIP'))
           ? 'MUTUAL FUNDS'
-          : sUpper.includes('MOTOR') || sUpper.includes('CAR')
+          : (sUpper.includes('MOTOR') || sUpper.includes('CAR') || sUpper.includes('गाडी') || sUpper.includes('वाहन'))
             ? 'MOTOR'
-            : 'LIFE';
+            : (sUpper.includes('PENSION') || sUpper.includes('RETIREMENT') || sUpper.includes('पेन्शन') || sUpper.includes('निवृत्ती'))
+              ? 'RETIREMENT'
+              : 'LIFE';
 
       return {
         id: item.id || idFallback,
@@ -1538,18 +1626,19 @@ export default function Leads() {
         followUpDate: item.followUpDate || new Date().toISOString().split('T')[0],
         notes: typeof item.notes === 'string' ? item.notes : JSON.stringify({
           leadStatus: 'INTERESTED',
-          leadSource: 'Website Consultation',
+          leadSource: 'WhatsApp / Web Lead',
           leadType: 'FRESH',
-          descriptionDetails: `Book Free Consultation: ${service}`
+          descriptionDetails: `Lead Inquiry: ${service}`
         }),
-        interests: item.interests || [service],
+        interests: [service],
+        productInterests: [service],
         contact: {
           id: 'contact_' + (item.id || idFallback),
           firstName,
           lastName,
           phone,
           email,
-          tags: item.contact?.tags || ['Website Consultation', service]
+          tags: item.contact?.tags || ['Customer Lead', service]
         },
         plan: {
           name: service,
@@ -1645,11 +1734,27 @@ export default function Leads() {
             }
 
             const hasRealName = rawName && rawName.toLowerCase() !== 'website lead' && rawName.toLowerCase() !== 'lead';
-            const fullName = hasRealName ? rawName : 'Website Lead';
+            const cleanRawName = sanitizeLeadName(rawName);
+            const fullName = cleanRawName || (hasRealName ? rawName : 'Website Lead');
             const parts = fullName.split(/\s+/).filter(Boolean);
             const firstName = clientObj.firstName || data.firstName || (hasRealName ? parts[0] : '');
             const lastName = clientObj.lastName || data.lastName || (hasRealName ? parts.slice(1).join(' ') : '');
-            const service = data.serviceRequired || data.service || data.requirement || data.planName || 'Financial Planning';
+            
+            let service = (Array.isArray(data.interests) && data.interests[0]) ||
+              (Array.isArray(data.productInterests) && (typeof data.productInterests[0] === 'object' ? data.productInterests[0].name || data.productInterests[0].product : data.productInterests[0])) ||
+              data.plan?.name ||
+              data.product ||
+              data.planName ||
+              data.serviceRequired ||
+              data.service ||
+              data.requirement ||
+              'Term Insurance';
+
+            if (typeof data.notes === 'string') {
+              const m = data.notes.match(/WhatsApp Lead:\s*([^.\n\r]+?)\s*चौकशी/i) || data.notes.match(/Customer Lead:\s*([^.\n\r]+)/i);
+              if (m && m[1]) service = m[1].trim();
+            }
+
             const phone = rawPhone;
             const email = (data.email || data.mail || clientObj.email || '').trim();
             const createdAtDate = data.createdAt?.toDate
@@ -1658,18 +1763,20 @@ export default function Leads() {
 
             if (!isDeletedItem('fs_' + docSnap.id)) {
               const sUpper = (service || '').toUpperCase();
-              const category = sUpper.includes('HEALTH') || sUpper.includes('MEDICLAIM')
+              const category = (sUpper.includes('HEALTH') || sUpper.includes('MEDICLAIM') || sUpper.includes('आरोग्य'))
                 ? 'HEALTH'
                 : (sUpper.includes('MUTUAL') || sUpper.includes('MF') || sUpper.includes('WEALTH') || sUpper.includes('SIP'))
                   ? 'MUTUAL FUNDS'
-                  : sUpper.includes('MOTOR') || sUpper.includes('CAR')
+                  : (sUpper.includes('MOTOR') || sUpper.includes('CAR') || sUpper.includes('गाडी') || sUpper.includes('वाहन'))
                     ? 'MOTOR'
-                    : 'LIFE';
+                    : (sUpper.includes('PENSION') || sUpper.includes('RETIREMENT') || sUpper.includes('पेन्शन') || sUpper.includes('निवृत्ती'))
+                      ? 'RETIREMENT'
+                      : 'LIFE';
 
               const descriptionDetails = data.notes || (
                 data.age || data.income
                   ? `Financial Checkup (Age: ${data.age || 'N/A'}, Income: ${data.income || 'N/A'}, Requirement: ${service})`
-                  : `Website Consultation: ${service}`
+                  : `Customer Lead: ${service}`
               );
 
               firestoreList.push({
@@ -1688,22 +1795,23 @@ export default function Leads() {
                 assignedEmployee: data.assignedEmployee || (data.assignedToName ? { name: data.assignedToName, id: data.assignedEmployeeId || data.assignedTo } : undefined),
                 premiumBudget: data.premiumBudget || data.expectedPremium || data.amount || undefined,
                 expectedPremium: data.expectedPremium || data.premiumBudget || data.amount || undefined,
-                notes: JSON.stringify({
+                notes: typeof data.notes === 'string' ? data.notes : JSON.stringify({
                   leadStatus: data.status || 'INTERESTED',
-                  leadSource: data.leadSource || data.source || 'Website Consultation',
+                  leadSource: data.leadSource || data.source || 'WhatsApp Lead',
                   leadType: data.leadType || 'FRESH',
                   assignedEmployeeId: data.assignedEmployeeId || data.assignedTo || '',
                   assignedEmployeeName: data.assignedToName || data.assignedEmployeeName || '',
                   descriptionDetails
                 }),
                 interests: [service],
+                productInterests: [service],
                 contact: {
                   id: 'fs_contact_' + docSnap.id,
                   firstName,
                   lastName,
                   phone,
                   email,
-                  tags: ['Website Consultation', service]
+                  tags: ['Customer Lead', service]
                 },
                 plan: {
                   name: service,
@@ -1871,17 +1979,16 @@ export default function Leads() {
       });
     });
 
-    // Merge webLeads without blocking same phone or unique IDs
-    const seenIds = new Set(flat.map(l => String(l.id)));
-    const seenContactIds = new Set(flat.map(l => String(l.contactId || l.contact?.id || l.contact?._id || '')).filter(Boolean));
-    const seenPhones = new Set(flat.map(l => String(l.phone || l.mobile || l.contact?.phone || l.contact?.mobile || '').replace(/\D/g, '').slice(-10)).filter(p => p.length >= 10));
+    // Merge webLeads without duplicates
+    const seenIds = new Set(flat.map(l => String(l.id || '').replace('fs_', '').toLowerCase()));
 
     webLeads.forEach(wl => {
       if (!isDeletedCard(wl)) {
         const idStr = String(wl.id || '');
+        const cleanId = idStr.replace('fs_', '').toLowerCase();
         if (idStr.startsWith('contact_lead_') || idStr.startsWith('auto_')) return;
-        if (!seenIds.has(idStr)) {
-          seenIds.add(idStr);
+        if (!seenIds.has(cleanId)) {
+          seenIds.add(cleanId);
           const enriched = enrichLeadWithContacts(wl);
           flat.unshift({ ...enriched, uiStage: BACKEND_TO_UI[wl.stage] || 'To Contact' });
         }
@@ -5977,7 +6084,7 @@ function KanbanCard({ card, employeesList, allLeadsList, contactsList, onEdit, o
   const hotnessConf = HOTNESS_CONFIG[hotness];
   const contactInfo = getLeadContactDetails(card, allLeadsList, contactsList);
   const isGeneric = (n?: string) => !n || n === 'Website Lead' || n === 'Contact Lead' || n === 'Lead' || String(n).startsWith('Lead (');
-  const clientFullName = !isGeneric(card.fullName)
+  const rawClientName = !isGeneric(card.fullName)
     ? card.fullName
     : (!isGeneric(card.name)
       ? card.name
@@ -5988,8 +6095,9 @@ function KanbanCard({ card, employeesList, allLeadsList, contactsList, onEdit, o
           : (!isGeneric(contactInfo.fullName)
             ? contactInfo.fullName
             : (card.contact?.firstName ? `${card.contact.firstName} ${card.contact.lastName || ''}`.trim() : 'Website Lead')))));
+  const clientFullName = sanitizeLeadName(rawClientName) || rawClientName;
   const phoneNum = card.phone || card.mobile || card.contact?.phone || card.contact?.mobile || contactInfo.phone || '';
-  const productName = card.plan?.name || (card.interests && card.interests.length > 0 ? card.interests.join(', ') : 'Mutual Funds');
+  const productName = extractLeadProductName(card);
   const premiumVal = Number(card.premiumBudget || card.expectedPremium || 0);
 
   const rawId = String(card.id || '');
@@ -6149,7 +6257,7 @@ function LeadsTable({ data, employeesList, allLeadsList, contactsList, loading, 
       render: (r: any) => {
         const contactInfo = getLeadContactDetails(r, allLeadsList, contactsList);
         const isGeneric = (n?: string) => !n || n === 'Website Lead' || n === 'Contact Lead' || n === 'Lead';
-        const clientFullName = !isGeneric(r.fullName)
+        const rawClientName = !isGeneric(r.fullName)
           ? r.fullName
           : (!isGeneric(r.name)
             ? r.name
@@ -6160,6 +6268,7 @@ function LeadsTable({ data, employeesList, allLeadsList, contactsList, loading, 
                 : (!isGeneric(contactInfo.fullName)
                   ? contactInfo.fullName
                   : (contactInfo.phone ? `Lead (${contactInfo.phone})` : 'Website Lead')))));
+        const clientFullName = sanitizeLeadName(rawClientName) || rawClientName;
         const phoneNum = r.phone || r.mobile || r.contact?.phone || r.contact?.mobile || contactInfo.phone || '';
 
         return (
@@ -6175,11 +6284,11 @@ function LeadsTable({ data, employeesList, allLeadsList, contactsList, loading, 
     {
       key: 'plan', label: 'Product',
       render: (r: any) => {
-        const prodName = r.plan?.name || (r.interests && r.interests.length > 0 ? r.interests.join(', ') : '—');
+        const prodName = extractLeadProductName(r);
         const prodCat = r.plan?.category || '';
         return (
           <div>
-            <p className="text-[13px] font-medium text-gray-800">{prodName}</p>
+            <p className="text-[13px] font-semibold text-gray-800">{prodName}</p>
             {prodCat && <p className="text-[11px] text-gray-400">{prodCat}</p>}
           </div>
         );
@@ -6877,9 +6986,9 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, allLeads, contacts
               <span className={clsx('flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded border font-bold shadow-2xs', hotnessConf.cls)}>
                 <HotnessIcon level={hotness} /> {hotnessConf.label}
               </span>
-              {(mergedLead.plan?.name || mergedLead.planName) && (
+              {extractLeadProductName(mergedLead) !== '—' && (
                 <span className="text-xs text-slate-600 font-semibold flex items-center gap-1">
-                  • {mergedLead.plan?.name || mergedLead.planName}
+                  • {extractLeadProductName(mergedLead)}
                 </span>
               )}
               <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200/80 px-2 py-0.5 rounded-full flex items-center gap-1 shadow-2xs">

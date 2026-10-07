@@ -278,12 +278,18 @@
         const firstName = nameParts[0] || name;
         const lastName = nameParts.slice(1).join(' ') || '';
 
+        const category = selectedProd === 'health_general' ? 'HEALTH' 
+          : selectedProd === 'motor' ? 'MOTOR'
+          : selectedProd === 'investment' ? 'INVESTMENT'
+          : 'LIFE';
+
         const leadData = {
           id: leadId,
           _id: leadId,
           firstName: firstName,
           lastName: lastName,
           name: name,
+          fullName: name,
           phone: phone,
           email: email || '',
           source: 'WhatsApp Status',
@@ -293,8 +299,17 @@
           status: 'NEW',
           leadStatus: 'Interested',
           notes: 'WhatsApp Lead: ' + selectedProdName + ' चौकशी. नाव: ' + name + ', फोन: ' + phone,
+          service: selectedProdName,
+          serviceRequired: selectedProdName,
+          requirement: selectedProdName,
+          planName: selectedProdName,
+          product: selectedProdName,
           interests: [selectedProdName],
-          productInterests: [selectedProd],
+          productInterests: [selectedProdName],
+          plan: {
+            name: selectedProdName,
+            category: category
+          },
           isWebsiteLead: true,
           tags: ['whatsapp-lead', selectedProd, 'public-form'],
           createdAt: new Date().toISOString(),
