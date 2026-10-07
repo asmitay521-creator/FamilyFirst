@@ -35,13 +35,13 @@ export default function LeadFormGenerator() {
   const employees: any[] = empRes?.data || [];
 
   // Live Domain Configuration for Customer WhatsApp Sharing (Real Clickable URLs)
-  const [selectedDomain, setSelectedDomain] = useState<'official' | 'vercel'>('official');
-  const OFFICIAL_DOMAIN = 'https://familyfirstrahulkulkarni.com';
+  const [selectedDomain, setSelectedDomain] = useState<'vercel' | 'official'>('vercel');
   const VERCEL_DOMAIN = 'https://familyfirstweb.vercel.app';
+  const OFFICIAL_DOMAIN = 'https://familyfirstrahulkulkarni.com';
   
-  const baseUrl = selectedDomain === 'official' ? OFFICIAL_DOMAIN : VERCEL_DOMAIN;
+  const baseUrl = selectedDomain === 'vercel' ? VERCEL_DOMAIN : OFFICIAL_DOMAIN;
   
-  // Clean direct URL generator (Live URL for WhatsApp)
+  // Clean direct URL generator (Live URL for WhatsApp) - points directly to standalone static form
   const generateUrl = () => {
     const params = new URLSearchParams();
     if (selectedProduct) {
@@ -52,12 +52,12 @@ export default function LeadFormGenerator() {
     }
 
     const qs = params.toString();
-    return `${baseUrl}/lead-form${qs ? `?${qs}` : ''}`;
+    return `${baseUrl}/lead-form.html${qs ? `?${qs}` : ''}`;
   };
 
   const currentLink = generateUrl();
   const localTestLink = typeof window !== 'undefined' 
-    ? `${window.location.origin}/lead-form?${new URLSearchParams({ ...(selectedProduct ? { product: selectedProduct } : {}), ...(assignedEmployeeId ? { assignee: assignedEmployeeId } : {}) }).toString()}`
+    ? `${window.location.origin}/lead-form.html?${new URLSearchParams({ ...(selectedProduct ? { product: selectedProduct } : {}), ...(assignedEmployeeId ? { assignee: assignedEmployeeId } : {}) }).toString()}`
     : currentLink;
   const currentProdObj = PRODUCT_OPTIONS.find((p) => p.id === selectedProduct) || PRODUCT_OPTIONS[1];
 
@@ -220,17 +220,17 @@ export default function LeadFormGenerator() {
             <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-1 rounded-xl text-xs font-semibold">
               <button
                 type="button"
+                onClick={() => setSelectedDomain('vercel')}
+                className={`px-2.5 py-1 rounded-lg transition ${selectedDomain === 'vercel' ? 'bg-emerald-600 text-white font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+              >
+                vercel.app (WhatsApp Live)
+              </button>
+              <button
+                type="button"
                 onClick={() => setSelectedDomain('official')}
                 className={`px-2.5 py-1 rounded-lg transition ${selectedDomain === 'official' ? 'bg-emerald-600 text-white font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
               >
                 familyfirstrahulkulkarni.com
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedDomain('vercel')}
-                className={`px-2.5 py-1 rounded-lg transition ${selectedDomain === 'vercel' ? 'bg-emerald-600 text-white font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
-              >
-                vercel.app
               </button>
             </div>
           </div>
@@ -274,7 +274,7 @@ export default function LeadFormGenerator() {
             </button>
 
             <a
-              href={localTestLink}
+              href={currentLink}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-1.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold py-2 px-3.5 rounded-xl text-xs transition border border-slate-200 dark:border-slate-700 active:scale-95 cursor-pointer"
