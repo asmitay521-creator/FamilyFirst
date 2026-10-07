@@ -1,18 +1,18 @@
 <!DOCTYPE html>
-<html lang="mr">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Family First - योजनेची मोफत माहिती मिळवा</title>
+  <title>Family First - Request Free Insurance & Planning Quotes</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com">
-  <link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
   <style>
-    body { font-family: 'Mukta', 'Plus Jakarta Sans', sans-serif; }
+    body { font-family: 'Plus Jakarta Sans', 'Inter', sans-serif; }
   </style>
 </head>
 <body class="bg-[#0a0f1d] text-slate-100 min-h-screen flex items-center justify-center p-3 sm:p-4 relative overflow-x-hidden select-none font-sans">
@@ -41,10 +41,10 @@
           </div>
           
           <h2 id="formHeading" class="text-xl sm:text-2xl font-extrabold text-emerald-800 leading-tight">
-            योजनेची मोफत माहिती मिळवा
+            Request Free Information & Quotes
           </h2>
           <p class="text-xs text-slate-500 mt-1">
-            खालील तपशील भरा, आमचे प्रतिनिधी त्वरित संपर्क करतील
+            Fill in your details below. Our advisor will reach out to assist you.
           </p>
         </div>
 
@@ -62,7 +62,7 @@
               type="text"
               id="fullName"
               required
-              placeholder="तुमचे नाव लिहा *"
+              placeholder="Full Name *"
               class="w-full pl-10 pr-3.5 py-3 bg-slate-50 border-2 border-slate-200 focus:border-emerald-600 focus:bg-white rounded-xl text-slate-800 placeholder-slate-400 text-xs sm:text-sm font-medium transition duration-200 outline-none shadow-xs"
             />
           </div>
@@ -79,7 +79,7 @@
               id="mobileNumber"
               required
               maxlength="10"
-              placeholder="१० अंकी मोबाईल नंबर लिहा *"
+              placeholder="10-Digit Mobile Number *"
               class="w-full pl-10 pr-3.5 py-3 bg-slate-50 border-2 border-slate-200 focus:border-emerald-600 focus:bg-white rounded-xl text-slate-800 placeholder-slate-400 text-xs sm:text-sm font-medium transition duration-200 outline-none shadow-xs"
             />
           </div>
@@ -94,7 +94,7 @@
             <input
               type="email"
               id="emailAddress"
-              placeholder="ईमेल आयडी लिहा (पर्यायी)"
+              placeholder="Email Address (Optional)"
               class="w-full pl-10 pr-3.5 py-3 bg-slate-50 border-2 border-slate-200 focus:border-emerald-600 focus:bg-white rounded-xl text-slate-800 placeholder-slate-400 text-xs sm:text-sm font-medium transition duration-200 outline-none shadow-xs"
             />
           </div>
@@ -110,12 +110,12 @@
               id="productSelect"
               class="w-full pl-10 pr-9 py-3 bg-slate-50 border-2 border-slate-200 focus:border-emerald-600 focus:bg-white rounded-xl text-slate-800 text-xs sm:text-sm font-semibold transition duration-200 outline-none shadow-xs appearance-none cursor-pointer"
             >
-              <option value="pension">पेन्शन व निवृत्ती योजना (Retirement & Pension)</option>
-              <option value="health_general">आरोग्य विमा / हेल्थ इन्शुरन्स (सर्व कंपन्या)</option>
-              <option value="term_insurance">टर्म इन्शुरन्स (Term Insurance)</option>
-              <option value="child_future">मुलांचे शिक्षण व लग्न नियोजन फंड</option>
-              <option value="investment">गुंतवणूक व हमी बचत योजना (Savings Plan)</option>
-              <option value="motor">गाडी / वाहन विमा (Motor Insurance)</option>
+              <option value="term_insurance">Term Life Insurance</option>
+              <option value="pension">Retirement & Pension Plan</option>
+              <option value="health_general">Health Insurance (Mediclaim)</option>
+              <option value="child_future">Child Education & Future Fund</option>
+              <option value="investment">Guaranteed Savings & Investment Plan</option>
+              <option value="motor">Motor & Vehicle Insurance</option>
             </select>
             <div class="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -130,7 +130,7 @@
             id="submitBtn"
             class="w-full py-3.5 px-5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white font-bold rounded-xl text-sm sm:text-base flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 active:scale-[0.98] transition duration-200 disabled:opacity-60 cursor-pointer"
           >
-            <span>माहिती मिळवा</span>
+            <span>Submit Inquiry</span>
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
             </svg>
@@ -142,7 +142,7 @@
           <svg class="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
           </svg>
-          <span>तुमची माहिती १००% सुरक्षित राहील.</span>
+          <span>Your information is 100% confidential and secure.</span>
         </div>
       </div>
 
@@ -155,7 +155,7 @@
         </div>
         <h3 id="successName" class="text-2xl font-black text-emerald-900 mb-2"></h3>
         <p class="text-slate-600 text-sm mb-6 leading-relaxed">
-          तुमची माहिती आम्हाला मिळाली आहे. <strong>Family First (राहुल कुलकर्णी)</strong> चे प्रतिनिधी लवकरच आपल्याशी फोनवर संपर्क साधतील.
+          Thank you! We have received your inquiry. A dedicated representative from <strong>Family First</strong> will contact you shortly.
         </p>
 
         <!-- CTAs -->
@@ -166,13 +166,13 @@
             target="_blank"
             class="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-md transition duration-150"
           >
-            थेट WhatsApp वर मेसेज करा
+            Direct Message on WhatsApp
           </a>
           <a
             href="tel:8421702419"
             class="w-full py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition duration-150"
           >
-            कॉल करा (8421702419)
+            Call Directly (8421702419)
           </a>
         </div>
       </div>
@@ -199,42 +199,86 @@
     const db = firebase.firestore();
 
     const productNames = {
-      pension: 'पेन्शन व निवृत्ती योजना (Retirement & Pension)',
-      health_general: 'आरोग्य विमा / हेल्थ इन्शुरन्स (सर्व कंपन्या)',
-      term_insurance: 'टर्म इन्शुरन्स (Term Insurance)',
-      child_future: 'मुलांचे शिक्षण व लग्न नियोजन फंड',
-      investment: 'गुंतवणूक व हमी बचत योजना (Savings Plan)',
-      motor: 'गाडी / वाहन विमा (Motor Insurance)'
+      term_insurance: 'Term Life Insurance',
+      pension: 'Retirement & Pension Plan',
+      health_general: 'Health Insurance (Mediclaim)',
+      child_future: 'Child Education & Future Fund',
+      investment: 'Guaranteed Savings & Investment Plan',
+      motor: 'Motor & Vehicle Insurance'
     };
 
     const headings = {
-      pension: 'पेन्शन व निवृत्ती योजनेची मोफत माहिती मिळवा',
-      health_general: 'आरोग्य विमा (Health Insurance) मोफत माहिती व कोटेशन',
-      term_insurance: 'टर्म इन्शुरन्स (Term Insurance) मोफत माहिती व कोटेशन',
-      child_future: 'मुलांचे शिक्षण व लग्न नियोजन फंड माहिती',
-      investment: 'गुंतवणूक व हमी बचत योजना माहिती',
-      motor: 'गाडी / वाहन विमा (Motor Insurance) कोटेशन'
+      term_insurance: 'Get Free Term Life Insurance Quotes',
+      pension: 'Get Free Retirement & Pension Plan Details',
+      health_general: 'Get Free Health Insurance Quotes & Cashless Hospitalization',
+      child_future: 'Get Free Child Education & Future Planning Details',
+      investment: 'Get Free Guaranteed Savings & Investment Quotes',
+      motor: 'Get Free Motor & Vehicle Insurance Quotes'
     };
 
     // Parse URL Params
     const urlParams = new URLSearchParams(window.location.search);
-    const paramProduct = urlParams.get('product') || 'pension';
+    const paramProduct = urlParams.get('product') || 'term_insurance';
+    const paramPName = urlParams.get('pname') || '';
     const paramAssignee = urlParams.get('assignee') || '';
 
     const productSelect = document.getElementById('productSelect');
     const formHeading = document.getElementById('formHeading');
 
+    // Handle Custom Product from Query Param if present
+    if (paramProduct && !productNames[paramProduct] && paramPName) {
+      productNames[paramProduct] = paramPName;
+      headings[paramProduct] = `Get Free Information for ${paramPName}`;
+      
+      // Add custom option to select
+      const opt = document.createElement('option');
+      opt.value = paramProduct;
+      opt.textContent = paramPName;
+      productSelect.appendChild(opt);
+    }
+
+    // Set initial selected value & heading
     if (paramProduct && productSelect) {
       productSelect.value = paramProduct;
       if (headings[paramProduct]) {
         formHeading.innerText = headings[paramProduct];
+      } else if (paramPName) {
+        formHeading.innerText = `Get Free Information for ${paramPName}`;
       }
+    }
+
+    // Listen to custom products from Firestore dynamically
+    try {
+      db.collection('custom_products').onSnapshot((snapshot) => {
+        snapshot.forEach((docSnap) => {
+          const d = docSnap.data();
+          if (d.name && !productNames[docSnap.id]) {
+            productNames[docSnap.id] = d.name;
+            headings[docSnap.id] = `Get Free Information for ${d.name}`;
+            const exists = Array.from(productSelect.options).some(o => o.value === docSnap.id);
+            if (!exists) {
+              const opt = document.createElement('option');
+              opt.value = docSnap.id;
+              opt.textContent = d.name;
+              productSelect.appendChild(opt);
+            }
+          }
+        });
+        if (paramProduct && productSelect) {
+          productSelect.value = paramProduct;
+        }
+      });
+    } catch (e) {
+      console.warn('Firestore custom products listener notice:', e);
     }
 
     productSelect.addEventListener('change', (e) => {
       const p = e.target.value;
       if (headings[p]) {
         formHeading.innerText = headings[p];
+      } else {
+        const selectedText = productSelect.options[productSelect.selectedIndex]?.text || 'Insurance & Planning';
+        formHeading.innerText = `Get Free Information for ${selectedText}`;
       }
     });
 
@@ -255,22 +299,22 @@
       const phone = document.getElementById('mobileNumber').value.trim().replace(/\D/g, '');
       const email = document.getElementById('emailAddress').value.trim();
       const selectedProd = productSelect.value;
-      const selectedProdName = productNames[selectedProd] || selectedProd;
+      const selectedProdName = productNames[selectedProd] || productSelect.options[productSelect.selectedIndex]?.text || selectedProd;
 
       if (!name) {
-        errorAlert.innerText = 'कृपया आपले नाव लिहा.';
+        errorAlert.innerText = 'Please enter your full name.';
         errorAlert.classList.remove('hidden');
         return;
       }
 
       if (!phone || phone.length < 10) {
-        errorAlert.innerText = 'कृपया वैध १० अंकी मोबाईल नंबर लिहा.';
+        errorAlert.innerText = 'Please enter a valid 10-digit mobile number.';
         errorAlert.classList.remove('hidden');
         return;
       }
 
       submitBtn.disabled = true;
-      submitBtn.innerHTML = 'कृपया थांबा...';
+      submitBtn.innerHTML = 'Submitting...';
 
       try {
         const leadId = 'lead_wp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
@@ -292,13 +336,13 @@
           fullName: name,
           phone: phone,
           email: email || '',
-          source: 'WhatsApp Status',
-          leadSource: 'WhatsApp Status',
+          source: 'WhatsApp Share',
+          leadSource: 'WhatsApp Share',
           stage: 'TO_CONTACT',
           leadStage: 'To Contact',
           status: 'NEW',
           leadStatus: 'Interested',
-          notes: 'WhatsApp Lead: ' + selectedProdName + ' चौकशी. नाव: ' + name + ', फोन: ' + phone,
+          notes: 'Customer Inquiry: ' + selectedProdName + '. Name: ' + name + ', Phone: ' + phone,
           service: selectedProdName,
           serviceRequired: selectedProdName,
           requirement: selectedProdName,
@@ -324,14 +368,14 @@
 
         formSection.classList.add('hidden');
         successSection.classList.remove('hidden');
-        successName.innerText = 'धन्यवाद, ' + name + '!';
-        waLink.href = 'https://wa.me/918421702419?text=' + encodeURIComponent('Namaste, Mi ' + name + '. Mala ' + selectedProdName + ' baddal mahiti havi aahe.');
+        successName.innerText = 'Thank you, ' + name + '!';
+        waLink.href = 'https://wa.me/918421702419?text=' + encodeURIComponent('Hello, I am ' + name + '. I would like to get information regarding ' + selectedProdName + '.');
       } catch (err) {
         console.error('Lead submission error:', err);
-        errorAlert.innerText = 'माहिती पाठवताना त्रुटी आली. कृपया 8421702419 या नंबरवर संपर्क करा.';
+        errorAlert.innerText = 'An error occurred while submitting. Please contact us directly at 8421702419.';
         errorAlert.classList.remove('hidden');
         submitBtn.disabled = false;
-        submitBtn.innerHTML = '<span>माहिती मिळवा</span>';
+        submitBtn.innerHTML = '<span>Submit Inquiry</span>';
       }
     });
   </script>

@@ -1,19 +1,21 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { db } from '../services/firebase';
-import { doc, setDoc } from 'firebase/firestore';
-import { User, Phone, Mail, ShieldCheck, CheckCircle2, ArrowRight, PhoneCall, MessageCircle, Sparkles, Tag, ChevronDown } from 'lucide-react';
-import { PRODUCT_OPTIONS } from '../utils/productOptions';
+import { doc, setDoc, collection, onSnapshot } from 'firebase/firestore';
+import { User, Phone, Mail, ShieldCheck, CheckCircle2, ArrowRight, PhoneCall, MessageCircle, Tag, ChevronDown } from 'lucide-react';
+import { ProductOption, DEFAULT_PRODUCT_OPTIONS, getAllProductOptions } from '../utils/productOptions';
 
 export default function PublicLeadForm() {
   const [searchParams] = useSearchParams();
 
   // URL Query Parameters
-  const paramProduct = searchParams.get('product') || 'pension';
+  const paramProduct = searchParams.get('product') || 'term_insurance';
+  const paramPName = searchParams.get('pname') || '';
   const paramAssignee = searchParams.get('assignee') || '';
   const paramTitle = searchParams.get('title') ? decodeURIComponent(searchParams.get('title')!) : '';
-  const paramOffer = searchParams.get('offer') ? decodeURIComponent(searchParams.get('offer')!) : '';
-  const paramNoBanner = searchParams.get('nobanner') === '1';
+
+  // Products State
+  const [productsList, setProductsList] = useState<ProductOption[]>(() => getAllProductOptions());
 
   // Form State
   const [name, setName] = useState('');
@@ -24,33 +26,61 @@ export default function PublicLeadForm() {
   const [submitted, setSubmitted] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  // Sync products with Firestore custom products
+  useEffect(() => {
+    if (!db) return;
+    try {
+      const unsub = onSnapshot(collection(db, 'custom_products'), (snapshot) => {
+        const customArr: ProductOption[] = [];
+        snapshot.forEach((docSnap) => {
+          const d = docSnap.data();
+          if (d.name) {
+            customArr.push({
+              id: docSnap.id,
+              name: d.name,
+              nameEn: d.name,
+              badge: d.badge || 'Custom',
+              isCustom: true,
+            });
+          }
+        });
+        if (customArr.length > 0) {
+          const seen = new Set(DEFAULT_PRODUCT_OPTIONS.map((p) => p.id));
+          const uniqueCustom = customArr.filter((c) => !seen.has(c.id));
+          setProductsList([...DEFAULT_PRODUCT_OPTIONS, ...uniqueCustom]);
+        }
+      });
+      return () => unsub();
+    } catch {}
+  }, []);
+
+  // Handle custom product from pname query param if not in list
+  useEffect(() => {
+    if (paramProduct && paramPName) {
+      setProductsList((prev) => {
+        if (prev.some((p) => p.id === paramProduct)) return prev;
+        return [...prev, { id: paramProduct, name: paramPName, nameEn: paramPName, isCustom: true }];
+      });
+    }
+  }, [paramProduct, paramPName]);
+
   // Sync state if url param changes
   useEffect(() => {
     if (paramProduct) setSelectedProduct(paramProduct);
   }, [paramProduct]);
 
   // Selected product object
-  const currentProdObj = PRODUCT_OPTIONS.find(p => p.id === selectedProduct) || PRODUCT_OPTIONS[1];
+  const currentProdObj = productsList.find((p) => p.id === selectedProduct) || productsList[0] || DEFAULT_PRODUCT_OPTIONS[0];
 
   // Dynamic Headings based on product
   const formTitle = paramTitle || (
-    selectedProduct === 'pension' ? 'पेन्शन व निवृत्ती योजनेची मोफत माहिती मिळवा' :
-    selectedProduct === 'health_general' ? 'आरोग्य विमा (Health Insurance) मोफत माहिती व कोटेशन' :
-    selectedProduct === 'term_insurance' ? 'टर्म इन्शुरन्स मोफत माहिती व कोटेशन' :
-    selectedProduct === 'child_future' ? 'मुलांचे शिक्षण व लग्न नियोजन फंड माहिती' :
-    selectedProduct === 'investment' ? 'गुंतवणूक व हमी बचत योजना माहिती' :
-    selectedProduct === 'motor' ? 'गाडी / वाहन विमा (Motor Insurance) कोटेशन' :
-    'विमा व गुंतवणूक योजनेची मोफत माहिती मिळवा'
-  );
-
-  const offerHeadline = paramOffer || (
-    selectedProduct === 'pension' ? 'पेन्शन व निवृत्ती नियोजन — रिटायरमेंटला मिळवा भरघोस फंड + नियमित पेन्शन' :
-    selectedProduct === 'health_general' ? '100% कॅशलेस हॉस्पिटलायझेशन, अमर्याद कव्हर व कुटुंबासाठी संपूर्ण आरोग्य सुरक्षा' :
-    selectedProduct === 'term_insurance' ? 'कमीत कमी प्रीमियममध्ये तुमच्या कुटुंबाला द्या संपूर्ण आर्थिक सुरक्षा' :
-    selectedProduct === 'child_future' ? 'मुलांचे डॉक्टर, इंजिनिअर व उच्च शिक्षणासाठी हमखास गॅरंटीड फंड' :
-    selectedProduct === 'investment' ? 'गुंतवणूक व हमी बचत योजना — सुरक्षित भविष्य आणि उत्तम परतावा' :
-    selectedProduct === 'motor' ? 'गाडी / वाहन विमा — सर्वोत्कृष्ट क्लेम सपोर्ट व तत्काळ पॉलिसी' :
-    'Family First — Financial Planning, Insurance & Investments'
+    selectedProduct === 'pension' ? 'Get Free Retirement & Pension Plan Details' :
+    selectedProduct === 'health_general' ? 'Get Free Health Insurance Quotes & Cashless Hospitalization' :
+    selectedProduct === 'term_insurance' ? 'Get Free Term Life Insurance Quotes' :
+    selectedProduct === 'child_future' ? 'Get Free Child Education & Future Planning Details' :
+    selectedProduct === 'investment' ? 'Get Free Guaranteed Savings & Investment Quotes' :
+    selectedProduct === 'motor' ? 'Get Free Motor & Vehicle Insurance Quotes' :
+    `Get Free Information for ${currentProdObj.name}`
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -61,12 +91,12 @@ export default function PublicLeadForm() {
     const cleanPhone = phone.trim().replace(/\D/g, '');
 
     if (!cleanName) {
-      setErrorMsg('कृपया आपले पूर्ण नाव लिहा.');
+      setErrorMsg('Please enter your full name.');
       return;
     }
 
     if (!cleanPhone || cleanPhone.length < 10) {
-      setErrorMsg('कृपया वैध १० अंकी मोबाईल नंबर लिहा.');
+      setErrorMsg('Please enter a valid 10-digit mobile number.');
       return;
     }
 
@@ -93,7 +123,7 @@ export default function PublicLeadForm() {
         leadStage: 'To Contact',
         status: 'NEW',
         leadStatus: 'Interested',
-        notes: `Customer Lead: ${currentProdObj.name}. नाव: ${cleanName}, फोन: ${cleanPhone}`,
+        notes: `Customer Inquiry: ${currentProdObj.name}. Name: ${cleanName}, Phone: ${cleanPhone}`,
         service: currentProdObj.name,
         serviceRequired: currentProdObj.name,
         requirement: currentProdObj.name,
@@ -136,7 +166,7 @@ export default function PublicLeadForm() {
       setSubmitted(true);
     } catch (err: any) {
       console.error('Lead submission error:', err);
-      setErrorMsg('माहिती पाठवताना अडचण आली. कृपया पुन्हा प्रयत्न करा किंवा थेट 8421702419 वर कॉल करा.');
+      setErrorMsg('An error occurred while submitting. Please call us directly at 8421702419.');
     } finally {
       setLoading(false);
     }
@@ -170,7 +200,7 @@ export default function PublicLeadForm() {
                   {formTitle}
                 </h2>
                 <p className="text-xs text-slate-500 mt-1">
-                  खालील तपशील भरा, आमचे प्रतिनिधी त्वरित संपर्क करतील
+                  Fill in your details below. Our advisor will reach out to assist you.
                 </p>
               </div>
 
@@ -192,7 +222,7 @@ export default function PublicLeadForm() {
                     required
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="तुमचे नाव लिहा *"
+                    placeholder="Full Name *"
                     className="w-full pl-10 pr-3.5 py-3 bg-slate-50 border-2 border-slate-200 focus:border-emerald-600 focus:bg-white rounded-xl text-slate-800 placeholder-slate-400 text-xs sm:text-sm font-medium transition duration-200 outline-none shadow-xs"
                   />
                 </div>
@@ -208,7 +238,7 @@ export default function PublicLeadForm() {
                     maxLength={10}
                     value={phone}
                     onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
-                    placeholder="१० अंकी मोबाईल नंबर लिहा *"
+                    placeholder="10-Digit Mobile Number *"
                     className="w-full pl-10 pr-3.5 py-3 bg-slate-50 border-2 border-slate-200 focus:border-emerald-600 focus:bg-white rounded-xl text-slate-800 placeholder-slate-400 text-xs sm:text-sm font-medium transition duration-200 outline-none shadow-xs"
                   />
                 </div>
@@ -222,12 +252,12 @@ export default function PublicLeadForm() {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="ईमेल आयडी लिहा (पर्यायी)"
+                    placeholder="Email Address (Optional)"
                     className="w-full pl-10 pr-3.5 py-3 bg-slate-50 border-2 border-slate-200 focus:border-emerald-600 focus:bg-white rounded-xl text-slate-800 placeholder-slate-400 text-xs sm:text-sm font-medium transition duration-200 outline-none shadow-xs"
                   />
                 </div>
 
-                {/* Product Dropdown (Contains all products) */}
+                {/* Product Dropdown */}
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-emerald-600">
                     <Tag className="w-4 h-4" />
@@ -237,7 +267,7 @@ export default function PublicLeadForm() {
                     onChange={(e) => setSelectedProduct(e.target.value)}
                     className="w-full pl-10 pr-9 py-3 bg-slate-50 border-2 border-slate-200 focus:border-emerald-600 focus:bg-white rounded-xl text-slate-800 text-xs sm:text-sm font-semibold transition duration-200 outline-none shadow-xs appearance-none cursor-pointer"
                   >
-                    {PRODUCT_OPTIONS.filter(p => p.id !== 'all').map((prod) => (
+                    {productsList.map((prod) => (
                       <option key={prod.id} value={prod.id}>
                         {prod.name}
                       </option>
@@ -258,7 +288,7 @@ export default function PublicLeadForm() {
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   ) : (
                     <>
-                      <span>माहिती मिळवा</span>
+                      <span>Submit Inquiry</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
@@ -268,7 +298,7 @@ export default function PublicLeadForm() {
               {/* Privacy Footer */}
               <div className="mt-3.5 text-center flex items-center justify-center gap-1.5 text-xs text-slate-500 font-medium">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                <span>तुमची माहिती १००% सुरक्षित राहील.</span>
+                <span>Your information is 100% confidential and secure.</span>
               </div>
             </>
           ) : (
@@ -278,22 +308,22 @@ export default function PublicLeadForm() {
                 <CheckCircle2 className="w-10 h-10" />
               </div>
               <h3 className="text-2xl font-black text-emerald-900 mb-2">
-                धन्यवाद, {name}!
+                Thank you, {name}!
               </h3>
               <p className="text-slate-600 text-sm mb-6 leading-relaxed">
-                तुमची माहिती आम्हाला मिळाली आहे. <strong>Family First (राहुल कुलकर्णी)</strong> चे प्रतिनिधी लवकरच <strong>{currentProdObj.name}</strong> बद्दल आपल्याशी फोनवर संपर्क साधतील.
+                We have received your inquiry. A dedicated advisor from <strong>Family First</strong> will contact you shortly regarding <strong>{currentProdObj.name}</strong>.
               </p>
 
               {/* Quick Connect Actions */}
               <div className="space-y-3 pt-2">
                 <a
-                  href={`https://wa.me/918421702419?text=Namaste%2C%20Mi%20${encodeURIComponent(name)}.%20Mala%20${encodeURIComponent(currentProdObj.name)}%20yojanabaddal%20mahiti%20havi%20aahe.`}
+                  href={`https://wa.me/918421702419?text=Hello%2C%20I%20am%20${encodeURIComponent(name)}.%20I%20would%20like%20to%20get%20information%20about%20${encodeURIComponent(currentProdObj.name)}.`}
                   target="_blank"
                   rel="noreferrer"
                   className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full font-bold text-sm flex items-center justify-center gap-2 shadow-md transition duration-150"
                 >
                   <MessageCircle className="w-4 h-4" />
-                  थेट WhatsApp वर मेसेज करा
+                  Direct Message on WhatsApp
                 </a>
 
                 <a
@@ -301,7 +331,7 @@ export default function PublicLeadForm() {
                   className="w-full py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-full font-bold text-sm flex items-center justify-center gap-2 transition duration-150"
                 >
                   <PhoneCall className="w-4 h-4 text-emerald-700" />
-                  आत्ताच कॉल करा (8421702419)
+                  Call Directly (8421702419)
                 </a>
               </div>
             </div>

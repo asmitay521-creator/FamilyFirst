@@ -1,16 +1,50 @@
 export interface ProductOption {
   id: string;
   name: string;
-  nameEn: string;
-  badge: string;
+  nameEn?: string;
+  badge?: string;
+  isCustom?: boolean;
 }
 
-export const PRODUCT_OPTIONS: ProductOption[] = [
-  { id: 'all', name: 'सर्व उत्पादने (All Products)', nameEn: 'All Products (Customer chooses)', badge: 'General' },
-  { id: 'pension', name: 'पेन्शन व निवृत्ती योजना (Retirement & Pension)', nameEn: 'Retirement & Pension Plan', badge: 'Pension' },
-  { id: 'health_general', name: 'आरोग्य विमा / हेल्थ इन्शुरन्स (सर्व कंपन्या)', nameEn: 'Health Insurance (Family Floater)', badge: 'Health' },
-  { id: 'term_insurance', name: 'टर्म इन्शुरन्स (Term Insurance)', nameEn: 'Term Insurance', badge: 'Life' },
-  { id: 'child_future', name: 'मुलांचे शिक्षण व लग्न नियोजन फंड', nameEn: 'Child Education & Marriage Fund', badge: 'Child' },
-  { id: 'investment', name: 'गुंतवणूक व हमी बचत योजना (Savings Plan)', nameEn: 'Guaranteed Savings Plan', badge: 'Savings' },
-  { id: 'motor', name: 'गाडी / वाहन विमा (Motor Insurance)', nameEn: 'Motor & Vehicle Insurance', badge: 'Motor' },
+export const DEFAULT_PRODUCT_OPTIONS: ProductOption[] = [
+  { id: 'term_insurance', name: 'Term Life Insurance', nameEn: 'Term Life Insurance', badge: 'Life' },
+  { id: 'pension', name: 'Retirement & Pension Plan', nameEn: 'Retirement & Pension Plan', badge: 'Pension' },
+  { id: 'health_general', name: 'Health Insurance (Mediclaim)', nameEn: 'Health Insurance (Mediclaim)', badge: 'Health' },
+  { id: 'child_future', name: 'Child Education & Future Fund', nameEn: 'Child Education & Future Fund', badge: 'Child' },
+  { id: 'investment', name: 'Guaranteed Savings & Investment Plan', nameEn: 'Guaranteed Savings & Investment Plan', badge: 'Savings' },
+  { id: 'motor', name: 'Motor & Vehicle Insurance', nameEn: 'Motor & Vehicle Insurance', badge: 'Motor' },
 ];
+
+export const PRODUCT_STORAGE_KEY = 'familyfirst_custom_products';
+
+export function getCustomProducts(): ProductOption[] {
+  try {
+    const raw = localStorage.getItem(PRODUCT_STORAGE_KEY);
+    if (!raw) return [];
+    const list = JSON.parse(raw);
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveCustomProduct(product: ProductOption) {
+  try {
+    const existing = getCustomProducts();
+    const updated = [...existing.filter(p => p.id !== product.id), product];
+    localStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(updated));
+    return updated;
+  } catch {
+    return [];
+  }
+}
+
+export function getAllProductOptions(): ProductOption[] {
+  const custom = getCustomProducts();
+  const seenIds = new Set(DEFAULT_PRODUCT_OPTIONS.map(p => p.id));
+  const uniqueCustom = custom.filter(c => !seenIds.has(c.id));
+  return [...DEFAULT_PRODUCT_OPTIONS, ...uniqueCustom];
+}
+
+export const PRODUCT_OPTIONS: ProductOption[] = DEFAULT_PRODUCT_OPTIONS;
+

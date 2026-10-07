@@ -1,26 +1,38 @@
 import { useState, useEffect } from 'react';
 import { 
   Link2, Copy, Check, Share2, Sparkles, ExternalLink, 
-  UserCheck, Phone, MessageSquare, Tag, Eye, ChevronRight,
-  User, RefreshCw, Send, ArrowRight
+  UserCheck, Phone, MessageSquare, Tag, Eye, Plus,
+  Shield, CheckCircle2, X
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '@store/auth.store';
 import { useQuery } from '@tanstack/react-query';
 import { employeesService } from '@api/index';
 import { db } from '../../services/firebase';
-import { collection, onSnapshot } from 'firebase/firestore';
-import { PRODUCT_OPTIONS } from '../../utils/productOptions';
+import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
+import { 
+  ProductOption, 
+  DEFAULT_PRODUCT_OPTIONS, 
+  getAllProductOptions, 
+  saveCustomProduct 
+} from '../../utils/productOptions';
 
 export default function LeadFormGenerator() {
   const user = useAuthStore((s) => s.user);
 
-  // Simple State (Platform/Source removed as requested)
-  const [selectedProduct, setSelectedProduct] = useState('pension');
+  // Products State (Built-in + Dynamic Custom Products)
+  const [productsList, setProductsList] = useState<ProductOption[]>(() => getAllProductOptions());
+  const [selectedProduct, setSelectedProduct] = useState('term_insurance');
   const [assignedEmployeeId, setAssignedEmployeeId] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedMsg, setCopiedMsg] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
+
+  // Add Custom Product Modal State
+  const [showAddProductModal, setShowAddProductModal] = useState(false);
+  const [newProductName, setNewProductName] = useState('');
+  const [newProductCategory, setNewProductCategory] = useState('Life');
+  const [savingProduct, setSavingProduct] = useState(false);
 
   // Live Leads
   const [recentLeads, setRecentLeads] = useState<any[]>([]);
@@ -34,14 +46,96 @@ export default function LeadFormGenerator() {
   });
   const employees: any[] = empRes?.data || [];
 
+  // Live Firestore listener for custom products
+  useEffect(() => {
+    if (!db) return;
+    try {
+      const unsub = onSnapshot(collection(db, 'custom_products'), (snapshot) => {
+        const customArr: ProductOption[] = [];
+        snapshot.forEach((docSnap) => {
+          const d = docSnap.data();
+          if (d.name) {
+            customArr.push({
+              id: docSnap.id,
+              name: d.name,
+              nameEn: d.name,
+              badge: d.badge || 'Custom',
+              isCustom: true,
+            });
+          }
+        });
+        
+        if (customArr.length > 0) {
+          const seen = new Set(DEFAULT_PRODUCT_OPTIONS.map((p) => p.id));
+          const uniqueCustom = customArr.filter((c) => !seen.has(c.id));
+          setProductsList([...DEFAULT_PRODUCT_OPTIONS, ...uniqueCustom]);
+        }
+      });
+      return () => unsub();
+    } catch {}
+  }, []);
+
+  // Handle Adding New Product
+  const handleAddNewProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanName = newProductName.trim();
+    if (!cleanName) {
+      toast.error('Please enter a product or scheme name');
+      return;
+    }
+
+    setSavingProduct(true);
+    const prodId = 'prod_' + cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 30) + '_' + Math.random().toString(36).slice(2, 6);
+
+    const newProdObj: ProductOption = {
+      id: prodId,
+      name: cleanName,
+      nameEn: cleanName,
+      badge: newProductCategory,
+      isCustom: true,
+    };
+
+    // Save locally
+    saveCustomProduct(newProdObj);
+    setProductsList((prev) => {
+      const exists = prev.some((p) => p.id === newProdObj.id);
+      return exists ? prev : [...prev, newProdObj];
+    });
+
+    // Save to Firestore
+    if (db) {
+      try {
+        await setDoc(doc(db, 'custom_products', prodId), {
+          id: prodId,
+          name: cleanName,
+          badge: newProductCategory,
+          createdAt: new Date().toISOString(),
+          createdBy: user?.id || 'admin',
+        }, { merge: true });
+      } catch (err) {
+        console.warn('Firestore save product error:', err);
+      }
+    }
+
+    setSelectedProduct(prodId);
+    setNewProductName('');
+    setSavingProduct(false);
+    setShowAddProductModal(false);
+    toast.success(`Product "${cleanName}" added successfully!`);
+  };
+
   // Direct Live URL for WhatsApp Sharing
   const BASE_URL = 'https://familyfirstweb.vercel.app';
   
-  // Clean direct URL generator (Live URL for WhatsApp) - points directly to standalone static form
+  // Clean direct URL generator (Live URL for WhatsApp)
   const generateUrl = () => {
     const params = new URLSearchParams();
     if (selectedProduct) {
       params.set('product', selectedProduct);
+    }
+    const currentProd = productsList.find((p) => p.id === selectedProduct);
+    if (currentProd?.isCustom) {
+      params.set('pname', currentProd.name);
     }
     if (assignedEmployeeId) {
       params.set('assignee', assignedEmployeeId);
@@ -52,36 +146,36 @@ export default function LeadFormGenerator() {
   };
 
   const currentLink = generateUrl();
-  const currentProdObj = PRODUCT_OPTIONS.find((p) => p.id === selectedProduct) || PRODUCT_OPTIONS[1];
+  const currentProdObj = productsList.find((p) => p.id === selectedProduct) || productsList[0] || DEFAULT_PRODUCT_OPTIONS[0];
 
-  // Clean WhatsApp Message Template
+  // Clean English WhatsApp Message Template
   const generateWhatsAppMessage = () => {
     let msg = `🎯 *Family First — ${currentProdObj.name}*\n\n`;
     if (selectedProduct === 'pension') {
-      msg += `✨ *पेन्शन व निवृत्ती नियोजन — रिटायरमेंटला मिळवा भरघोस फंड + नियमित पेन्शन*\n\n`;
+      msg += `✨ *Retirement & Pension Planning — Guaranteed Monthly Pension & Corpus Fund*\n\n`;
     } else if (selectedProduct === 'health_general') {
-      msg += `✨ *100% कॅशलेस हॉस्पिटलायझेशन व कुटुंबासाठी संपूर्ण आरोग्य सुरक्षा*\n\n`;
+      msg += `✨ *100% Cashless Hospitalization & Comprehensive Family Health Coverage*\n\n`;
     } else if (selectedProduct === 'term_insurance') {
-      msg += `✨ *कमीत कमी प्रीमियममध्ये तुमच्या कुटुंबाला द्या संपूर्ण आर्थिक सुरक्षा*\n\n`;
+      msg += `✨ *Maximum Life Cover at Lowest Premiums for 100% Family Financial Security*\n\n`;
     } else if (selectedProduct === 'child_future') {
-      msg += `✨ *मुलांचे उच्च शिक्षण व लग्न नियोजनासाठी हमखास गॅरंटीड फंड*\n\n`;
+      msg += `✨ *Guaranteed Funding for Your Child's Higher Education & Marriage*\n\n`;
     } else if (selectedProduct === 'investment') {
-      msg += `✨ *गुंतवणूक व हमी बचत योजना — सुरक्षित भविष्य आणि उत्तम परतावा*\n\n`;
+      msg += `✨ *Guaranteed Savings & Wealth Creation — High Returns with Zero Risk*\n\n`;
     } else if (selectedProduct === 'motor') {
-      msg += `✨ *गाडी / वाहन विमा — सर्वोत्कृष्ट क्लेम सपोर्ट व तत्काळ पॉलिसी*\n\n`;
+      msg += `✨ *Motor & Vehicle Insurance — Instant Policy & Best Claim Support*\n\n`;
     } else {
-      msg += `✨ *सर्व प्रकारच्या विमा व गुंतवणूक योजनांची संपूर्ण माहिती*\n\n`;
+      msg += `✨ *Get complete information and customized quotes for ${currentProdObj.name}*\n\n`;
     }
-    msg += `👉 मोफत माहिती मिळवण्यासाठी खालील लिंकवर क्लिक करा:\n`;
+    msg += `👉 Click the link below to get a free personalized quote:\n`;
     msg += `🔗 ${currentLink}\n\n`;
-    msg += `_तुमची माहिती १००% सुरक्षित राहील._`;
+    msg += `_Your information is 100% confidential and secure._`;
     return msg;
   };
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(currentLink);
     setCopiedLink(true);
-    toast.success('Link copied!');
+    toast.success('Form link copied to clipboard!');
     setTimeout(() => setCopiedLink(false), 2500);
   };
 
@@ -97,7 +191,7 @@ export default function LeadFormGenerator() {
     window.open(`https://wa.me/?text=${text}`, '_blank');
   };
 
-  // Real-time Firestore stream
+  // Real-time Firestore stream for Leads
   useEffect(() => {
     if (!db) {
       setLoadingLeads(false);
@@ -106,11 +200,11 @@ export default function LeadFormGenerator() {
     try {
       const unsub = onSnapshot(collection(db, 'leads'), (snapshot) => {
         const leadsArr: any[] = [];
-        snapshot.forEach((doc) => {
-          leadsArr.push({ id: doc.id, ...doc.data() });
+        snapshot.forEach((docSnap) => {
+          leadsArr.push({ id: docSnap.id, ...docSnap.data() });
         });
         leadsArr.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-        setRecentLeads(leadsArr.slice(0, 10));
+        setRecentLeads(leadsArr.slice(0, 15));
         setLoadingLeads(false);
       }, () => setLoadingLeads(false));
       return () => unsub();
@@ -122,7 +216,7 @@ export default function LeadFormGenerator() {
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-12 font-sans">
       
-      {/* Clean & Elegant Header */}
+      {/* Clean & Professional Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-black text-[#17143F] flex items-center gap-2.5">
@@ -132,42 +226,63 @@ export default function LeadFormGenerator() {
             <span>Lead Form & Link Generator</span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-600 font-medium mt-1">
-            ग्राहकांसाठी WhatsApp किंवा सोशल मीडियावर शेअर करायची सोपी फॉर्म लिंक तयार करा.
+            Generate customized lead capture links to share on WhatsApp status, social media, and client campaigns.
           </p>
         </div>
 
-        <button
-          onClick={() => setShowPreviewModal(true)}
-          className="inline-flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-800 font-bold px-4 py-2.5 rounded-xl text-xs transition border border-slate-300 shadow-sm self-start sm:self-auto cursor-pointer active:scale-95"
-        >
-          <Eye className="w-4 h-4 text-emerald-600" />
-          <span>मोबाईल प्रिव्ह्यू पहा (Preview)</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowAddProductModal(true)}
+            className="inline-flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 text-white font-bold px-3.5 py-2 rounded-xl text-xs transition shadow-sm cursor-pointer active:scale-95"
+          >
+            <Plus className="w-4 h-4" />
+            <span>+ Add New Product</span>
+          </button>
+
+          <button
+            onClick={() => setShowPreviewModal(true)}
+            className="inline-flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-800 font-bold px-3.5 py-2 rounded-xl text-xs transition border border-slate-300 shadow-sm cursor-pointer active:scale-95"
+          >
+            <Eye className="w-4 h-4 text-emerald-600" />
+            <span>Preview Form</span>
+          </button>
+        </div>
       </div>
 
       {/* Main Generator Card */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
         
-        {/* Step 1: Select Product (Platform removed as requested) */}
+        {/* Step 1: Select or Add Product */}
         <div className="p-5 sm:p-6 space-y-4">
           
           <div>
-            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
-              उत्पादन निवडा (Select Product) *
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                Select Product / Insurance Scheme *
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowAddProductModal(true)}
+                className="text-xs font-bold text-purple-600 hover:text-purple-700 hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3 h-3" />
+                Add New Scheme
+              </button>
+            </div>
+
             <select
               value={selectedProduct}
               onChange={(e) => setSelectedProduct(e.target.value)}
               className="w-full px-4 py-3.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 text-sm font-semibold focus:ring-2 focus:ring-emerald-500 outline-none transition cursor-pointer"
             >
-              {PRODUCT_OPTIONS.map((prod) => (
+              {productsList.map((prod) => (
                 <option key={prod.id} value={prod.id}>
-                  {prod.name}
+                  {prod.name} {prod.badge ? `(${prod.badge})` : ''}
                 </option>
               ))}
             </select>
             <p className="text-xs text-slate-500 mt-1.5">
-              तुम्ही निवडलेले उत्पादन ग्राहकाच्या फॉर्मवर थेट सिलेक्ट केलेले असेल.
+              The selected product will be automatically pre-selected when customers open your form link.
             </p>
           </div>
 
@@ -175,7 +290,7 @@ export default function LeadFormGenerator() {
           {employees.length > 0 && (
             <div className="pt-2">
               <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                लीड कोणाला असाइन करायची? (Auto-Assign Lead - Optional)
+                Auto-Assign Leads to Employee (Optional)
               </label>
               <select
                 value={assignedEmployeeId}
@@ -201,7 +316,7 @@ export default function LeadFormGenerator() {
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-bold text-emerald-800 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                तयार झालेली Form Link:
+                Generated Form Link:
               </span>
               <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -237,7 +352,7 @@ export default function LeadFormGenerator() {
               className="inline-flex items-center gap-2 bg-[#25D366] hover:bg-[#20ba59] text-white font-bold py-2 px-4 rounded-xl text-xs transition shadow-sm active:scale-95 cursor-pointer"
             >
               <Share2 className="w-3.5 h-3.5" />
-              WhatsApp वर शेअर करा
+              Share on WhatsApp
             </button>
 
             <button
@@ -245,7 +360,7 @@ export default function LeadFormGenerator() {
               className="inline-flex items-center gap-1.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold py-2 px-3.5 rounded-xl text-xs transition border border-slate-200 dark:border-slate-700 active:scale-95 cursor-pointer"
             >
               {copiedMsg ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />}
-              {copiedMsg ? 'मजकूर कॉपी झाला!' : 'WhatsApp मेसेज कॉपी करा'}
+              {copiedMsg ? 'Message Copied!' : 'Copy WhatsApp Message'}
             </button>
 
             <a
@@ -255,7 +370,7 @@ export default function LeadFormGenerator() {
               className="inline-flex items-center gap-1.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold py-2 px-3.5 rounded-xl text-xs transition border border-slate-200 dark:border-slate-700 active:scale-95 cursor-pointer"
             >
               <ExternalLink className="w-3.5 h-3.5 text-blue-600" />
-              फॉर्म तपासून पहा (Open Form)
+              Open Live Form
             </a>
 
           </div>
@@ -273,10 +388,10 @@ export default function LeadFormGenerator() {
             </div>
             <div>
               <h2 className="text-sm sm:text-base font-bold text-white">
-                या लिंकवरून थेट जमा झालेल्या लीड्स (Live Customer Leads)
+                Live Customer Leads
               </h2>
               <p className="text-xs text-slate-400">
-                ग्राहकांनी फॉर्म भरल्यास त्यांची माहिती लगेच येथे व CRM मध्ये दिसेल.
+                Customer inquiries captured via this form link appear here and sync to CRM in real-time.
               </p>
             </div>
           </div>
@@ -286,22 +401,22 @@ export default function LeadFormGenerator() {
         </div>
 
         {loadingLeads ? (
-          <div className="py-8 text-center text-xs text-slate-400">माहिती लोड होत आहे...</div>
+          <div className="py-8 text-center text-xs text-slate-400">Loading leads...</div>
         ) : recentLeads.length === 0 ? (
           <div className="py-8 text-center text-xs text-slate-400 space-y-1">
-            <p className="font-semibold text-slate-200">अजून कोणतीही नवीन लीड आलेली नाही.</p>
-            <p>तुमची जनरेट केलेली लिंक WhatsApp Status वर शेअर करा!</p>
+            <p className="font-semibold text-slate-200">No customer leads received yet.</p>
+            <p>Share your generated link on WhatsApp Status to start collecting leads!</p>
           </div>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-white/10">
             <table className="w-full text-left text-xs border-collapse">
               <thead className="bg-[#18153c] text-[11px] font-bold text-slate-300 uppercase tracking-wider">
                 <tr>
-                  <th className="py-3 px-4 border-b border-white/10">नाव (Customer Name)</th>
-                  <th className="py-3 px-4 border-b border-white/10">मोबाईल नंबर</th>
-                  <th className="py-3 px-4 border-b border-white/10">उत्पादन (Interested Product)</th>
-                  <th className="py-3 px-4 border-b border-white/10">तारीख व वेळ</th>
-                  <th className="py-3 px-4 border-b border-white/10 text-right">संपर्क (Action)</th>
+                  <th className="py-3 px-4 border-b border-white/10">Customer Name</th>
+                  <th className="py-3 px-4 border-b border-white/10">Phone Number</th>
+                  <th className="py-3 px-4 border-b border-white/10">Interested Product</th>
+                  <th className="py-3 px-4 border-b border-white/10">Date & Time</th>
+                  <th className="py-3 px-4 border-b border-white/10 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
@@ -310,7 +425,7 @@ export default function LeadFormGenerator() {
                   const leadPhone = lead.phone || lead.mobile || '-';
                   const leadProduct = Array.isArray(lead.interests) && lead.interests.length > 0 
                     ? lead.interests[0] 
-                    : (lead.productInterests?.[0] || 'General Inquiry');
+                    : (lead.productInterests?.[0] || lead.service || lead.plan?.name || 'General Inquiry');
                   
                   // Safe Date Formatter
                   let formattedDate = '-';
@@ -358,7 +473,7 @@ export default function LeadFormGenerator() {
                         {leadPhone !== '-' ? (
                           <div className="inline-flex items-center gap-1.5 justify-end">
                             <a
-                              href={`https://wa.me/91${leadPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Namaste ${leadName}, Family First (Rahul Kulkarni) kadun samparka karat aahot.`)}`}
+                              href={`https://wa.me/91${leadPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hello ${leadName}, thank you for inquiring about ${leadProduct} with Family First.`)}`}
                               target="_blank"
                               rel="noreferrer"
                               className="inline-flex items-center gap-1 bg-[#25D366] hover:bg-[#20ba59] text-white px-2.5 py-1.5 rounded-lg text-xs font-bold shadow-sm transition active:scale-95"
@@ -389,19 +504,96 @@ export default function LeadFormGenerator() {
         )}
       </div>
 
+      {/* Add Custom Product Modal */}
+      {showAddProductModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl relative border border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 flex items-center justify-center font-bold">
+                  <Plus className="w-4 h-4" />
+                </div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  Add New Product / Scheme
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddProductModal(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddNewProduct} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                  Product / Plan Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Cyber Insurance, Keyman Policy, Super Top-up..."
+                  value={newProductName}
+                  onChange={(e) => setNewProductName(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-sm font-semibold outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                  Category Tag
+                </label>
+                <select
+                  value={newProductCategory}
+                  onChange={(e) => setNewProductCategory(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-sm font-semibold outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                >
+                  <option value="Life">Life Insurance</option>
+                  <option value="Health">Health Insurance</option>
+                  <option value="Motor">Motor Insurance</option>
+                  <option value="Savings">Savings & Investment</option>
+                  <option value="Pension">Retirement & Pension</option>
+                  <option value="Child">Child Education</option>
+                  <option value="General">General / Business Insurance</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddProductModal(false)}
+                  className="px-4 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingProduct}
+                  className="px-5 py-2.5 text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white rounded-xl shadow transition active:scale-95 cursor-pointer disabled:opacity-60 flex items-center gap-1.5"
+                >
+                  {savingProduct ? 'Saving...' : 'Save Product & Generate Link'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Clean Mobile Preview Modal */}
       {showPreviewModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-sm w-full p-5 shadow-2xl relative border border-slate-200 dark:border-slate-800">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-3">
               <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                ग्राहक मोबाईल प्रिव्ह्यू (Customer Mobile View)
+                Customer Mobile Form Preview
               </span>
               <button
                 onClick={() => setShowPreviewModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-xs font-bold"
+                className="text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
               >
-                बंद करा (✕)
+                ✕ Close
               </button>
             </div>
 
@@ -410,27 +602,27 @@ export default function LeadFormGenerator() {
               <div className="text-center">
                 <span className="text-xs font-black text-emerald-800 dark:text-emerald-400">Family First</span>
                 <h3 className="text-sm font-extrabold text-slate-900 dark:text-white mt-0.5">
-                  योजनेची मोफत माहिती मिळवा
+                  Request Free Information
                 </h3>
               </div>
 
               <div className="space-y-2 text-xs">
-                <div className="p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-full text-slate-400">
-                  तुमचे नाव लिहा *
+                <div className="p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-400">
+                  Full Name *
                 </div>
-                <div className="p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-full text-slate-400">
-                  १० अंकी मोबाईल नंबर *
+                <div className="p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-400">
+                  10-Digit Mobile Number *
                 </div>
-                <div className="p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-full text-slate-400">
-                  ईमेल आयडी (पर्यायी)
+                <div className="p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-400">
+                  Email Address (Optional)
                 </div>
-                <div className="p-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700 rounded-full text-emerald-800 dark:text-emerald-300 font-semibold text-[11px] truncate">
-                  उत्पादन: {currentProdObj.name}
+                <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700 rounded-xl text-emerald-800 dark:text-emerald-300 font-semibold text-[11px] truncate">
+                  Product: {currentProdObj.name}
                 </div>
               </div>
 
-              <div className="py-2 bg-emerald-600 text-white text-center font-bold text-xs rounded-full shadow">
-                माहिती मिळवा ➔
+              <div className="py-3 bg-emerald-600 text-white text-center font-bold text-xs rounded-xl shadow">
+                Submit Inquiry ➔
               </div>
             </div>
 
@@ -441,7 +633,7 @@ export default function LeadFormGenerator() {
                 rel="noreferrer"
                 className="text-xs text-blue-600 font-bold hover:underline inline-flex items-center gap-1"
               >
-                प्रत्यक्ष नवीन टॅबमध्ये उघडा <ExternalLink className="w-3 h-3" />
+                Open Live Form in New Tab <ExternalLink className="w-3 h-3" />
               </a>
             </div>
           </div>
