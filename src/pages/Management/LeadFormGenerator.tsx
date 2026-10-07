@@ -34,12 +34,8 @@ export default function LeadFormGenerator() {
   });
   const employees: any[] = empRes?.data || [];
 
-  // Live Domain Configuration for Customer WhatsApp Sharing (Real Clickable URLs)
-  const [selectedDomain, setSelectedDomain] = useState<'vercel' | 'official'>('vercel');
-  const VERCEL_DOMAIN = 'https://familyfirstweb.vercel.app';
-  const OFFICIAL_DOMAIN = 'https://familyfirstrahulkulkarni.com';
-  
-  const baseUrl = selectedDomain === 'vercel' ? VERCEL_DOMAIN : OFFICIAL_DOMAIN;
+  // Direct Live URL for WhatsApp Sharing
+  const BASE_URL = 'https://familyfirstweb.vercel.app';
   
   // Clean direct URL generator (Live URL for WhatsApp) - points directly to standalone static form
   const generateUrl = () => {
@@ -52,13 +48,10 @@ export default function LeadFormGenerator() {
     }
 
     const qs = params.toString();
-    return `${baseUrl}/lead-form.html${qs ? `?${qs}` : ''}`;
+    return `${BASE_URL}/lead-form.html${qs ? `?${qs}` : ''}`;
   };
 
   const currentLink = generateUrl();
-  const localTestLink = typeof window !== 'undefined' 
-    ? `${window.location.origin}/lead-form.html?${new URLSearchParams({ ...(selectedProduct ? { product: selectedProduct } : {}), ...(assignedEmployeeId ? { assignee: assignedEmployeeId } : {}) }).toString()}`
-    : currentLink;
   const currentProdObj = PRODUCT_OPTIONS.find((p) => p.id === selectedProduct) || PRODUCT_OPTIONS[1];
 
   // Clean WhatsApp Message Template
@@ -204,7 +197,7 @@ export default function LeadFormGenerator() {
         {/* Step 2: Generated Link & 1-Click Action Bar */}
         <div className="bg-slate-50 dark:bg-slate-800/50 p-5 sm:p-6 border-t border-slate-200 dark:border-slate-800 space-y-4">
           
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-bold text-emerald-800 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
@@ -214,24 +207,6 @@ export default function LeadFormGenerator() {
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                 {currentProdObj.name}
               </span>
-            </div>
-
-            {/* Live Domain Selector for WhatsApp */}
-            <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-1 rounded-xl text-xs font-semibold">
-              <button
-                type="button"
-                onClick={() => setSelectedDomain('vercel')}
-                className={`px-2.5 py-1 rounded-lg transition ${selectedDomain === 'vercel' ? 'bg-emerald-600 text-white font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
-              >
-                vercel.app (WhatsApp Live)
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedDomain('official')}
-                className={`px-2.5 py-1 rounded-lg transition ${selectedDomain === 'official' ? 'bg-emerald-600 text-white font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
-              >
-                familyfirstrahulkulkarni.com
-              </button>
             </div>
           </div>
 
