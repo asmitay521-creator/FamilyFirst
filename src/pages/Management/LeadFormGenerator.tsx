@@ -2,14 +2,14 @@ import { useState, useEffect } from 'react';
 import { 
   Link2, Copy, Check, Share2, Sparkles, ExternalLink, 
   UserCheck, Phone, MessageSquare, Tag, Eye, Plus,
-  Shield, CheckCircle2, X
+  Shield, CheckCircle2, X, Trash2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '@store/auth.store';
 import { useQuery } from '@tanstack/react-query';
 import { employeesService } from '@api/index';
 import { db } from '../../services/firebase';
-import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { 
   ProductOption, 
   DEFAULT_PRODUCT_OPTIONS, 
@@ -248,6 +248,33 @@ export default function LeadFormGenerator() {
   const handleShareWhatsApp = () => {
     const text = encodeURIComponent(generateWhatsAppMessage());
     window.open(`https://wa.me/?text=${text}`, '_blank');
+  };
+
+  // Handle Lead Deletion
+  const handleDeleteLead = async (leadId: string, leadName: string) => {
+    if (!leadId) return;
+    const confirmDelete = window.confirm(`Are you sure you want to delete the lead for "${leadName}"?`);
+    if (!confirmDelete) return;
+
+    try {
+      if (db) {
+        await deleteDoc(doc(db, 'leads', leadId));
+      }
+
+      // Also clean offline cache if present
+      try {
+        const cached = JSON.parse(localStorage.getItem('insumitra_custom_leads') || '[]');
+        const filtered = cached.filter((l: any) => l.id !== leadId && l._id !== leadId);
+        localStorage.setItem('insumitra_custom_leads', JSON.stringify(filtered));
+      } catch {}
+
+      // Update state immediately
+      setRecentLeads((prev) => prev.filter((l) => l.id !== leadId && l._id !== leadId));
+      toast.success(`Lead for "${leadName}" deleted successfully!`);
+    } catch (err) {
+      console.error('Lead delete error:', err);
+      toast.error('Failed to delete lead. Please try again.');
+    }
   };
 
   // Real-time Firestore stream for Leads
@@ -525,30 +552,39 @@ export default function LeadFormGenerator() {
                         {formattedDate}
                       </td>
                       <td className="py-3 px-4 text-right">
-                        {leadPhone !== '-' ? (
-                          <div className="inline-flex items-center gap-1.5 justify-end">
-                            <a
-                              href={`https://wa.me/91${leadPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hello ${leadName}, thank you for inquiring about ${leadProduct} with Family First.`)}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 bg-[#25D366] hover:bg-[#20ba59] text-white px-2.5 py-1.5 rounded-lg text-xs font-bold shadow-sm transition active:scale-95"
-                              title="Chat on WhatsApp"
-                            >
-                              <MessageSquare className="w-3.5 h-3.5" />
-                              <span className="hidden sm:inline">WhatsApp</span>
-                            </a>
-                            <a
-                              href={`tel:${leadPhone}`}
-                              className="inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold shadow-sm transition active:scale-95"
-                              title="Call"
-                            >
-                              <Phone className="w-3.5 h-3.5" />
-                              <span className="hidden sm:inline">Call</span>
-                            </a>
-                          </div>
-                        ) : (
-                          <span className="text-slate-500 text-xs">-</span>
-                        )}
+                        <div className="inline-flex items-center gap-1.5 justify-end">
+                          {leadPhone !== '-' && (
+                            <>
+                              <a
+                                href={`https://wa.me/91${leadPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hello ${leadName}, thank you for inquiring about ${leadProduct} with Family First.`)}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 bg-[#25D366] hover:bg-[#20ba59] text-white px-2.5 py-1.5 rounded-lg text-xs font-bold shadow-sm transition active:scale-95 cursor-pointer"
+                                title="Chat on WhatsApp"
+                              >
+                                <MessageSquare className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">WhatsApp</span>
+                              </a>
+                              <a
+                                href={`tel:${leadPhone}`}
+                                className="inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold shadow-sm transition active:scale-95 cursor-pointer"
+                                title="Call"
+                              >
+                                <Phone className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Call</span>
+                              </a>
+                            </>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteLead(lead.id || lead._id, leadName)}
+                            className="inline-flex items-center gap-1 bg-rose-500/20 hover:bg-rose-600 text-rose-300 hover:text-white px-2 py-1.5 rounded-lg text-xs font-bold transition border border-rose-500/30 active:scale-95 cursor-pointer"
+                            title="Delete Lead"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span className="hidden md:inline">Delete</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
