@@ -2,7 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, TrendingUp, Shield, FileText,
   UserCheck, Calendar, Briefcase, Lock, Presentation,
-  Sliders, MessageSquare, ChevronDown, X
+  Sliders, MessageSquare, ChevronDown, X, Link2
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuthStore } from '@store/auth.store';
@@ -42,8 +42,9 @@ const NAV: NavItemConfig[] = [
     roles: ['EMPLOYEE', 'OWNER', 'SUPERADMIN'],
     feature: 'management',
     children: [
-      { to: '/management/leads',    label: 'WhatsApp Msg for Leads',    Icon: MessageSquare },
-      { to: '/management/seminars', label: 'WhatsApp Msg for Seminars', Icon: Presentation },
+      { to: '/management/lead-generator', label: 'Lead Form Generator', Icon: Link2 },
+      { to: '/management/leads',          label: 'WhatsApp Msg for Leads',    Icon: MessageSquare },
+      { to: '/management/seminars',       label: 'WhatsApp Msg for Seminars', Icon: Presentation },
     ]
   },
 ];
@@ -81,7 +82,7 @@ function NavItem({ item, isFeatureEnabled, setLockedFeature, mobileOpen, onNavCl
             setIsOpen(!isOpen);
           }}
           className={clsx(
-            'flex items-center justify-center lg:justify-between rounded-xl font-extrabold transition-all duration-200 relative group select-none gap-0 lg:gap-2 px-1 lg:px-3 py-2 text-[13px] cursor-pointer my-0.5',
+            'flex items-center justify-center lg:justify-between rounded-xl font-extrabold transition-all duration-200 relative group select-none gap-0 lg:gap-2 px-1 lg:px-3 py-1.5 text-[13px] cursor-pointer my-[2px]',
             mobileOpen && 'justify-between px-3 gap-2',
             isParentActive && enabled
               ? 'text-white bg-white/[0.12]'
@@ -178,7 +179,7 @@ function NavItem({ item, isFeatureEnabled, setLockedFeature, mobileOpen, onNavCl
       }}
       className={({ isActive }) =>
         clsx(
-          'flex items-center justify-center lg:justify-start rounded-xl font-extrabold transition-all duration-200 relative group select-none gap-0 lg:gap-3.5 px-1 lg:px-3 py-2 text-[13px] hover:translate-x-0.5 my-0.5',
+          'flex items-center justify-center lg:justify-start rounded-xl font-extrabold transition-all duration-200 relative group select-none gap-0 lg:gap-3.5 px-1 lg:px-3 py-1.5 text-[13px] hover:translate-x-0.5 my-[2px]',
           mobileOpen && 'justify-start px-3 gap-3.5',
           isActive && enabled
             ? 'text-white shadow-lg scale-[1.02]'
@@ -248,13 +249,15 @@ export default function Sidebar({ mobileOpen, setMobileOpen }: { mobileOpen?: bo
 
       <aside
         className={clsx(
-          'flex flex-col h-screen shrink-0 select-none border-r border-[#E9E7F2]/10 z-40 transition-all duration-300',
+          'flex flex-col h-screen shrink-0 select-none border-r border-[#E9E7F2]/10 z-40 transition-all duration-300 no-scrollbar',
           mobileOpen
             ? 'fixed inset-y-0 left-0 w-64 shadow-2xl z-50 translate-x-0'
             : 'sticky top-0 left-0 w-14 lg:w-64'
         )}
         style={{
-          background: 'linear-gradient(180deg, #17143F 0%, #1E1850 50%, #24165A 100%)'
+          background: 'linear-gradient(180deg, #17143F 0%, #1E1850 50%, #24165A 100%)',
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none'
         }}
       >
         {/* ── Logo Section (With comfortable top spacing for all devices) ──────────────────── */}
@@ -290,8 +293,11 @@ export default function Sidebar({ mobileOpen, setMobileOpen }: { mobileOpen?: bo
           )}
         </div>
 
-        {/* ── Navigation (Single Continuous List with top spacing) ──────────────────── */}
-        <nav className="flex-1 overflow-y-auto pt-3 sm:pt-4 pb-3 space-y-0.5 custom-scrollbar px-1.5 sm:px-3 relative">
+        {/* ── Navigation (Single Continuous List with top spacing, hidden scrollbar) ──────────────────── */}
+        <nav 
+          className="flex-1 overflow-y-auto pt-2 sm:pt-3 pb-3 space-y-0.5 no-scrollbar px-1.5 sm:px-3 relative [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
           {visibleItems.map((item) => (
             <NavItem
               key={item.to}

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { Plus, X, User, Shield, Pencil, Trash2, Upload, Filter, Search, Info, Save, ChevronDown, Settings, CreditCard, Building, CheckCircle2, AlertTriangle, Users, Activity, FileText, FileCheck2, Clock, Download, MessageCircle, History, Heart } from 'lucide-react';
+import { Plus, X, User, Shield, Pencil, Trash2, Upload, Filter, Search, Info, Save, ChevronDown, Settings, CreditCard, Building, CheckCircle2, AlertTriangle, Users, Activity, FileText, FileCheck2, Clock, Download, MessageCircle, History, Heart, Calendar } from 'lucide-react';
 import EmiTrackingView, { MonthPickerDropdown } from './EmiTrackingView';
 import PhcTrackingView from './PhcTrackingView';
 import { usePolicies, useCreatePolicy, useUpdatePolicy, useDeletePolicy, useBulkAssignPolicies } from '@hooks/usePolicies';
@@ -21,6 +21,7 @@ import toast from 'react-hot-toast';
 import { useAuthStore } from '@store/auth.store';
 import clsx from 'clsx';
 import { DatalistInput } from '@comps/common/DatalistInput';
+import html2pdf from 'html2pdf.js';
 
 const formatPreview = (dateStr?: string) => {
   if (!dateStr) return '';
@@ -31,6 +32,45 @@ const formatPreview = (dateStr?: string) => {
   } catch {
     return '';
   }
+};
+
+const parseDateSafe = (val: any): Date | null => {
+  if (!val) return null;
+  if (val instanceof Date && !isNaN(val.getTime())) return new Date(val.getTime());
+  if (typeof val === 'object' && typeof val.toDate === 'function') {
+    try {
+      const d = val.toDate();
+      if (d instanceof Date && !isNaN(d.getTime())) return d;
+    } catch {
+      // pass
+    }
+  }
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (!trimmed) return null;
+    if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+      const [y, m, d] = trimmed.slice(0, 10).split('-').map(Number);
+      return new Date(y, m - 1, d, 0, 0, 0, 0);
+    }
+    const parsed = new Date(trimmed);
+    return isNaN(parsed.getTime()) ? null : parsed;
+  }
+  if (typeof val === 'number') {
+    const parsed = new Date(val);
+    return isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return null;
+};
+
+const getPolicyEffectiveDate = (p: any): Date | null => {
+  return (
+    parseDateSafe(p?.startDate) ||
+    parseDateSafe(p?.issueDate) ||
+    parseDateSafe(p?.createdAt) ||
+    parseDateSafe(p?.created_at) ||
+    parseDateSafe(p?.createdDate) ||
+    parseDateSafe(p?.policyStartDate)
+  );
 };
 
 const EDUCATION_OPTIONS = [
@@ -77,7 +117,7 @@ const OCCUPATION_OPTIONS = [
 interface Policy {
   id: string; policyNumber: string; status: string;
   premiumAmount: number; sumAssured?: number; startDate?: string; endDate: string;
-  paymentFrequency?: string; agentCode?: string; notes?: string;
+  paymentFrequency?: string; agentCode?: string; notes?: string; paymentStatus?: string;
   nextDueDate?: string; maturityDate?: string;
   contactId?: string;
   contact?: { id: string; firstName: string; lastName: string; phone?: string };
@@ -132,6 +172,9 @@ const schema = z.object({
   phcClaimSettled: z.boolean().optional(),
   firstYearPremium: z.coerce.number().optional(),
   secondYearPremium: z.coerce.number().optional(),
+  policyType: z.string().optional(),
+  insuranceCompany: z.string().optional(),
+  insurancePlan: z.string().optional(),
 });
 type Form = z.infer<typeof schema>;
 
@@ -301,8 +344,9 @@ export default function Policies() {
   const [modalOpen, setModalOpen] = useState(false);
   const [isViewMode, setIsViewMode] = useState(false);
   const [keepCreateOpen, setKeepCreateOpen] = useState(false);
-  const [activePolicyTab, setActivePolicyTab] = useState<'personalProfile' | 'familyDetails' | 'existingPolicies' | 'nomineeDetails' | 'kycDocuments'>('personalProfile');
+  const [activePolicyTab, setActivePolicyTab] = useState<'policyDetails' | 'personalProfile' | 'familyDetails' | 'existingPolicies' | 'nomineeDetails' | 'kycDocuments'>('policyDetails');
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [groupByCustomer, setGroupByCustomer] = useState(false);
 
   // 5 Proposal Form Tabs State
   const [personalDetails, setPersonalDetails] = useState({
@@ -362,13 +406,13 @@ export default function Policies() {
     annualPremium?: string;
     status?: string;
   }>>([
-    { id: '1', policyNumber: '849201948', insurerName: 'LIC of India' },
-    { id: '2', policyNumber: '920194812', insurerName: 'LIC of India' },
-    { id: '3', policyNumber: '', insurerName: 'LIC of India' },
-    { id: '4', policyNumber: '', insurerName: 'LIC of India' },
-    { id: '5', policyNumber: '', insurerName: 'HDFC Life Insurance' },
-    { id: '6', policyNumber: '', insurerName: 'ICICI Prudential' },
-    { id: '7', policyNumber: '', insurerName: 'SBI Life Insurance' },
+    { id: '1', policyNumber: '', insurerName: '' },
+    { id: '2', policyNumber: '', insurerName: '' },
+    { id: '3', policyNumber: '', insurerName: '' },
+    { id: '4', policyNumber: '', insurerName: '' },
+    { id: '5', policyNumber: '', insurerName: '' },
+    { id: '6', policyNumber: '', insurerName: '' },
+    { id: '7', policyNumber: '', insurerName: '' },
   ]);
 
   const [nominees, setNominees] = useState<Array<{
@@ -554,25 +598,69 @@ salarySlip2FileName: '',
       .reduce((sum, p) => sum + (Number(p.nomineePercentage) || 0), 0);
   }, [connectedPersons]);
 
+  const [showExistingPolicies, setShowExistingPolicies] = useState(true);
+
   useEffect(() => {
-    if (searchParams.get('action') === 'add') {
+    const action = searchParams.get('action');
+    if (action === 'add' || action === 'new') {
       const contactId = searchParams.get('contactId');
       const keepOpen = searchParams.get('keepOpen') === '1';
+      const qName = searchParams.get('name') || '';
+      const qPhone = searchParams.get('phone') || '';
+      const qEmail = searchParams.get('email') || '';
+      const qCity = searchParams.get('city') || '';
+
       setKeepCreateOpen(keepOpen);
       setModalOpen(true);
+
+      if (qName || qPhone) {
+        setPersonalDetails(prev => ({
+          ...prev,
+          fullName: qName || prev.fullName,
+          phone: qPhone || prev.phone,
+          email: qEmail || prev.email,
+          birthPlace: qCity || prev.birthPlace,
+        }));
+      }
 
       if (contactId) {
         contactsService.get(contactId)
           .then((res: any) => {
             const contact = res?.data ?? res;
             if (!contact?.id) return;
+            const cName = `${contact.firstName || contact.name || ''} ${contact.lastName || ''}`.trim() || qName;
+            const cPhone = (contact.phone || contact.mobile || qPhone || '').replace(/\D/g, '').slice(-10);
+            const cEmail = contact.email || qEmail || '';
+            const cDob = contact.dateOfBirth ? contact.dateOfBirth.slice(0, 10) : (contact.dob ? contact.dob.slice(0, 10) : '');
+            const cCity = contact.city || contact.address?.city || contact.birthPlace || qCity || '';
+
             setSelectedContact({
               id: contact.id,
               firstName: contact.firstName || '',
               lastName: contact.lastName || '',
-              phone: contact.phone || '',
+              phone: cPhone,
+              email: cEmail,
+              dob: cDob,
             });
             setValue('contactId', contact.id, { shouldValidate: true });
+            setPersonalDetails(prev => ({
+              ...prev,
+              fullName: cName,
+              phone: cPhone,
+              email: cEmail,
+              dob: cDob || prev.dob,
+              birthPlace: cCity || prev.birthPlace,
+            }));
+            if (contact.aadhaarNumber || contact.aadharNumber || contact.panNumber || contact.pan) {
+              setKycDocuments(prev => ({
+                ...prev,
+                aadhaarNumber: contact.aadhaarNumber || contact.aadharNumber || prev.aadhaarNumber,
+                panNumber: contact.panNumber || contact.pan || prev.panNumber,
+                bankName: contact.bankName || prev.bankName,
+                accountNumber: contact.accountNumber || contact.bankAccountNumber || prev.accountNumber,
+                ifscCode: contact.ifscCode || contact.bankIfsc || prev.ifscCode,
+              }));
+            }
             setContactSearch('');
           })
           .catch((err: any) => console.error('Failed to preload contact for policy create', err));
@@ -587,6 +675,8 @@ salarySlip2FileName: '',
   // Search & Filter States
   const [search, setSearch] = useState('');
   const [selectedQuickFilter, setSelectedQuickFilter] = useState('ALL');
+  const [quickDateFrom, setQuickDateFrom] = useState('');
+  const [quickDateTo, setQuickDateTo] = useState('');
 
   const defaultFilters = {
     agency: '',
@@ -627,7 +717,7 @@ salarySlip2FileName: '',
     nomineeName: true,
     status: true,
     // Additional / Optional fields hidden by default on table view
-    policyNumber: false,
+    policyNumber: true,
     'plan.name': false,
     'plan.company.name': false,
     sumAssured: false,
@@ -643,6 +733,26 @@ salarySlip2FileName: '',
 
   // Bulk assignment state
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [visibleBadgeOnly, setVisibleBadgeOnly] = useState<Record<string, 'ACTIVE' | 'PAID'>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('policy_badges_hidden') || '{}');
+    } catch {
+      return {};
+    }
+  });
+
+  const toggleBadge = (id: string, badge: 'ACTIVE' | 'PAID') => {
+    setVisibleBadgeOnly(prev => {
+      const next = { ...prev };
+      if (next[id] === badge) {
+        delete next[id];
+      } else {
+        next[id] = badge;
+      }
+      localStorage.setItem('policy_badges_hidden', JSON.stringify(next));
+      return next;
+    });
+  };
   const [assignTarget, setAssignTarget] = useState('');
   const bulkAssignMutation = useBulkAssignPolicies();
 
@@ -676,14 +786,54 @@ salarySlip2FileName: '',
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const act = params.get('action');
+    const pId = params.get('id') || params.get('policyId');
+
     if (act === 'add' || act === 'new' || act === 'create') {
       reset();
-      setSelectedContact(null);
+      const pContactId = params.get('contactId');
+      const pName = params.get('name') || '';
+      const pPhone = params.get('phone') || '';
+      const pEmail = params.get('email') || '';
+      const pCity = params.get('city') || '';
+
+      if (pContactId || pName || pPhone) {
+        const names = pName.trim().split(' ');
+        const cObj = {
+          id: pContactId || '',
+          firstName: names[0] || '',
+          lastName: names.slice(1).join(' ') || '',
+          phone: pPhone,
+          email: pEmail,
+        };
+        setSelectedContact(cObj);
+        setValue('contactId', pContactId || '');
+        setPersonalDetails(prev => ({
+          ...prev,
+          fullName: pName,
+          phone: pPhone,
+          email: pEmail,
+          birthPlace: pCity || prev.birthPlace,
+        }));
+      } else {
+        setSelectedContact(null);
+      }
       setContactSearch('');
       setSelectedPlan(null);
+      setActivePolicyTab('policyDetails');
       setKeepCreateOpen(params.get('keepOpen') === '1');
       setModalOpen(true);
       navigate('/policies', { replace: true });
+    } else if (pId) {
+      policiesService.get(pId).then((res: any) => {
+        const found = res?.data ?? res;
+        if (found?.id) {
+          if (act === 'view') {
+            openView(found);
+          } else {
+            openEdit(found);
+          }
+        }
+      }).catch(err => console.warn('Failed to load policy from query param', err));
     }
   }, [location.search]);
 
@@ -727,6 +877,68 @@ salarySlip2FileName: '',
   const [selectedType, setSelectedType] = useState('');
   const [selectedCompany, setSelectedCompany] = useState('');
   const [selectedPlan, setSelectedPlan] = useState<any>(null);
+
+  const { data: allContactsRes } = useQuery({
+    queryKey: ['all-contacts-for-policies-selector'],
+    queryFn: () => contactsService.list({ limit: 1000 }),
+  });
+  const allContactsList = useMemo(() => {
+    const raw = (allContactsRes as any)?.data;
+    return Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : (Array.isArray(raw?.items) ? raw.items : []));
+  }, [allContactsRes]);
+
+  const filteredCustomerOptions = useMemo(() => {
+    if (!contactSearch?.trim()) return allContactsList.slice(0, 30);
+    const q = contactSearch.toLowerCase();
+    return allContactsList.filter((c: any) => {
+      const fullName = `${c.firstName || c.name || ''} ${c.lastName || ''}`.toLowerCase();
+      const phone = String(c.phone || c.mobile || '');
+      return fullName.includes(q) || phone.includes(q);
+    }).slice(0, 30);
+  }, [allContactsList, contactSearch]);
+
+  const selectExistingCustomer = (c: any) => {
+    const cName = `${c.firstName || c.name || ''} ${c.lastName || ''}`.trim();
+    const cPhone = (c.phone || c.mobile || '').replace(/\D/g, '').slice(-10);
+    const cEmail = c.email && c.email !== 'N/A' ? c.email : '';
+    const cDob = c.dateOfBirth ? c.dateOfBirth.slice(0, 10) : (c.dob ? c.dob.slice(0, 10) : '');
+    const cCity = c.city || c.address?.city || c.birthPlace || '';
+    const cEducation = c.education || '';
+    const cOccupation = c.occupation || c.occupationType || '';
+
+    setSelectedContact({
+      id: c.id || c._id,
+      firstName: c.firstName || c.name || '',
+      lastName: c.lastName || '',
+      phone: cPhone || c.phone || '',
+      email: cEmail,
+      dob: cDob,
+    });
+    setValue('contactId', c.id || c._id);
+    setPersonalDetails(prev => ({
+      ...prev,
+      fullName: cName,
+      phone: cPhone,
+      email: cEmail,
+      dob: cDob || prev.dob,
+      birthPlace: cCity || prev.birthPlace,
+      education: cEducation || prev.education,
+      occupation: cOccupation || prev.occupation,
+    }));
+    if (c.aadhaarNumber || c.aadharNumber || c.panNumber || c.pan) {
+      setKycDocuments(prev => ({
+        ...prev,
+        aadhaarNumber: c.aadhaarNumber || c.aadharNumber || prev.aadhaarNumber,
+        panNumber: c.panNumber || c.pan || prev.panNumber,
+        bankName: c.bankName || prev.bankName,
+        accountNumber: c.accountNumber || c.bankAccountNumber || prev.accountNumber,
+        ifscCode: c.ifscCode || c.bankIfsc || prev.ifscCode,
+      }));
+    }
+    setContactDropdown(false);
+    setContactSearch('');
+    toast.success(`ग्राहक जोडला गेला: ${cName}`);
+  };
 
   const { data: contactResults } = useQuery({
     queryKey: ['contact-search', contactSearch],
@@ -781,6 +993,26 @@ salarySlip2FileName: '',
   // Fetch policies: get all in 1 query for client-side filtering (0 ops)
   const { data, isLoading } = usePolicies({ limit: 2000 });
 
+  const selectedContactPolicies = useMemo(() => {
+    if (!selectedContact) return [];
+    const allList: any[] = Array.isArray(data) ? data : (Array.isArray((data as any)?.data) ? (data as any).data : (Array.isArray((data as any)?.items) ? (data as any).items : []));
+    const cId = String(selectedContact.id || '').toLowerCase().trim();
+    const cPhone = String(selectedContact.phone || '').replace(/\D/g, '').slice(-10);
+    const cName = `${selectedContact.firstName || ''} ${selectedContact.lastName || ''}`.toLowerCase().trim();
+
+    return allList.filter((p: any) => {
+      const pContactId = String(p.contactId || p.contact?.id || p.contact?._id || '').toLowerCase().trim();
+      const pCustId = String(p.customerId || p.customerCode || p.contact?.customerId || '').toLowerCase().trim();
+      const pPhone = String(p.contact?.phone || p.phone || p.proposerPhone || '').replace(/\D/g, '').slice(-10);
+      const pName = String(p.clientName || (p.contact ? `${p.contact.firstName || ''} ${p.contact.lastName || ''}` : p.proposerName || '')).toLowerCase().trim();
+
+      if (cId && (pContactId === cId || pCustId === cId)) return true;
+      if (cPhone && pPhone && cPhone === pPhone) return true;
+      if (cName && pName && cName === pName) return true;
+      return false;
+    });
+  }, [selectedContact, data]);
+
   // Client-side Filter Logic
   const filteredPolicies = useMemo(() => {
     let list: Policy[] = Array.isArray(data) ? data : (Array.isArray((data as any)?.data) ? (data as any).data : (Array.isArray((data as any)?.items) ? (data as any).items : []));
@@ -832,6 +1064,20 @@ salarySlip2FileName: '',
     if (selectedQuickFilter !== 'ALL') {
       if (['FRESH', 'PORT', 'RENEWAL'].includes(selectedQuickFilter)) {
         list = list.filter((p: any) => p.policyType === selectedQuickFilter);
+      } else if (selectedQuickFilter === 'HEALTH') {
+        list = list.filter((p: any) => {
+           const typeStr = (p.policyType || '').toUpperCase();
+           const catStr = (p.plan?.category || '').toUpperCase();
+           const nameStr = (p.plan?.name || '').toUpperCase();
+           return typeStr.includes('HEALTH') || catStr.includes('HEALTH') || nameStr.includes('HEALTH');
+        });
+      } else if (selectedQuickFilter === 'TERM') {
+        list = list.filter((p: any) => {
+           const typeStr = (p.policyType || '').toUpperCase();
+           const catStr = (p.plan?.category || '').toUpperCase();
+           const nameStr = (p.plan?.name || '').toUpperCase();
+           return typeStr.includes('TERM') || catStr.includes('TERM') || nameStr.includes('TERM');
+        });
       } else {
         list = list.filter((p: any) => p.plan?.category === selectedQuickFilter);
       }
@@ -845,6 +1091,30 @@ salarySlip2FileName: '',
         const clientPhone = (p.contact?.phone || '').toLowerCase();
         const policyNo = (p.policyNumber || '').toLowerCase();
         return clientName.includes(term) || clientPhone.includes(term) || policyNo.includes(term);
+      });
+    }
+
+    // Quick Date Filter
+    if (quickDateFrom || quickDateTo) {
+      let fromDate: Date | null = null;
+      let toDate: Date | null = null;
+
+      if (quickDateFrom) {
+        fromDate = parseDateSafe(quickDateFrom);
+        if (fromDate) fromDate.setHours(0, 0, 0, 0);
+      }
+
+      if (quickDateTo) {
+        toDate = parseDateSafe(quickDateTo);
+        if (toDate) toDate.setHours(23, 59, 59, 999);
+      }
+
+      list = list.filter((p: any) => {
+        const polDate = getPolicyEffectiveDate(p);
+        if (!polDate) return false;
+        if (fromDate && polDate < fromDate) return false;
+        if (toDate && polDate > toDate) return false;
+        return true;
       });
     }
 
@@ -891,20 +1161,48 @@ salarySlip2FileName: '',
 
     // Policy Duration Date Range
     if (appliedFilters.startDateFrom) {
-      list = list.filter((p: any) => p.startDate && new Date(p.startDate) >= new Date(appliedFilters.startDateFrom));
+      const fromD = parseDateSafe(appliedFilters.startDateFrom);
+      if (fromD) {
+        fromD.setHours(0, 0, 0, 0);
+        list = list.filter((p: any) => {
+          const d = parseDateSafe(p.startDate);
+          return d ? d >= fromD : false;
+        });
+      }
     }
     if (appliedFilters.startDateTo) {
-      list = list.filter((p: any) => p.startDate && new Date(p.startDate) <= new Date(appliedFilters.startDateTo));
+      const toD = parseDateSafe(appliedFilters.startDateTo);
+      if (toD) {
+        toD.setHours(23, 59, 59, 999);
+        list = list.filter((p: any) => {
+          const d = parseDateSafe(p.startDate);
+          return d ? d <= toD : false;
+        });
+      }
     }
     if (appliedFilters.endDateFrom) {
-      list = list.filter((p: any) => p.endDate && new Date(p.endDate) >= new Date(appliedFilters.endDateFrom));
+      const fromD = parseDateSafe(appliedFilters.endDateFrom);
+      if (fromD) {
+        fromD.setHours(0, 0, 0, 0);
+        list = list.filter((p: any) => {
+          const d = parseDateSafe(p.endDate);
+          return d ? d >= fromD : false;
+        });
+      }
     }
     if (appliedFilters.endDateTo) {
-      list = list.filter((p: any) => p.endDate && new Date(p.endDate) <= new Date(appliedFilters.endDateTo));
+      const toD = parseDateSafe(appliedFilters.endDateTo);
+      if (toD) {
+        toD.setHours(23, 59, 59, 999);
+        list = list.filter((p: any) => {
+          const d = parseDateSafe(p.endDate);
+          return d ? d <= toD : false;
+        });
+      }
     }
 
     return list;
-  }, [data, selectedQuickFilter, search, appliedFilters, user, employeeResults]);
+  }, [data, selectedQuickFilter, search, quickDateFrom, quickDateTo, appliedFilters, user, employeeResults]);
 
   // Client-side Sorting Logic
   const sortedPolicies = useMemo(() => {
@@ -928,7 +1226,7 @@ salarySlip2FileName: '',
   const createPolicy = useCreatePolicy();
   const updatePolicy = useUpdatePolicy();
   const deletePolicy = useDeletePolicy();
-  const { register, handleSubmit, reset, setValue, watch } = useForm<Form>({
+  const { register, handleSubmit, reset, setValue, getValues, watch } = useForm<Form>({
     resolver: zodResolver(schema),
     defaultValues: { paymentFrequency: 'YEARLY' },
   });
@@ -949,18 +1247,92 @@ salarySlip2FileName: '',
   const watchEndDate = watch('endDate');
   const watchEmiCase = watch('emiCase');
   const watchPhcRequired = watch('phcRequired');
-  const [durationYears, setDurationYears] = useState<number>(1);
+  const [tenureValue, setTenureValue] = useState<number | ''>(1);
+  const [tenureUnit, setTenureUnit] = useState<'YEARS' | 'MONTHS' | 'DAYS'>('YEARS');
 
-  useEffect(() => {
-    if (watchStartDate) {
-      const start = new Date(watchStartDate);
-      if (!isNaN(start.getTime())) {
-        const end = new Date(start);
-        end.setFullYear(start.getFullYear() + durationYears);
-        setValue('endDate', end.toISOString().split('T')[0]);
+  const formatLocalDate = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  const calculateEndDateStr = (startStr: string, val: number | string, unit: 'YEARS' | 'MONTHS' | 'DAYS') => {
+    if (!startStr) return '';
+    const num = Number(val);
+    if (isNaN(num) || num <= 0) return '';
+
+    const [y, m, d] = startStr.split('-').map(Number);
+    if (!y || !m || !d) return '';
+
+    const date = new Date(y, m - 1, d);
+    if (unit === 'YEARS') {
+      date.setFullYear(date.getFullYear() + num);
+    } else if (unit === 'MONTHS') {
+      date.setMonth(date.getMonth() + num);
+    } else if (unit === 'DAYS') {
+      date.setDate(date.getDate() + num);
+    }
+
+    const resY = date.getFullYear();
+    const resM = String(date.getMonth() + 1).padStart(2, '0');
+    const resD = String(date.getDate()).padStart(2, '0');
+    return `${resY}-${resM}-${resD}`;
+  };
+
+  const handleSelectTenurePreset = (val: number, unit: 'YEARS' | 'MONTHS' | 'DAYS' = 'YEARS') => {
+    setTenureValue(val);
+    setTenureUnit(unit);
+    const curStart = getValues('startDate') || formatLocalDate(new Date());
+    if (!getValues('startDate')) {
+      setValue('startDate', curStart, { shouldValidate: true, shouldDirty: true });
+    }
+    const computedEnd = calculateEndDateStr(curStart, val, unit);
+    if (computedEnd) {
+      setValue('endDate', computedEnd, { shouldValidate: true, shouldDirty: true });
+    }
+  };
+
+  const handleTenureChange = (val: number | '', unit: 'YEARS' | 'MONTHS' | 'DAYS') => {
+    setTenureValue(val);
+    setTenureUnit(unit);
+    if (val !== '' && Number(val) > 0) {
+      const curStart = getValues('startDate') || formatLocalDate(new Date());
+      if (!getValues('startDate')) {
+        setValue('startDate', curStart, { shouldValidate: true, shouldDirty: true });
+      }
+      const computedEnd = calculateEndDateStr(curStart, val, unit);
+      if (computedEnd) {
+        setValue('endDate', computedEnd, { shouldValidate: true, shouldDirty: true });
       }
     }
-  }, [watchStartDate, durationYears, setValue]);
+  };
+
+  const handleStartDateChange = (newStart: string) => {
+    setValue('startDate', newStart, { shouldValidate: true, shouldDirty: true });
+    if (newStart && tenureValue !== '' && Number(tenureValue) > 0) {
+      const computedEnd = calculateEndDateStr(newStart, tenureValue, tenureUnit);
+      if (computedEnd) {
+        setValue('endDate', computedEnd, { shouldValidate: true, shouldDirty: true });
+      }
+    }
+  };
+
+  const handleEndDateChange = (newEnd: string) => {
+    setValue('endDate', newEnd, { shouldValidate: true, shouldDirty: true });
+    const curStart = getValues('startDate');
+    if (curStart && newEnd) {
+      const [sy, sm, sd] = curStart.split('-').map(Number);
+      const [ey, em, ed] = newEnd.split('-').map(Number);
+      if (sy && ey && sy <= ey) {
+        const yearDiff = ey - sy;
+        if (yearDiff > 0 && sm === em && sd === ed) {
+          setTenureValue(yearDiff);
+          setTenureUnit('YEARS');
+        }
+      }
+    }
+  };
 
   const closeModal = (returnRoute?: string, returnPayload?: any) => {
     const returnState = location.state as any;
@@ -1006,13 +1378,13 @@ salarySlip2FileName: '',
       { id: '2', relation: 'Sister', name: '', ageDob: '', status: 'ALIVE' },
     ]);
     setExistingPolicies([
-      { id: '1', policyNumber: '849201948', insurerName: 'LIC of India' },
-      { id: '2', policyNumber: '920194812', insurerName: 'LIC of India' },
-      { id: '3', policyNumber: '', insurerName: 'LIC of India' },
-      { id: '4', policyNumber: '', insurerName: 'LIC of India' },
-      { id: '5', policyNumber: '', insurerName: 'HDFC Life Insurance' },
-      { id: '6', policyNumber: '', insurerName: 'ICICI Prudential' },
-      { id: '7', policyNumber: '', insurerName: 'SBI Life Insurance' },
+      { id: '1', policyNumber: '', insurerName: '' },
+      { id: '2', policyNumber: '', insurerName: '' },
+      { id: '3', policyNumber: '', insurerName: '' },
+      { id: '4', policyNumber: '', insurerName: '' },
+      { id: '5', policyNumber: '', insurerName: '' },
+      { id: '6', policyNumber: '', insurerName: '' },
+      { id: '7', policyNumber: '', insurerName: '' },
     ]);
     setNominees([
       { id: 1, name: '' },
@@ -1048,7 +1420,13 @@ salarySlip2FileName: '',
     });
     setExtraKycDocs([]);
     setFormErrors({});
-    setActivePolicyTab('personalProfile');
+    setActivePolicyTab('policyDetails');
+    setTenureValue(1);
+    setTenureUnit('YEARS');
+    const todayStr = formatLocalDate(new Date());
+    const nextYearStr = calculateEndDateStr(todayStr, 1, 'YEARS');
+    setValue('startDate', todayStr);
+    setValue('endDate', nextYearStr);
     setContactSearch('');
     setSelectedType('');
     setSelectedCompany('');
@@ -1072,6 +1450,7 @@ salarySlip2FileName: '',
     setIsViewMode(false);
     setFormErrors({});
     setEditTarget(p);
+    setActivePolicyTab('policyDetails');
     const extra = parseExtraNotes(p.notes);
 
     setValue('contactId', p.contactId || '');
@@ -1175,23 +1554,61 @@ salarySlip2FileName: '',
       }).catch((err: any) => console.warn('[Policy Edit] fetch contact error:', err));
     }
 
+    const effectivePolNum = p.policyNumber || (p as any).policyNo || '';
+    const compName = (p as any).insuranceCompany || p.plan?.company?.name || '';
+    const planName = (p as any).insurancePlan || p.plan?.name || '';
+    const polCategory = (p as any).policyType || p.plan?.category || 'LIFE';
+
     if (p.plan) {
       setSelectedPlan(p.plan);
-      if (p.plan.company) {
-        setSelectedCompany(p.plan.company?.name || '');
+    }
+    if (compName) {
+      setSelectedCompany(compName);
+      setValue('insuranceCompany', compName);
+    }
+    if (polCategory) {
+      setSelectedType(polCategory);
+      setValue('policyType', polCategory);
+    }
+    setValue('planId', p.planId || p.plan?.id || '');
+    setValue('insurancePlan', planName);
+
+    const polStart = p.startDate ? p.startDate.slice(0, 10) : '';
+    const polEnd = p.endDate ? p.endDate.slice(0, 10) : '';
+    setValue('startDate', polStart);
+    setValue('endDate', polEnd);
+
+    if (polStart && polEnd) {
+      const [sy, sm, sd] = polStart.split('-').map(Number);
+      const [ey, em, ed] = polEnd.split('-').map(Number);
+      if (sy && ey && sy <= ey) {
+        const diffYears = ey - sy;
+        if (diffYears > 0 && sm === em && sd === ed) {
+          setTenureValue(diffYears);
+          setTenureUnit('YEARS');
+        } else if (diffYears > 0) {
+          setTenureValue(diffYears);
+          setTenureUnit('YEARS');
+        } else {
+          const diffMonths = (ey - sy) * 12 + (em - sm);
+          if (diffMonths > 0) {
+            setTenureValue(diffMonths);
+            setTenureUnit('MONTHS');
+          } else {
+            setTenureValue(1);
+            setTenureUnit('YEARS');
+          }
+        }
       }
-      if (p.plan.category) {
-        setSelectedType(p.plan.category);
-      }
-      setValue('planId', p.planId || p.plan?.id || '');
+    } else {
+      setTenureValue(1);
+      setTenureUnit('YEARS');
     }
 
-    setValue('policyNumber', p.policyNumber || '');
+    setValue('policyNumber', effectivePolNum);
     setValue('status', (p.status as any) || 'ACTIVE');
     setValue('premiumAmount', p.premiumAmount || 0);
     setValue('sumAssured', (p.sumAssured as any) || undefined);
-    setValue('startDate', p.startDate ? p.startDate.slice(0, 10) : '');
-    setValue('endDate', p.endDate ? p.endDate.slice(0, 10) : '');
     setValue('nextDueDate', p.nextDueDate ? p.nextDueDate.slice(0, 10) : '');
     setValue('maturityDate', p.maturityDate ? p.maturityDate.slice(0, 10) : '');
     setValue('paymentFrequency', (p.paymentFrequency as any) ?? 'YEARLY');
@@ -1344,13 +1761,17 @@ salarySlip2FileName: '',
   <meta charset="utf-8">
   <title>Policy & Proposal Document - ${policy.policyNumber || 'Document'}</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 32px; color: #1e293b; background: #fff; margin: 0; line-height: 1.5; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 0px; color: #1e293b; background: #fff; margin: 0; line-height: 1.5; }
     .toolbar { display: flex; justify-content: flex-end; gap: 12px; margin-bottom: 20px; }
     .btn { background: #4f46e5; color: white; border: none; padding: 9px 20px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 14px; text-decoration: none; box-shadow: 0 2px 4px rgba(79, 70, 229, 0.2); }
     .btn:hover { background: #4338ca; }
-    .header { border-bottom: 3px solid #6366f1; padding-bottom: 16px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; }
-    .brand { font-size: 24px; font-weight: 800; color: #3730a3; letter-spacing: -0.5px; }
-    .badge { background: #e0e7ff; color: #4338ca; padding: 6px 14px; border-radius: 9999px; font-weight: 700; font-size: 13px; text-transform: uppercase; border: 1px solid #c7d2fe; }
+    .header { border-bottom: 3px solid #6366f1; padding-bottom: 14px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; }
+    .brand { font-size: 22px; font-weight: 800; color: #3730a3; letter-spacing: -0.5px; }
+    .subtitle { font-size: 12px; color: #64748b; font-weight: 600; margin-top: 2px; }
+    .holder-info { text-align: right; }
+    .holder-label { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.3px; }
+    .holder-name { font-size: 18px; font-weight: 800; color: #1e1b4b; margin-top: 1px; text-transform: capitalize; }
+    .holder-policy { font-size: 12px; font-weight: 600; color: #4f46e5; margin-top: 1px; }
     .section-title { font-size: 15px; font-weight: 800; color: #1e293b; text-transform: uppercase; letter-spacing: 0.5px; border-left: 4px solid #4f46e5; padding-left: 10px; margin: 24px 0 12px 0; }
     .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 16px; }
     .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 16px; }
@@ -1364,7 +1785,7 @@ salarySlip2FileName: '',
     .table-box th { background: #f1f5f9; font-weight: 700; color: #334155; }
     .notes-box { background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 10px; padding: 16px; margin: 20px 0; font-size: 13.5px; color: #581c87; }
     .footer { margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 16px; font-size: 12px; color: #94a3b8; text-align: center; }
-    .sig-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 40px; margin-top: 40px; padding-top: 20px; }
+    .sig-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 40px; margin-top: 40px; padding-top: 20px; padding-bottom: 40px; }
     .sig-box { border-top: 1px solid #94a3b8; text-align: center; padding-top: 8px; font-size: 13px; font-weight: 700; color: #475569; }
     @media print {
       .toolbar { display: none; }
@@ -1374,16 +1795,16 @@ salarySlip2FileName: '',
   </style>
 </head>
 <body>
-  <div class="toolbar">
-    <button class="btn" onclick="window.print()">🖨️ Print / Save as PDF</button>
-  </div>
-
   <div class="header">
     <div>
-      <div class="brand">FAMILY FIRST INSURANCE CRM</div>
-      <div style="color: #64748b; font-size: 13.5px; margin-top: 3px; font-weight: 600;">Official Policy Schedule & Proposal Form Record</div>
+      <div class="brand">FAMILY FIRST INSURANCE</div>
+      <div class="subtitle">अधिकृत विमा पॉलिसी व प्रस्ताव दस्तऐवज (Official Policy Record)</div>
     </div>
-    <div class="badge">${policy.status || 'ACTIVE'}</div>
+    <div class="holder-info">
+      <div class="holder-label">पॉलिसीधारक नाव (Policyholder):</div>
+      <div class="holder-name">${pName}</div>
+      <div class="holder-policy">पॉलिसी क्र.: <strong>${policy.policyNumber || '—'}</strong></div>
+    </div>
   </div>
 
   <!-- SECTION 1: वैयक्तिक माहिती (Personal Information) -->
@@ -1440,16 +1861,16 @@ salarySlip2FileName: '',
   </table>
   ` : ''}
 
-  ${pd?.existingPolicies && pd.existingPolicies.length > 0 ? `
+  ${pd?.existingPolicies && pd.existingPolicies.filter((ep: any) => ep.policyNumber || ep.policyNo || ep.insurerName || ep.companyName).length > 0 ? `
   <table class="table-box" style="margin-bottom: 16px;">
     <thead>
       <tr><th>आधीची पॉलिसी क्र. (Policy No.)</th><th>विमा कंपनीचे नाव (Insurance Company)</th></tr>
     </thead>
     <tbody>
-      ${pd.existingPolicies.map((ep: any) => `
+      ${pd.existingPolicies.filter((ep: any) => ep.policyNumber || ep.policyNo || ep.insurerName || ep.companyName).map((ep: any) => `
         <tr>
-          <td>${ep.policyNo || '—'}</td>
-          <td>${ep.companyName || '—'}</td>
+          <td>${ep.policyNumber || ep.policyNo || '—'}</td>
+          <td>${ep.insurerName || ep.companyName || '—'}</td>
         </tr>
       `).join('')}
     </tbody>
@@ -1507,28 +1928,25 @@ salarySlip2FileName: '',
 
   <div class="sig-grid">
     <div class="sig-box">प्रस्तावक / ग्राहकाची स्वाक्षरी (Proposer's Signature)</div>
-    <div class="sig-box">अधिकृत विमा प्रतिनिधी / सल्लागार स्वाक्षरी (Authorized Signatory)</div>
-  </div>
-
-  <div class="footer">
-    Generated from Family First Insurance CRM Portal &bull; Printed on ${new Date().toLocaleDateString('en-IN')} ${new Date().toLocaleTimeString('en-IN')}
+    <div class="sig-box">अधिकृत विमा प्रतिनिधी / सल्लागार स्वाक्षरी (Auth. Signatory)</div>
   </div>
 </body>
 </html>`;
 
-      const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `Policy_${policy.policyNumber || 'Certificate'}.html`);
-      document.body.appendChild(link);
-      link.click();
-      setTimeout(() => {
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-      }, 200);
-
-      toast.success('Policy document downloaded successfully!', { id: toastId });
+      const opt = {
+        margin:       10,
+        filename:     `Policy_${policy.policyNumber || 'Certificate'}.pdf`,
+        image:        { type: 'jpeg' as const, quality: 0.98 },
+        html2canvas:  { scale: 2 },
+        jsPDF:        { unit: 'mm' as const, format: 'a4', orientation: 'portrait' as const }
+      };
+      
+      const element = document.createElement('div');
+      element.innerHTML = htmlContent;
+      
+      html2pdf().set(opt).from(element).save().then(() => {
+        toast.success('Policy document downloaded successfully!', { id: toastId });
+      });
     } catch (e) {
       console.error('[Download Error]:', e);
       toast.error('Failed to download policy document', { id: toastId });
@@ -1538,40 +1956,59 @@ salarySlip2FileName: '',
   const COLS: Column<Policy>[] = useMemo(() => {
     const cols: Column<Policy>[] = [];
 
-    // Prepend checkbox selection column for OWNER
-    if (user?.role === 'OWNER') {
+    // Prepend checkbox selection column for OWNER / ADMIN
+    if (user?.role === 'OWNER' || (user?.role && ['OWNER', 'SUPERADMIN', 'ADMIN'].includes(String(user.role).toUpperCase()))) {
+      const allTargetPolicies = filteredPolicies || [];
+      const allPolicyIds = allTargetPolicies.map((p: Policy) => p.id).filter(Boolean);
+      const isAllSelected = allPolicyIds.length > 0 && allPolicyIds.every(id => selectedIds.includes(id));
+      const isSomeSelected = selectedIds.length > 0 && !isAllSelected;
+
       cols.push({
         key: 'select' as any,
+        className: 'w-[110px] min-w-[110px] text-center',
         label: (
-          <input
-            type="checkbox"
-            checked={selectedIds.length > 0 && selectedIds.length === (data?.data?.length || 0)}
-            onChange={e => {
-              if (e.target.checked) {
-                const allPolicyIds = (data?.data || []).map((p: Policy) => p.id);
-                setSelectedIds(allPolicyIds);
-              } else {
-                setSelectedIds([]);
-              }
-            }}
+          <label
             onClick={e => e.stopPropagation()}
-            className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 cursor-pointer"
-          />
+            className="flex items-center gap-1.5 cursor-pointer select-none text-slate-700 hover:text-purple-700 font-bold"
+            title={isAllSelected ? "Deselect All (सर्व निवड रद्द करा)" : "Mark as Select / Select All (सर्व निवडा)"}
+          >
+            <input
+              type="checkbox"
+              ref={el => {
+                if (el) el.indeterminate = isSomeSelected;
+              }}
+              checked={isAllSelected}
+              onChange={e => {
+                e.stopPropagation();
+                if (e.target.checked) {
+                  setSelectedIds(allPolicyIds);
+                } else {
+                  setSelectedIds([]);
+                }
+              }}
+              className="rounded border-slate-300 text-purple-600 focus:ring-purple-500 cursor-pointer h-4 w-4"
+            />
+            <span className="text-[10px] font-black uppercase tracking-tight whitespace-nowrap text-slate-700">
+              {isAllSelected ? 'Deselect' : 'Mark All'}
+            </span>
+          </label>
         ) as any,
         render: r => (
-          <input
-            type="checkbox"
-            checked={selectedIds.includes(r.id)}
-            onChange={e => {
-              if (e.target.checked) {
-                setSelectedIds(prev => [...prev, r.id]);
-              } else {
-                setSelectedIds(prev => prev.filter(id => id !== r.id));
-              }
-            }}
-            onClick={e => e.stopPropagation()}
-            className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 cursor-pointer"
-          />
+          <div className="flex items-center justify-center" onClick={e => e.stopPropagation()}>
+            <input
+              type="checkbox"
+              checked={selectedIds.includes(r.id)}
+              onChange={e => {
+                e.stopPropagation();
+                if (e.target.checked) {
+                  setSelectedIds(prev => [...prev, r.id]);
+                } else {
+                  setSelectedIds(prev => prev.filter(id => id !== r.id));
+                }
+              }}
+              className="rounded border-slate-300 text-purple-600 focus:ring-purple-500 cursor-pointer h-4 w-4"
+            />
+          </div>
         ),
       });
     }
@@ -1584,7 +2021,37 @@ salarySlip2FileName: '',
         render: r => {
           const extra = parseExtraNotes(r.notes);
           const name = r.contact ? `${r.contact.firstName} ${r.contact.lastName || ''}`.trim() : (extra.proposalData?.personalDetails?.fullName || (r as any).clientName || '—');
-          return <span className="font-semibold text-slate-800">{name}</span>;
+          const myPhone = String(r.contact?.phone || (r as any).phone || extra.proposalData?.personalDetails?.phone || '').replace(/\D/g, '').slice(-10);
+          const cleanName = name.toLowerCase();
+
+          // Count policies for this customer across list
+          const customerPoliciesCount = filteredPolicies.filter((other: Policy) => {
+            const oExtra = parseExtraNotes(other.notes);
+            const oName = (other.contact ? `${other.contact.firstName} ${other.contact.lastName || ''}` : (oExtra.proposalData?.personalDetails?.fullName || (other as any).clientName || '')).trim().toLowerCase();
+            const oPhone = String(other.contact?.phone || (other as any).phone || oExtra.proposalData?.personalDetails?.phone || '').replace(/\D/g, '').slice(-10);
+            if (myPhone && oPhone && myPhone === oPhone) return true;
+            if (cleanName && oName && cleanName !== '—' && cleanName === oName) return true;
+            return false;
+          }).length;
+
+          return (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="font-semibold text-slate-800">{name}</span>
+              {customerPoliciesCount > 1 && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSearch(myPhone || name);
+                  }}
+                  title={`या ग्राहकाच्या ${customerPoliciesCount} पॉलिसिज आहेत. एकत्र पाहण्यासाठी क्लिक करा.`}
+                  className="px-1.5 py-0.5 rounded-md text-[10px] font-extrabold bg-purple-100 text-purple-700 hover:bg-purple-200 border border-purple-200 cursor-pointer transition-all whitespace-nowrap shadow-2xs"
+                >
+                  {customerPoliciesCount} Policies
+                </button>
+              )}
+            </div>
+          );
         }
       },
       {
@@ -1644,14 +2111,42 @@ salarySlip2FileName: '',
         key: 'status',
         label: 'Status (स्थिती)',
         sortable: true,
-        render: r => (
-          <span className={clsx(
-            'px-2.5 py-1 rounded-full text-[11px] font-extrabold tracking-wide uppercase',
-            r.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-700 border border-slate-200'
-          )}>
-            {r.status || 'ACTIVE'}
-          </span>
-        )
+        render: r => {
+          const visible = visibleBadgeOnly[r.id];
+          return (
+            <div className="flex flex-row gap-1.5 items-center whitespace-nowrap">
+              {visible !== 'PAID' && (
+                <span 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleBadge(r.id, 'ACTIVE');
+                  }}
+                  className={clsx(
+                  'cursor-pointer px-2.5 py-1 rounded-full text-[11px] font-extrabold tracking-wide uppercase shadow-2xs transition-transform hover:scale-105',
+                  r.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-700 border border-slate-200'
+                )}>
+                  {r.status || 'ACTIVE'}
+                </span>
+              )}
+              {visible !== 'ACTIVE' && (
+                <span 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleBadge(r.id, 'PAID');
+                    if (r.paymentStatus === 'UNPAID' || r.paymentStatus === 'PENDING') {
+                      updatePolicy.mutate({ id: r.id, body: { paymentStatus: 'PAID' } as any });
+                    }
+                  }}
+                  className={clsx(
+                  'cursor-pointer px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-wide uppercase shadow-2xs transition-transform hover:scale-105',
+                  (r.paymentStatus === 'UNPAID' || r.paymentStatus === 'PENDING') ? 'bg-amber-100 text-amber-700 border border-amber-200' : 'bg-blue-100 text-blue-700 border border-blue-200'
+                )}>
+                  {r.paymentStatus || 'PAID'}
+                </span>
+              )}
+            </div>
+          );
+        }
       },
       {
         key: 'policyNumber',
@@ -1768,7 +2263,7 @@ salarySlip2FileName: '',
     });
 
     return cols;
-  }, [user?.role, data, selectedIds, allClaims, visibleColumns]);
+  }, [user?.role, data, filteredPolicies, selectedIds, allClaims, visibleColumns, visibleBadgeOnly]);
 
   const submitEdit = async (body: EditForm) => {
     if (!editTarget) return;
@@ -1903,8 +2398,26 @@ salarySlip2FileName: '',
   const onSubmit = async (body: Form) => {
     if (!validatePolicyForm()) return;
     try {
-      // 1. Resolve Contact ID (Existing contact or Auto-created contact from manually typed details)
+      // 1. Resolve Contact ID (Existing contact, or matched by Phone/Name from contacts list, or Auto-created)
       let effectiveContactId = body.contactId || selectedContact?.id;
+
+      const cleanPhone = (personalDetails.phone || '').replace(/\D/g, '').slice(-10);
+      const cleanFullName = (personalDetails.fullName || '').trim().toLowerCase();
+
+      // Check if this person already exists in contacts before creating a duplicate
+      if (!effectiveContactId && (cleanPhone || cleanFullName)) {
+        const existing = allContactsList.find((c: any) => {
+          const cPhone = String(c.phone || c.mobile || '').replace(/\D/g, '').slice(-10);
+          const cName = `${c.firstName || c.name || ''} ${c.lastName || ''}`.trim().toLowerCase();
+          if (cleanPhone && cPhone && cleanPhone === cPhone) return true;
+          if (cleanFullName && cName && cleanFullName === cName) return true;
+          return false;
+        });
+
+        if (existing) {
+          effectiveContactId = existing.id || existing._id;
+        }
+      }
 
       if (!effectiveContactId && personalDetails.fullName?.trim()) {
         try {
@@ -1965,7 +2478,7 @@ salarySlip2FileName: '',
       }
 
       // 3. Resolve Policy Number
-      const effectivePolicyNumber = body.policyNumber?.trim() || `POL-${Date.now().toString().slice(-6)}`;
+      const effectivePolicyNumber = body.policyNumber?.trim() || editTarget?.policyNumber || (editTarget as any)?.policyNo || `POL-${Date.now().toString().slice(-6)}`;
 
       // 4. Resolve Dates
       const today = new Date();
@@ -1994,6 +2507,10 @@ salarySlip2FileName: '',
         nomineePapers,
         kycDocuments,
         extraKycDocs,
+        tenure: {
+          value: tenureValue,
+          unit: tenureUnit,
+        },
       };
 
       let extraNotes = body.notes?.trim() ? `${body.notes.trim()}` : '';
@@ -2037,14 +2554,14 @@ salarySlip2FileName: '',
         },
         plan: selectedPlan ? {
           id: selectedPlan.id,
-          name: selectedPlan.name,
-          category: selectedPlan.category || 'LIFE',
-          company: { name: selectedCompany || 'Insurance Co', category: selectedType || 'LIFE' }
+          name: body.insurancePlan || selectedPlan.name,
+          category: body.policyType || selectedPlan.category || 'LIFE',
+          company: { name: body.insuranceCompany || selectedCompany || 'Insurance Co', category: body.policyType || selectedType || 'LIFE' }
         } : {
           id: effectivePlanId || 'p_def',
-          name: 'Comprehensive Insurance Policy',
-          category: 'LIFE',
-          company: { name: 'Insurance Provider', category: 'LIFE' }
+          name: body.insurancePlan || 'Comprehensive Insurance Policy',
+          category: body.policyType || 'LIFE',
+          company: { name: body.insuranceCompany || 'Insurance Provider', category: body.policyType || 'LIFE' }
         }
       };
 
@@ -2145,10 +2662,9 @@ salarySlip2FileName: '',
 
       {/* Main Control Hub Card */}
       <div className="bg-white rounded-2xl border border-slate-200/80 p-2.5 sm:p-3 shadow-sm mb-4">
-        {/* Single Line Layout */}
-        <div className="flex items-center gap-2.5 w-full overflow-x-auto custom-scrollbar py-0.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
           {/* Left Side: Search Bar */}
-          <div className="relative min-w-[200px] sm:min-w-[240px] max-w-xs shrink-0">
+          <div className="relative flex-1 min-w-[200px] sm:min-w-[260px] max-w-sm shrink-0">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
@@ -2158,62 +2674,195 @@ salarySlip2FileName: '',
               className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-1.5 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:bg-white transition-all shadow-2xs"
             />
           </div>
-
-          {/* Right Side: Quick Action or Empty Placeholder */}
-          <div className="flex items-center gap-1.5 shrink-0 ml-auto" />
+          
+          {/* Right Side: Quick Date Filter & Quick Type Filters (Health & Term) */}
+          <div className="flex flex-wrap items-center sm:justify-end gap-2.5 shrink-0 sm:ml-auto">
+            {/* Quick Date Filters - Unified Pill UI */}
+            <div className="flex items-center gap-2 bg-slate-50/50 border border-slate-200 rounded-full px-3 py-1 shadow-2xs hover:border-purple-300 focus-within:border-purple-500 focus-within:ring-1 focus-within:ring-purple-500/20 transition-all shrink-0">
+              <Calendar size={14} className="text-slate-400 shrink-0" />
+              <input
+                type="date"
+                value={quickDateFrom}
+                onChange={e => { setQuickDateFrom(e.target.value); setPage(1); }}
+                className="bg-transparent text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer w-[100px] sm:w-[110px] uppercase"
+                title="From Date"
+              />
+              <span className="text-slate-300 font-medium">-</span>
+              <input
+                type="date"
+                value={quickDateTo}
+                onChange={e => { setQuickDateTo(e.target.value); setPage(1); }}
+                className="bg-transparent text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer w-[100px] sm:w-[110px] uppercase"
+                title="To Date"
+              />
+              {(quickDateFrom || quickDateTo) && (
+                <button
+                  type="button"
+                  onClick={() => { setQuickDateFrom(''); setQuickDateTo(''); setPage(1); }}
+                  className="text-slate-400 hover:text-rose-500 p-0.5 rounded-full cursor-pointer transition-colors"
+                  title="Clear Date Filter"
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+            
+            {/* Quick Type Filters */}
+            <div className="flex items-center gap-1.5 shrink-0 bg-slate-50 border border-slate-200 rounded-xl p-1 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => { setSelectedQuickFilter('ALL'); setPage(1); }}
+                className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                  selectedQuickFilter === 'ALL'
+                    ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-sm'
+                    : 'bg-purple-50 text-purple-600 hover:bg-purple-100'
+                }`}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                onClick={() => { setSelectedQuickFilter('HEALTH'); setPage(1); }}
+                className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  selectedQuickFilter === 'HEALTH'
+                    ? 'bg-gradient-to-r from-rose-500 to-pink-500 text-white shadow-sm'
+                    : 'bg-rose-50 text-rose-600 hover:bg-rose-100'
+                }`}
+              >
+                <Activity size={12} />
+                Health
+              </button>
+              <button
+                type="button"
+                onClick={() => { setSelectedQuickFilter('TERM'); setPage(1); }}
+                className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  selectedQuickFilter === 'TERM'
+                    ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-sm'
+                    : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                }`}
+              >
+                <Shield size={14} />
+                Term
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
-          {selectedIds.length > 0 && user?.role === 'OWNER' && (
-            <div className="flex items-center justify-between p-3 bg-blue-50/50 border border-blue-100 rounded-lg text-sm transition-all animate-fadeIn">
-              <span className="font-medium text-blue-800">
-                {selectedIds.length} policies selected
-              </span>
-              <div className="flex flex-wrap items-center gap-2">
-                <select
-                  value={assignTarget}
-                  onChange={e => setAssignTarget(e.target.value)}
-                  className="input py-1.5 px-3 text-xs w-48 bg-white border-gray-300"
-                >
-                  <option value="">Select Assignee...</option>
-                  <option value="unassigned">Unassign</option>
-                  {employeeResults?.data?.map((emp: any) => (
-                    <option key={emp.id} value={emp.userId}>
-                      {emp.firstName || emp.employeeProfile?.firstName || 'Unknown'} {emp.lastName || emp.employeeProfile?.lastName || ''}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  onClick={handleBulkAssign}
-                  disabled={!assignTarget || bulkAssignMutation.isPending}
-                  className="btn-primary py-1.5 px-3 text-[10px] sm:text-xs cursor-pointer disabled:opacity-50"
-                >
-                  {bulkAssignMutation.isPending ? 'Assigning...' : 'Assign'}
-                </button>
-                <button
-                  onClick={() => setSelectedIds([])}
-                  className="p-1 rounded hover:bg-blue-100 text-blue-600"
-                  title="Clear selection"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            </div>
-          )}
+
 
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-            <DataTable
-              columns={COLS}
-              data={paginatedPolicies}
-              total={filteredPolicies.length}
-              page={page}
-              pageSize={20}
-              loading={isLoading}
-              rowKey={r => r.id}
-              onPageChange={setPage}
-              onRowClick={r => openView(r)}
-              onSort={(key, dir) => { setSortBy(key); setSortOrder(dir); setPage(1); }}
-            />
+            {/* Group by Customer toggle */}
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-100 bg-slate-50/50">
+              <span className="text-xs font-bold text-slate-600">
+                {filteredPolicies.length} {filteredPolicies.length === 1 ? 'policy' : 'policies'}
+                {groupByCustomer && ` · ${Object.keys(filteredPolicies.reduce((acc: any, p: any) => { const name = p.contact ? `${p.contact.firstName} ${p.contact.lastName}` : 'Unknown'; acc[name] = true; return acc; }, {})).length} customers`}
+              </span>
+              <button
+                type="button"
+                onClick={() => setGroupByCustomer(v => !v)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer border ${
+                  groupByCustomer
+                    ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                <Users size={12} />
+                Group by Customer
+              </button>
+            </div>
+
+            {groupByCustomer ? (
+              /* Grouped View */
+              <div className="divide-y divide-slate-100">
+                {(() => {
+                  const groups: Record<string, { name: string; contact: any; phone: string; policies: Policy[] }> = {};
+                  filteredPolicies.forEach((p: Policy) => {
+                    const extra = parseExtraNotes(p.notes);
+                    const name = p.contact ? `${p.contact.firstName} ${p.contact.lastName || ''}`.trim() : (extra.proposalData?.personalDetails?.fullName || (p as any).clientName || 'Unknown Customer');
+                    const phone = String(p.contact?.phone || (p as any).phone || extra.proposalData?.personalDetails?.phone || '').replace(/\D/g, '').slice(-10);
+                    const groupKey = phone ? `phone_${phone}` : (name.toLowerCase() !== 'unknown customer' ? `name_${name.toLowerCase()}` : `id_${p.id}`);
+
+                    if (!groups[groupKey]) {
+                      groups[groupKey] = {
+                        name,
+                        contact: p.contact || { phone },
+                        phone: p.contact?.phone || (p as any).phone || extra.proposalData?.personalDetails?.phone || '',
+                        policies: []
+                      };
+                    }
+                    groups[groupKey].policies.push(p);
+                  });
+                  return Object.entries(groups).map(([groupKey, { name, contact, phone, policies: grpPolicies }]) => {
+                    const totalGroupPremium = grpPolicies.reduce((sum, p) => sum + (Number(p.premiumAmount) || 0), 0);
+                    return (
+                      <div key={groupKey} className="p-4 hover:bg-slate-50/50 transition-colors">
+                        {/* Customer Header */}
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center text-white text-sm font-black shadow-md">
+                            {name.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="text-sm font-extrabold text-slate-900">{name}</p>
+                            <div className="flex items-center gap-2 text-[11px] text-slate-500 font-medium">
+                              {phone && <span>📞 {phone}</span>}
+                              <span>·</span>
+                              <span>एकूण वार्षिक प्रीमियम: <strong className="text-slate-800">₹{totalGroupPremium.toLocaleString('en-IN')}</strong></span>
+                            </div>
+                          </div>
+                          <span className="ml-auto text-xs font-extrabold text-purple-700 bg-purple-50 border border-purple-200 px-3 py-1 rounded-full shadow-2xs">
+                            {grpPolicies.length} {grpPolicies.length === 1 ? 'Policy' : 'Policies'}
+                          </span>
+                        </div>
+                        {/* Policies Grid */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pl-0 sm:pl-13">
+                          {grpPolicies.map((pol: Policy) => {
+                            const statusCls = pol.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                              : pol.status === 'EXPIRED' || pol.status === 'LAPSED' ? 'bg-rose-100 text-rose-800 border-rose-200'
+                              : 'bg-amber-100 text-amber-800 border-amber-200';
+                            return (
+                              <div
+                                key={pol.id}
+                                onClick={() => openView(pol)}
+                                className="p-3.5 rounded-xl border border-slate-200 bg-white hover:bg-purple-50/40 hover:border-purple-300 cursor-pointer transition-all shadow-2xs group"
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-extrabold text-slate-900 truncate">{pol.policyNumber}</p>
+                                    <p className="text-[11px] text-slate-600 font-semibold truncate mt-0.5">{pol.plan?.name || (pol as any).insurancePlan || 'Insurance Policy'}</p>
+                                    {(pol.plan?.company?.name || (pol as any).insuranceCompany) && (
+                                      <p className="text-[10px] text-slate-400 truncate">{pol.plan?.company?.name || (pol as any).insuranceCompany}</p>
+                                    )}
+                                  </div>
+                                  <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border shrink-0 ${statusCls}`}>{pol.status}</span>
+                                </div>
+                                <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 text-[11px]">
+                                  <span className="text-slate-600 font-bold">₹{Number(pol.premiumAmount || 0).toLocaleString('en-IN')}<span className="text-slate-400 font-normal">/yr</span></span>
+                                  {pol.endDate && <span className="text-[10px] text-slate-400">Exp: {new Date(pol.endDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}</span>}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            ) : (
+              <DataTable
+                columns={COLS}
+                data={paginatedPolicies}
+                total={filteredPolicies.length}
+                page={page}
+                pageSize={20}
+                loading={isLoading}
+                rowKey={r => r.id}
+                onPageChange={setPage}
+                onRowClick={r => openView(r)}
+                onSort={(key, dir) => { setSortBy(key); setSortOrder(dir); setPage(1); }}
+              />
+            )}
           </div>
 
 
@@ -2262,8 +2911,22 @@ salarySlip2FileName: '',
         }
       >
         <form id="policy-proposal-form" onSubmit={handleSubmit(onSubmit)} className="space-y-3">
-          {/* Sub-navigation 5 Tabs Header */}
+          {/* Sub-navigation 6 Tabs Header */}
           <div className="flex bg-slate-200/60 p-1 sm:p-1.5 rounded-2xl mb-3 gap-1.5 sm:gap-2 border border-slate-200/80 overflow-x-auto shadow-2xs custom-scrollbar">
+            <button
+              type="button"
+              onClick={() => setActivePolicyTab('policyDetails')}
+              className={clsx(
+                'px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-[11px] sm:text-xs font-extrabold tracking-wide transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 sm:gap-2',
+                activePolicyTab === 'policyDetails'
+                  ? 'text-white shadow-md scale-[1.02]'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
+              )}
+              style={activePolicyTab === 'policyDetails' ? { background: 'linear-gradient(135deg, #5B2BA8 0%, #743BC4 100%)' } : {}}
+            >
+              <FileText size={14} />
+              Policy Details
+            </button>
             <button
               type="button"
               onClick={() => setActivePolicyTab('personalProfile')}
@@ -2323,8 +2986,312 @@ salarySlip2FileName: '',
             </button>
           </div>
 
-          <div className="h-[360px] sm:h-[440px] md:h-[500px] overflow-y-auto pr-1 sm:pr-2 custom-scrollbar space-y-4">
+          <div className="max-h-[360px] sm:max-h-[440px] md:max-h-[500px] overflow-y-auto pr-1 sm:pr-2 custom-scrollbar space-y-4">
             <fieldset disabled={isViewMode} className="min-w-0 border-0 p-0 m-0 w-full space-y-4">
+              {/* ════════════════ TAB 0: Policy Details ════════════════ */}
+              {activePolicyTab === 'policyDetails' && (
+                <div className="space-y-4 animate-fadeIn">
+                  {/* Quick Customer Picker / Link Existing Customer */}
+                  <div className="border border-purple-200/90 rounded-2xl bg-gradient-to-r from-purple-50/80 via-indigo-50/50 to-purple-50/80 p-3.5 shadow-2xs">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold text-sm shadow-xs">
+                          <Users size={16} />
+                        </div>
+                        <div>
+                          <p className="text-xs font-black text-slate-800">ग्राहक निवडा / लिंक करा (Select Existing Customer)</p>
+                          <p className="text-[10px] text-slate-500 font-medium">एकाच व्यक्तीच्या multiple policies जोडण्यासाठी आधीचा ग्राहक निवडा</p>
+                        </div>
+                      </div>
+                      {selectedContact ? (
+                        <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl shadow-2xs flex-wrap">
+                          <div className="flex items-center gap-1.5">
+                            <CheckCircle2 size={14} className="text-emerald-600" />
+                            <span className="text-xs font-bold text-emerald-800">
+                              {selectedContact.firstName} {selectedContact.lastName || ''} ({selectedContact.phone || 'No phone'})
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-200">
+                            {selectedContactPolicies.length} {selectedContactPolicies.length === 1 ? 'पॉलिसी (Policy)' : 'पॉलिसिज (Policies)'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedContact(null);
+                              setValue('contactId', '');
+                            }}
+                            className="text-[10px] font-bold text-rose-600 hover:text-rose-800 ml-1 underline cursor-pointer"
+                          >
+                            बदला / Clear
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="mt-2.5 relative">
+                      <input
+                        type="text"
+                        placeholder="Search existing customer by name or phone (नावाने किंवा मोबाईल नंबरने ग्राहक शोधा)..."
+                        value={contactSearch}
+                        onChange={(e) => {
+                          setContactSearch(e.target.value);
+                          setContactDropdown(true);
+                        }}
+                        onFocus={() => setContactDropdown(true)}
+                        className="w-full px-3 py-2 text-xs rounded-xl bg-white border border-purple-200 focus:border-purple-600 focus:ring-2 focus:ring-purple-500/20 font-medium"
+                      />
+                      {contactDropdown && (
+                        <div className="absolute top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl z-50 divide-y divide-slate-100">
+                          {filteredCustomerOptions.length === 0 ? (
+                            <div className="p-3 text-center text-xs text-slate-400 font-medium">
+                              कोणताही ग्राहक सापडला नाही (No customer found)
+                            </div>
+                          ) : (
+                            filteredCustomerOptions.map((c: any) => {
+                              const cName = `${c.firstName || c.name || ''} ${c.lastName || ''}`.trim();
+                              const cPhone = c.phone || c.mobile || 'N/A';
+                              return (
+                                <div
+                                  key={c.id || c._id}
+                                  onClick={() => selectExistingCustomer(c)}
+                                  className="p-2.5 hover:bg-purple-50 cursor-pointer flex items-center justify-between text-xs transition-colors"
+                                >
+                                  <div>
+                                    <span className="font-bold text-slate-800">{cName}</span>
+                                    <span className="text-slate-500 ml-2 text-[11px] font-mono">{cPhone}</span>
+                                    {c.city && <span className="text-slate-400 ml-2 text-[10px]">· {c.city}</span>}
+                                  </div>
+                                  <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-purple-100 text-purple-700">
+                                    Select
+                                  </span>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Existing Policies of Selected Customer */}
+                    {selectedContact && (
+                      <div className="mt-3 pt-3 border-t border-purple-200/60 animate-fadeIn">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="w-5 h-5 rounded-full bg-purple-600 text-white flex items-center justify-center text-[10px] font-black shadow-2xs">
+                              {selectedContactPolicies.length}
+                            </span>
+                            <h5 className="text-xs font-black text-slate-800">
+                              {selectedContact.firstName} {selectedContact.lastName || ''} यांच्या आधीच्या पॉलिसिज (Existing Policies):
+                            </h5>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setShowExistingPolicies(prev => !prev)}
+                            className="text-[10px] font-extrabold text-purple-700 hover:text-purple-900 flex items-center gap-1 cursor-pointer bg-white px-2.5 py-0.5 rounded-lg border border-purple-200 shadow-2xs"
+                          >
+                            <span>{showExistingPolicies ? 'लपवा (Hide)' : 'पहा (View All)'}</span>
+                            <ChevronDown size={12} className={`transition-transform duration-200 ${showExistingPolicies ? 'rotate-180' : ''}`} />
+                          </button>
+                        </div>
+
+                        {showExistingPolicies && (
+                          selectedContactPolicies.length === 0 ? (
+                            <div className="p-3 rounded-xl bg-white/80 border border-dashed border-purple-200 text-center text-xs text-slate-600 font-medium">
+                              ℹ️ या ग्राहकाची कोणतीही आधीची पॉलिसी सापडली नाही. (No previous policy found — this will be their 1st policy).
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                              {selectedContactPolicies.map((p: any) => {
+                                const status = String(p.status || 'ACTIVE').toUpperCase();
+                                const statusBadgeClass =
+                                  status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700 border-emerald-200 font-bold' :
+                                  status === 'EXPIRED' || status === 'LAPSED' ? 'bg-rose-50 text-rose-700 border-rose-200 font-bold' :
+                                  'bg-amber-50 text-amber-700 border-amber-200 font-bold';
+                                const compName = p.insuranceCompany || p.plan?.company?.name || 'Insurance';
+                                const planName = p.insurancePlan || p.plan?.name || p.policyType || 'Policy';
+                                const prem = p.premiumAmount || p.annualPremium || p.totalPremium;
+                                const sumAss = p.sumAssured || p.sumInsured;
+
+                                return (
+                                  <div
+                                    key={p.id || p._id}
+                                    className="p-2.5 rounded-xl bg-white border border-purple-200/80 shadow-2xs flex flex-col justify-between gap-1.5 hover:border-purple-400 transition-all"
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="min-w-0">
+                                        <span className="font-extrabold text-xs text-slate-900 block truncate">
+                                          {p.policyNumber || 'POL-N/A'}
+                                        </span>
+                                        <span className="text-[10px] text-purple-700 font-bold block truncate">
+                                          {compName} · {planName}
+                                        </span>
+                                      </div>
+                                      <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border shrink-0 ${statusBadgeClass}`}>
+                                        {status}
+                                      </span>
+                                    </div>
+
+                                    <div className="flex items-center justify-between text-[10px] pt-1 border-t border-slate-100 font-medium text-slate-600">
+                                      {sumAss ? (
+                                        <span>Sum: <strong className="text-slate-800 font-bold">₹{Number(sumAss).toLocaleString('en-IN')}</strong></span>
+                                      ) : <span></span>}
+                                      {prem ? (
+                                        <span>Prem: <strong className="text-slate-900 font-extrabold">₹{Number(prem).toLocaleString('en-IN')}/yr</strong></span>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="border border-slate-200/90 rounded-2xl bg-white shadow-2xs p-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="label text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block mb-1">
+                          Policy Number <span className="text-red-500 font-black">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          {...register('policyNumber')}
+                          placeholder="Enter policy number..."
+                          className="input w-full h-10 text-xs rounded-xl bg-white border border-slate-200 focus:ring-2 focus:ring-purple-500/20 font-medium"
+                        />
+                      </div>
+                      <div>
+                        <label className="label text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block mb-1">
+                          Policy Type <span className="text-red-500 font-black">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          {...register('policyType')}
+                          placeholder="e.g. Life Insurance, Health Insurance"
+                          className="input w-full h-10 text-xs rounded-xl bg-white border border-slate-200 focus:ring-2 focus:ring-purple-500/20 font-medium"
+                        />
+                      </div>
+                      <div>
+                        <label className="label text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block mb-1">
+                          Insurance Company <span className="text-red-500 font-black">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          {...register('insuranceCompany')}
+                          placeholder="e.g. LIC, HDFC Life"
+                          className="input w-full h-10 text-xs rounded-xl bg-white border border-slate-200 focus:ring-2 focus:ring-purple-500/20 font-medium"
+                        />
+                      </div>
+                      <div>
+                        <label className="label text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block mb-1">
+                          Insurance Plan <span className="text-red-500 font-black">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          {...register('insurancePlan')}
+                          placeholder="e.g. Jeevan Anand"
+                          className="input w-full h-10 text-xs rounded-xl bg-white border border-slate-200 focus:ring-2 focus:ring-purple-500/20 font-medium"
+                        />
+                      </div>
+                      <div>
+                        <label className="label text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block mb-1">
+                          Sum Assured <span className="text-red-500 font-black">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          {...register('sumAssured')}
+                          placeholder="Enter sum assured..."
+                          className="input w-full h-10 text-xs rounded-xl bg-white border border-slate-200 focus:ring-2 focus:ring-purple-500/20 font-medium"
+                        />
+                      </div>
+                      <div>
+                        <label className="label text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block mb-1">
+                          Premium Amount <span className="text-red-500 font-black">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          {...register('premiumAmount')}
+                          placeholder="Enter premium amount..."
+                          className="input w-full h-10 text-xs rounded-xl bg-white border border-slate-200 focus:ring-2 focus:ring-purple-500/20 font-medium"
+                        />
+                      </div>
+                      {/* Policy Tenure / Term (कालावधी) Field */}
+                      <div>
+                        <label className="label text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block mb-1">
+                          Policy Tenure / Term (कालावधी) <span className="text-red-500 font-black">*</span>
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            type="number"
+                            min="1"
+                            value={tenureValue}
+                            onChange={e => {
+                              const val = e.target.value === '' ? '' : Math.max(1, Number(e.target.value));
+                              handleTenureChange(val, tenureUnit);
+                            }}
+                            placeholder="कालावधी संख्या (उदा. 1, 7...)"
+                            className="input w-full h-10 text-xs font-bold rounded-xl bg-white border border-slate-200 focus:ring-2 focus:ring-purple-500/20"
+                          />
+                          <select
+                            value={tenureUnit}
+                            onChange={e => handleTenureChange(tenureValue || 1, e.target.value as any)}
+                            className="input w-full h-10 text-xs font-semibold rounded-xl bg-white border border-slate-200 focus:ring-2 focus:ring-purple-500/20"
+                          >
+                            <option value="YEARS">Year(s) (वर्षे)</option>
+                            <option value="MONTHS">Month(s) (महिने)</option>
+                            <option value="DAYS">Day(s) (दिवस)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="label text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block mb-1">
+                          Payment Frequency <span className="text-red-500 font-black">*</span>
+                        </label>
+                        <select
+                          {...register('paymentFrequency')}
+                          className="input w-full h-10 text-xs rounded-xl bg-white border border-slate-200 focus:ring-2 focus:ring-purple-500/20 font-semibold"
+                        >
+                          <option value="YEARLY">Yearly (वार्षिक)</option>
+                          <option value="HALF_YEARLY">Half Yearly (Hly / सहामाही)</option>
+                          <option value="QUARTERLY">Quarterly (Qly / त्रैमासिक)</option>
+                          <option value="MONTHLY">Monthly (मासिक)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="label text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block mb-1">
+                          Start Date (सुरुवात तारीख) <span className="text-red-500 font-black">*</span>
+                        </label>
+                        <input
+                          type="date"
+                          value={watchStartDate || ''}
+                          onChange={e => handleStartDateChange(e.target.value)}
+                          className="input w-full h-10 text-xs rounded-xl bg-white border border-slate-200 focus:ring-2 focus:ring-purple-500/20 font-medium"
+                        />
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="label text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">
+                            End Date (अंतिम तारीख / Expiry) <span className="text-red-500 font-black">*</span>
+                          </label>
+                          <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200">
+                            ⚡ Auto-calculated
+                          </span>
+                        </div>
+                        <input
+                          type="date"
+                          value={watchEndDate || ''}
+                          onChange={e => handleEndDateChange(e.target.value)}
+                          className="input w-full h-10 text-xs rounded-xl bg-white border border-slate-200 focus:ring-2 focus:ring-purple-500/20 font-medium"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
               {/* ════════════════ TAB 1: Personal & Profile Details (Contains ONLY Personal Info) ════════════════ */}
               {activePolicyTab === 'personalProfile' && (
                 <div className="space-y-4 animate-fadeIn">
@@ -2362,6 +3329,164 @@ salarySlip2FileName: '',
                       </button>
                     </div>
 
+                    {/* Quick Customer Picker / Link Existing Customer */}
+                    <div className="p-3.5 bg-gradient-to-r from-purple-50/70 via-indigo-50/50 to-purple-50/70 border-b border-purple-150/80">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-lg bg-purple-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                            <Users size={14} />
+                          </div>
+                          <div>
+                            <p className="text-xs font-black text-slate-800">विद्यमान ग्राहक निवडा (Select Existing Customer)</p>
+                            <p className="text-[10px] text-slate-500 font-medium">आधीच्या ग्राहकाची माहिती आपोआप भरण्यासाठी खालीलपैकी ग्राहक निवडा</p>
+                          </div>
+                        </div>
+                        {selectedContact ? (
+                          <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl shadow-2xs flex-wrap">
+                            <div className="flex items-center gap-1.5">
+                              <CheckCircle2 size={14} className="text-emerald-600" />
+                              <span className="text-xs font-bold text-emerald-800">
+                                {selectedContact.firstName} {selectedContact.lastName || ''} ({selectedContact.phone || 'No phone'})
+                              </span>
+                            </div>
+                            <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-200">
+                              {selectedContactPolicies.length} {selectedContactPolicies.length === 1 ? 'पॉलिसी (Policy)' : 'पॉलिसिज (Policies)'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedContact(null);
+                                setValue('contactId', '');
+                              }}
+                              className="text-[10px] font-bold text-rose-600 hover:text-rose-800 ml-1 underline cursor-pointer"
+                            >
+                              बदला / Clear
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-2.5 relative">
+                        <input
+                          type="text"
+                          placeholder="Search existing customer by name or phone (नावाने किंवा मोबाईल नंबरने शोधा)..."
+                          value={contactSearch}
+                          onChange={(e) => {
+                            setContactSearch(e.target.value);
+                            setContactDropdown(true);
+                          }}
+                          onFocus={() => setContactDropdown(true)}
+                          className="w-full px-3 py-2 text-xs rounded-xl bg-white border border-purple-200 focus:border-purple-600 focus:ring-2 focus:ring-purple-500/20 font-medium"
+                        />
+                        {contactDropdown && (
+                          <div className="absolute top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl z-50 divide-y divide-slate-100">
+                            {filteredCustomerOptions.length === 0 ? (
+                              <div className="p-3 text-center text-xs text-slate-400 font-medium">
+                                कोणताही ग्राहक सापडला नाही (No customer found)
+                              </div>
+                            ) : (
+                              filteredCustomerOptions.map((c: any) => {
+                                const cName = `${c.firstName || c.name || ''} ${c.lastName || ''}`.trim();
+                                const cPhone = c.phone || c.mobile || 'N/A';
+                                return (
+                                  <div
+                                    key={c.id || c._id}
+                                    onClick={() => selectExistingCustomer(c)}
+                                    className="p-2.5 hover:bg-purple-50 cursor-pointer flex items-center justify-between text-xs transition-colors"
+                                  >
+                                    <div>
+                                      <span className="font-bold text-slate-800">{cName}</span>
+                                      <span className="text-slate-500 ml-2 text-[11px] font-mono">{cPhone}</span>
+                                      {c.city && <span className="text-slate-400 ml-2 text-[10px]">· {c.city}</span>}
+                                    </div>
+                                    <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-purple-100 text-purple-700">
+                                      Select
+                                    </span>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Existing Policies of Selected Customer in Tab 1 */}
+                      {selectedContact && (
+                        <div className="mt-3 pt-3 border-t border-purple-200/60 animate-fadeIn">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="w-5 h-5 rounded-full bg-purple-600 text-white flex items-center justify-center text-[10px] font-black shadow-2xs">
+                                {selectedContactPolicies.length}
+                              </span>
+                              <h5 className="text-xs font-black text-slate-800">
+                                {selectedContact.firstName} {selectedContact.lastName || ''} यांच्या आधीच्या पॉलिसिज (Existing Policies):
+                              </h5>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setShowExistingPolicies(prev => !prev)}
+                              className="text-[10px] font-extrabold text-purple-700 hover:text-purple-900 flex items-center gap-1 cursor-pointer bg-white px-2.5 py-0.5 rounded-lg border border-purple-200 shadow-2xs"
+                            >
+                              <span>{showExistingPolicies ? 'लपवा (Hide)' : 'पहा (View All)'}</span>
+                              <ChevronDown size={12} className={`transition-transform duration-200 ${showExistingPolicies ? 'rotate-180' : ''}`} />
+                            </button>
+                          </div>
+
+                          {showExistingPolicies && (
+                            selectedContactPolicies.length === 0 ? (
+                              <div className="p-3 rounded-xl bg-white/80 border border-dashed border-purple-200 text-center text-xs text-slate-600 font-medium">
+                                ℹ️ या ग्राहकाची कोणतीही आधीची पॉलिसी सापडली नाही. (No previous policy found — this will be their 1st policy).
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                                {selectedContactPolicies.map((p: any) => {
+                                  const status = String(p.status || 'ACTIVE').toUpperCase();
+                                  const statusBadgeClass =
+                                    status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700 border-emerald-200 font-bold' :
+                                    status === 'EXPIRED' || status === 'LAPSED' ? 'bg-rose-50 text-rose-700 border-rose-200 font-bold' :
+                                    'bg-amber-50 text-amber-700 border-amber-200 font-bold';
+                                  const compName = p.insuranceCompany || p.plan?.company?.name || 'Insurance';
+                                  const planName = p.insurancePlan || p.plan?.name || p.policyType || 'Policy';
+                                  const prem = p.premiumAmount || p.annualPremium || p.totalPremium;
+                                  const sumAss = p.sumAssured || p.sumInsured;
+
+                                  return (
+                                    <div
+                                      key={p.id || p._id}
+                                      className="p-2.5 rounded-xl bg-white border border-purple-200/80 shadow-2xs flex flex-col justify-between gap-1.5 hover:border-purple-400 transition-all"
+                                    >
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="min-w-0">
+                                          <span className="font-extrabold text-xs text-slate-900 block truncate">
+                                            {p.policyNumber || 'POL-N/A'}
+                                          </span>
+                                          <span className="text-[10px] text-purple-700 font-bold block truncate">
+                                            {compName} · {planName}
+                                          </span>
+                                        </div>
+                                        <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border shrink-0 ${statusBadgeClass}`}>
+                                          {status}
+                                        </span>
+                                      </div>
+
+                                      <div className="flex items-center justify-between text-[10px] pt-1 border-t border-slate-100 font-medium text-slate-600">
+                                        {sumAss ? (
+                                          <span>Sum: <strong className="text-slate-800 font-bold">₹{Number(sumAss).toLocaleString('en-IN')}</strong></span>
+                                        ) : <span></span>}
+                                        {prem ? (
+                                          <span>Prem: <strong className="text-slate-900 font-extrabold">₹{Number(prem).toLocaleString('en-IN')}/yr</strong></span>
+                                        ) : null}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )
+                          )}
+                        </div>
+                      )}
+                    </div>
+
                     <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3.5">
                       {/* 1. नाव (Full Name) */}
                       <div>
@@ -2370,10 +3495,16 @@ salarySlip2FileName: '',
                         </label>
                         <input
                           type="text"
+                          list="customer-name-datalist"
                           value={personalDetails.fullName}
                           onChange={e => {
-                            setPersonalDetails(p => ({ ...p, fullName: e.target.value }));
+                            const val = e.target.value;
+                            setPersonalDetails(p => ({ ...p, fullName: val }));
                             if (formErrors.fullName) setFormErrors(prev => ({ ...prev, fullName: '' }));
+                            const matched = allContactsList.find((c: any) => `${c.firstName || c.name || ''} ${c.lastName || ''}`.trim().toLowerCase() === val.trim().toLowerCase());
+                            if (matched && !selectedContact) {
+                              selectExistingCustomer(matched);
+                            }
                           }}
                           placeholder="Enter Client Full Name"
                           className={clsx(
@@ -2381,6 +3512,12 @@ salarySlip2FileName: '',
                             formErrors.fullName ? "border-rose-500 ring-1 ring-rose-500 focus:ring-rose-500/20" : "border-slate-200 focus:ring-purple-500/20"
                           )}
                         />
+                        <datalist id="customer-name-datalist">
+                          {allContactsList.map((c: any) => {
+                            const cName = `${c.firstName || c.name || ''} ${c.lastName || ''}`.trim();
+                            return cName ? <option key={c.id || c._id} value={cName}>{c.phone || ''}</option> : null;
+                          })}
+                        </datalist>
                         {formErrors.fullName && (
                           <p className="text-[11px] text-rose-500 font-bold mt-1 animate-fadeIn">{formErrors.fullName}</p>
                         )}
@@ -2474,11 +3611,18 @@ salarySlip2FileName: '',
                         <input
                           type="tel"
                           maxLength={10}
+                          list="customer-phone-datalist"
                           value={personalDetails.phone}
                           onChange={e => {
                             const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 10);
                             setPersonalDetails(p => ({ ...p, phone: digitsOnly }));
                             if (formErrors.phone) setFormErrors(prev => ({ ...prev, phone: '' }));
+                            if (digitsOnly.length === 10 && !selectedContact) {
+                              const matched = allContactsList.find((c: any) => String(c.phone || c.mobile || '').replace(/\D/g, '').slice(-10) === digitsOnly);
+                              if (matched) {
+                                selectExistingCustomer(matched);
+                              }
+                            }
                           }}
                           placeholder="Enter 10-digit mobile number"
                           className={clsx(
@@ -2486,6 +3630,13 @@ salarySlip2FileName: '',
                             formErrors.phone ? "border-rose-500 ring-1 ring-rose-500 focus:ring-rose-500/20" : "border-slate-200 focus:ring-purple-500/20"
                           )}
                         />
+                        <datalist id="customer-phone-datalist">
+                          {allContactsList.map((c: any) => {
+                            const cPhone = String(c.phone || c.mobile || '').replace(/\D/g, '').slice(-10);
+                            const cName = `${c.firstName || c.name || ''} ${c.lastName || ''}`.trim();
+                            return cPhone ? <option key={c.id || c._id} value={cPhone}>{cName}</option> : null;
+                          })}
+                        </datalist>
                         {formErrors.phone && (
                           <p className="text-[11px] text-rose-500 font-bold mt-1 animate-fadeIn">{formErrors.phone}</p>
                         )}
@@ -2575,6 +3726,7 @@ salarySlip2FileName: '',
                         </div>
                       </div>
                     </div>
+
                   </div>
                 </div>
               )}
@@ -3356,13 +4508,14 @@ salarySlip2FileName: '',
                     <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
                       {[1, 2, 3, 4, 5, 6, 7].map(num => {
                         const targetId = String(num);
-                        const pol = existingPolicies.find(p => p.id === targetId) || { id: targetId, policyNumber: '', insurerName: num <= 4 ? 'LIC of India' : 'खाजगी विमा' };
+                        const pol = existingPolicies.find(p => p.id === targetId) || { id: targetId, policyNumber: '', insurerName: '' };
                         return (
                           <div key={num} className="p-2.5 bg-slate-50/80 border border-slate-200/90 rounded-xl flex items-center gap-2">
                             <span className="text-xs font-extrabold text-slate-600 shrink-0 w-5">{num})</span>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 flex-1">
-                              <select
-                                value={pol.insurerName}
+                              <input
+                                type="text"
+                                value={pol.insurerName || ''}
                                 onChange={e => {
                                   const val = e.target.value;
                                   setExistingPolicies(prev => {
@@ -3371,24 +4524,22 @@ salarySlip2FileName: '',
                                     return [...prev, { id: targetId, insurerName: val, policyNumber: '' }];
                                   });
                                 }}
-                                className="input w-full h-8 text-xs font-mono rounded-lg bg-white border border-slate-200"
-                              >
-                                <option value="LIC of India">LIC of India</option>
-                                <option value="खाजगी विमा">खाजगी विमा</option>
-                              </select>
+                                placeholder="विमा कंपनी नाव (उदा. LIC / खाजगी)"
+                                className="input w-full h-8 text-xs font-medium rounded-lg bg-white border border-slate-200 focus:ring-2 focus:ring-purple-500/20"
+                              />
                               <input
                                 type="text"
-                                value={pol.policyNumber}
+                                value={pol.policyNumber || ''}
                                 onChange={e => {
                                   const val = e.target.value;
                                   setExistingPolicies(prev => {
                                     const exists = prev.some(p => p.id === targetId);
                                     if (exists) return prev.map(p => p.id === targetId ? { ...p, policyNumber: val } : p);
-                                    return [...prev, { id: targetId, insurerName: pol.insurerName || 'LIC of India', policyNumber: val }];
+                                    return [...prev, { id: targetId, insurerName: pol.insurerName || '', policyNumber: val }];
                                   });
                                 }}
-                                placeholder="पॉलसी नंबर"
-                                className="input w-full h-8 text-xs font-mono rounded-lg bg-white border border-slate-200"
+                                placeholder="पॉलिसी नंबर"
+                                className="input w-full h-8 text-xs font-mono rounded-lg bg-white border border-slate-200 focus:ring-2 focus:ring-purple-500/20"
                               />
                             </div>
                           </div>

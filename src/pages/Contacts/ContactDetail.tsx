@@ -210,13 +210,12 @@ export default function ContactDetail() {
       toast.error('Mobile Number must be exactly 10 digits');
       return;
     }
-    if (!fields.aadhaarNumber.trim()) {
-      toast.error('Aadhaar Number is required');
-      return;
-    }
-    if (!/^\d{12}$/.test(fields.aadhaarNumber.trim())) {
-      toast.error('Aadhaar Number must be exactly 12 digits');
-      return;
+    if (fields.aadhaarNumber && fields.aadhaarNumber.trim()) {
+      const cleanAadhaar = fields.aadhaarNumber.replace(/\D/g, '');
+      if (cleanAadhaar.length !== 12) {
+        toast.error('Aadhaar Number must be exactly 12 digits');
+        return;
+      }
     }
 
     const nonMedTags = (c.tags || []).filter((t: string) => !t.startsWith('med:'));

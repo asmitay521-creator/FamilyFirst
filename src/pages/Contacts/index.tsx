@@ -443,13 +443,51 @@ export default function Contacts() {
     return res;
   }
 
+  function getContactFollowUpDate(c: any): string | null {
+    if (!c) return null;
+    if (c.followUpDate) return c.followUpDate;
+    if (c.nextFollowUp) return c.nextFollowUp;
+    if (c.follow_up_date) return c.follow_up_date;
+    if (c.productInterests && Array.isArray(c.productInterests)) {
+      const withDate = c.productInterests.find((p: any) => p?.followUpDate || p?.follow_up_date);
+      if (withDate) return withDate.followUpDate || withDate.follow_up_date;
+    }
+    if (c.leads && Array.isArray(c.leads)) {
+      const withDate = c.leads.find((l: any) => l?.followUpDate || l?.follow_up_date);
+      if (withDate) return withDate.followUpDate || withDate.follow_up_date;
+    }
+    return null;
+  }
+
   function serializeLeadNotes(card: ProductInterestCard) {
     const currentUser = useAuthStore.getState().user;
     const currentUserName = currentUser?.firstName ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim() : ((currentUser as any)?.name || currentUser?.email || 'User');
     const assignedEmp = employeesList.find((e: any) => e.id === card.assignedEmployeeId || e.userId === card.assignedEmployeeId || e.user?.id === card.assignedEmployeeId);
     const assignedEmpName = assignedEmp ? `${assignedEmp.firstName || assignedEmp.user?.firstName || ''} ${assignedEmp.lastName || assignedEmp.user?.lastName || ''}`.trim() : '';
 
+    const fn = (personalFields?.firstName || '').trim();
+    const ln = (personalFields?.lastName || '').trim();
+    const full = `${fn} ${ln}`.trim();
+    const ph = (personalFields?.whatsappNumber || personalFields?.callingNumber || '').trim();
+    const em = (personalFields?.email || '').trim();
+
     return JSON.stringify({
+      fullName: full,
+      firstName: fn,
+      lastName: ln,
+      name: full,
+      clientName: full,
+      customerName: full,
+      contactName: full,
+      phone: ph,
+      mobile: ph,
+      email: em,
+      contact: {
+        firstName: fn,
+        lastName: ln,
+        phone: ph,
+        email: em,
+      },
       leadStage: card.leadStage,
       stage: card.leadStage,
       leadStatus: card.leadStatus,
@@ -1597,6 +1635,8 @@ export default function Contacts() {
         const chosenSource = productInterests[0]?.leadSource || leadInfoFields.leadSource || 'Walk-in';
         const chosenStage = productInterests[0]?.leadStage || 'TO_CONTACT';
         const chosenStatus = productInterests[0]?.leadStatus || 'INTERESTED';
+        const chosenFDateRaw = productInterests.find(p => p.followUpDate)?.followUpDate || leadInfoFields.followUpDate;
+        const chosenFDateIso = chosenFDateRaw ? (toIsoDateString(chosenFDateRaw) || chosenFDateRaw) : undefined;
 
         const contactBody: any = {
           firstName,
@@ -1613,6 +1653,8 @@ export default function Contacts() {
           stage: chosenStage,
           leadStage: chosenStage,
           leadStatus: chosenStatus,
+          followUpDate: chosenFDateIso,
+          nextFollowUp: chosenFDateIso,
         };
         if (personalFields.middleName?.trim()) contactBody.middleName = personalFields.middleName.trim();
         if (cleanAltPhone) contactBody.alternatePhone = cleanAltPhone;
@@ -1760,18 +1802,19 @@ export default function Contacts() {
       }
 
       // Save Product Interests (Leads)
-      for (const card of productInterests) {
-        const isUntouchedDefaultPlaceholder = card.id.startsWith('temp-') &&
-          (card.interestedIn.length === 1 && card.interestedIn[0] === 'Health') &&
+      const validProductInterests = productInterests.filter(card => {
+        const isUntouched = card.id.startsWith('temp-') &&
+          (!card.interestedIn || card.interestedIn.length === 0 || (card.interestedIn.length === 1 && card.interestedIn[0] === 'Health')) &&
           !card.expectedPremium &&
           !card.followUpDate &&
           !card.descriptionDetails &&
           !card.otherProduct;
+        return !isUntouched;
+      });
 
-        if (isUntouchedDefaultPlaceholder) {
-          continue;
-        }
+      let leadCreatedOrUpdated = false;
 
+      for (const card of validProductInterests) {
         const rawInterests = (card.interestedIn || [])
           .map((p: string) => (p === 'Other' && card.otherProduct ? card.otherProduct : p))
           .filter(Boolean);
@@ -1805,6 +1848,7 @@ export default function Contacts() {
                 await leadsService.addConsultation(savedLead.id, { notes: cmt.text });
               }
             }
+            leadCreatedOrUpdated = true;
           } catch (leadErr: any) {
             console.error('Failed to save product interest:', leadErr);
             toast.error(`Failed to save Product Interest (${interests.join(', ')}): ${leadErr.response?.data?.message || 'Error occurred'}`);
@@ -1816,8 +1860,16 @@ export default function Contacts() {
       // Await all sub-resource updates concurrently
       await Promise.all(subResourcePromises);
 
+      const chosenAssignedEmpId = validEmpId(productInterests[0]?.assignedEmployeeId) || validEmpId(leadInfoFields.assignedEmployeeId) || validEmpId(curEmpId);
+      const chosenSource = productInterests[0]?.leadSource || leadInfoFields.leadSource || 'Walk-in';
+      const chosenStage = productInterests[0]?.leadStage || (leadInfoFields as any).leadStage || (leadInfoFields as any).stage || 'TO_CONTACT';
+      const chosenStatus = productInterests[0]?.leadStatus || leadInfoFields.leadStatus || 'INTERESTED';
+
+      const chosenUpdateFDate = productInterests.find(p => p.followUpDate)?.followUpDate || leadInfoFields.followUpDate;
+      const chosenUpdateFDateIso = chosenUpdateFDate ? (toIsoDateString(chosenUpdateFDate) || chosenUpdateFDate) : undefined;
+
       // Persist productInterests to contact object in localStorage / Firestore
-      const allLeadObjects = productInterests.map(card => {
+      const allLeadObjects = validProductInterests.map(card => {
         const rawInterests = (card.interestedIn || [])
           .map((p: string) => (p === 'Other' && card.otherProduct ? card.otherProduct : p))
           .filter(Boolean);
@@ -1835,19 +1887,17 @@ export default function Contacts() {
           followUpDate: card.followUpDate,
         };
       });
+      // Do not auto-create leads for normal directory contacts without explicit product interests
 
-      const chosenAssignedEmpId = validEmpId(productInterests[0]?.assignedEmployeeId) || validEmpId(leadInfoFields.assignedEmployeeId);
-      const chosenSource = productInterests[0]?.leadSource || leadInfoFields.leadSource || 'Walk-in';
-      const chosenStage = productInterests[0]?.leadStage || 'TO_CONTACT';
-      const chosenStatus = productInterests[0]?.leadStatus || 'INTERESTED';
-
-      if (contactId && allLeadObjects.length > 0) {
+      if (contactId && (allLeadObjects.length > 0 || chosenUpdateFDateIso || chosenStage)) {
         await contactsService.update(contactId, {
           source: chosenSource,
           leadSource: chosenSource,
           stage: chosenStage,
           leadStage: chosenStage,
           leadStatus: chosenStatus,
+          followUpDate: chosenUpdateFDateIso,
+          nextFollowUp: chosenUpdateFDateIso,
           assignedEmployeeId: chosenAssignedEmpId || undefined,
           assignedByName: chosenAssignedEmpId ? getEmployeeName(chosenAssignedEmpId) : undefined,
           productInterests: allLeadObjects,
@@ -1865,12 +1915,14 @@ export default function Contacts() {
       toast.success(
         editContactId
           ? `${targetLabel} updated successfully!`
-          : (shouldClose ? `${targetLabel} created successfully!` : 'Draft saved successfully!'),
+          : `${targetLabel} saved successfully!`,
         { id: toastId }
       );
       // Invalidate and refetch immediately
       await qc.invalidateQueries({ queryKey: ['contacts'] });
       await qc.refetchQueries({ queryKey: ['contacts'] });
+      qc.invalidateQueries({ queryKey: ['contacts-for-leads-matching'] });
+      qc.invalidateQueries({ queryKey: ['leads'] });
       qc.invalidateQueries({ queryKey: ['policies'] });
       qc.invalidateQueries({ queryKey: ['contacts-policies-list'] });
 
@@ -2223,6 +2275,9 @@ export default function Contacts() {
       const isCustomer = (item.policies && item.policies.length > 0) || hasTag('customer') || (policyMap[item.id]?.length > 0);
 
       if (activeTab === 'contacts') {
+        if (hasTag('lead_only') || hasTag('lead-only')) {
+          return false;
+        }
         if (hasTag('contact')) {
           // Keep in contacts tab if explicitly tagged as contact
         } else if (isCustomer) {
@@ -2301,23 +2356,66 @@ export default function Contacts() {
 
   // Client-side Sorting Memo
   const sortedAndFilteredData = useMemo(() => {
-    return sortData(filteredData, sortKey, sortDir as 'asc' | 'desc', (row: any, key: string) => {
-      if (key === 'name') return `${row.firstName || row.contact?.firstName || ''} ${row.lastName || row.contact?.lastName || ''}`;
-      if (key === 'phone') return row.phone || row.contact?.phone || '';
-      if (key === 'product') {
-        const p = policyMap[row.id] ?? [];
-        return p.map((x: any) => x.plan?.category || x.plan?.name).join(', ');
+    if (sortKey) {
+      return sortData(filteredData, sortKey, sortDir as 'asc' | 'desc', (row: any, key: string) => {
+        if (key === 'name') return `${row.firstName || row.contact?.firstName || ''} ${row.lastName || row.contact?.lastName || ''}`;
+        if (key === 'phone') return row.phone || row.contact?.phone || '';
+        if (key === 'product') {
+          const p = policyMap[row.id] ?? [];
+          return p.map((x: any) => x.plan?.category || x.plan?.name).join(', ');
+        }
+        if (key === 'assignedTo') return getEmployeeName(row.assignedEmployeeId);
+        if (key === 'followUpDate') {
+          const d = getContactFollowUpDate(row);
+          return d ? new Date(d).getTime() : 0;
+        }
+        
+        // Attempt to resolve nested paths generically if standard row[key] is undefined
+        const parts = key.split('.');
+        let val = row;
+        for (const part of parts) {
+          if (val == null) break;
+          val = val[part];
+        }
+        return val !== undefined ? val : row[key];
+      });
+    }
+
+    // Default Sorting: Prioritize Upcoming Follow-up Dates (Today -> Tomorrow -> Nearest Future Dates at top)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayTs = today.getTime();
+
+    return [...filteredData].sort((a: any, b: any) => {
+      const aFDate = getContactFollowUpDate(a);
+      const bFDate = getContactFollowUpDate(b);
+
+      const aTime = aFDate ? new Date(aFDate).getTime() : null;
+      const bTime = bFDate ? new Date(bFDate).getTime() : null;
+
+      const aIsUpcoming = aTime !== null && !isNaN(aTime) && aTime >= todayTs;
+      const bIsUpcoming = bTime !== null && !isNaN(bTime) && bTime >= todayTs;
+
+      // 1. Both upcoming -> nearest upcoming date first (ascending)
+      if (aIsUpcoming && bIsUpcoming) {
+        return aTime! - bTime!;
       }
-      if (key === 'assignedTo') return getEmployeeName(row.assignedEmployeeId);
-      
-      // Attempt to resolve nested paths generically if standard row[key] is undefined
-      const parts = key.split('.');
-      let val = row;
-      for (const part of parts) {
-        if (val == null) break;
-        val = val[part];
-      }
-      return val !== undefined ? val : row[key];
+
+      // 2. Upcoming date comes before non-upcoming
+      if (aIsUpcoming && !bIsUpcoming) return -1;
+      if (!aIsUpcoming && bIsUpcoming) return 1;
+
+      // 3. If one has overdue date vs no date
+      const aHasDate = aTime !== null && !isNaN(aTime);
+      const bHasDate = bTime !== null && !isNaN(bTime);
+      if (aHasDate && !bHasDate) return -1;
+      if (!aHasDate && bHasDate) return 1;
+      if (aHasDate && bHasDate) return bTime! - aTime!;
+
+      // 4. Default: Newest created contacts first
+      const aCreated = new Date(a.createdAt || a.created_at || 0).getTime();
+      const bCreated = new Date(b.createdAt || b.created_at || 0).getTime();
+      return bCreated - aCreated;
     });
   }, [filteredData, sortKey, sortDir, policyMap]);
 
@@ -2392,6 +2490,48 @@ export default function Contacts() {
             {r.leadStatus || '—'}
           </span>
         );
+      }
+    },
+    {
+      key: 'followUpDate',
+      label: 'FOLLOW UP DATE',
+      sortable: true,
+      render: r => {
+        const rawDate = getContactFollowUpDate(r);
+        if (!rawDate) return <span className="text-slate-400 text-xs font-semibold">—</span>;
+        try {
+          const dateObj = new Date(rawDate);
+          if (isNaN(dateObj.getTime())) return <span className="text-slate-600 text-xs font-bold">{rawDate}</span>;
+          const formatted = format(dateObj, 'dd/MM/yyyy');
+          
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const target = new Date(dateObj);
+          target.setHours(0, 0, 0, 0);
+          const diffDays = Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          
+          let badgeColor = 'bg-blue-50 text-blue-700 border-blue-200';
+          let labelText = formatted;
+          if (diffDays === 0) {
+            badgeColor = 'bg-amber-50 text-amber-700 border-amber-300 font-black animate-pulse';
+            labelText = `Today (${formatted})`;
+          } else if (diffDays === 1) {
+            badgeColor = 'bg-purple-50 text-purple-700 border-purple-300 font-black';
+            labelText = `Tomorrow (${formatted})`;
+          } else if (diffDays < 0) {
+            badgeColor = 'bg-rose-50 text-rose-700 border-rose-200 font-bold';
+            labelText = `Overdue (${formatted})`;
+          }
+
+          return (
+            <span className={clsx('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs border shadow-2xs font-bold', badgeColor)}>
+              <Calendar size={12} className="shrink-0" />
+              {labelText}
+            </span>
+          );
+        } catch {
+          return <span className="text-slate-600 text-xs font-bold">{rawDate}</span>;
+        }
       }
     },
 
@@ -2897,9 +3037,13 @@ export default function Contacts() {
               {employeesList.map((emp: any) => {
                 const empUserId = emp.userId || emp.user?.id || emp.id;
                 const empName = `${emp.firstName || emp.user?.firstName || ''} ${emp.lastName || emp.user?.lastName || ''}`.trim() || emp.email || 'Employee';
+                const empEmail = emp.email || emp.user?.email || '';
+                const label = empEmail && !empName.toLowerCase().includes(empEmail.toLowerCase())
+                  ? `${empName} (${empEmail})`
+                  : (empName || empEmail || 'Employee');
                 return (
                   <option key={emp.id || empUserId} value={empUserId}>
-                    {empName}
+                    {label}
                   </option>
                 );
               })}
@@ -3368,10 +3512,10 @@ export default function Contacts() {
                           {/* Interested In — Dropdown & Toggle buttons */}
                           <div>
                             <div className="flex items-center justify-between mb-2">
-                              <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Product Interest *</label>
+                              <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Product Interest <span className="text-red-500 font-bold">*</span></label>
                               {isExisting && (
                                 <span className="text-[10px] text-slate-400 font-medium italic">
-                                  Category fixed for existing records. Change status below or click "+ Add Product Interest" for a new product.
+                                   Category fixed for existing records. Change status below or click "+ Add Product Interest" for a new product.
                                 </span>
                               )}
                             </div>
@@ -3421,7 +3565,7 @@ export default function Contacts() {
                             {card.interestedIn.includes('Other') && (
                               <div className="bg-slate-100/90 border-2 border-slate-300 rounded-xl p-3 space-y-1.5 animate-fadeIn mt-2.5">
                                 <label className="label text-[10px] font-extrabold text-slate-700 uppercase tracking-wider block">
-                                  Specify Other Product Name *
+                                  Specify Other Product Name <span className="text-red-500 font-bold">*</span>
                                 </label>
                                 <input
                                   type="text"
@@ -3457,7 +3601,7 @@ export default function Contacts() {
                           {/* Row 1: Stage, Status, Type */}
                           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                             <div>
-                              <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Lead Stage *</label>
+                              <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Lead Stage <span className="text-red-500 font-bold">*</span></label>
                               <select
                                 className="input w-full text-xs"
                                 value={card.leadStage}
@@ -3473,7 +3617,7 @@ export default function Contacts() {
                             </div>
                             <div>
                               <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                                Lead Status *{isExisting ? ' (Editable)' : ''}
+                                Lead Status <span className="text-red-500 font-bold">*</span>{isExisting ? ' (Editable)' : ''}
                               </label>
                               <select
                                 className="input w-full text-xs"
@@ -3488,7 +3632,7 @@ export default function Contacts() {
                               </select>
                             </div>
                             <div>
-                              <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Lead Type *</label>
+                              <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Lead Type <span className="text-red-500 font-bold">*</span></label>
                               <select
                                 disabled={isExisting}
                                 className={`input w-full text-xs ${isExisting ? 'opacity-75 bg-slate-100 cursor-not-allowed' : ''}`}
@@ -3507,7 +3651,7 @@ export default function Contacts() {
                             <div className="bg-blue-50/80 border-2 border-blue-200 rounded-xl p-3 space-y-1.5 animate-fadeIn">
                               <label className="label text-[10px] font-extrabold text-blue-700 uppercase tracking-wider flex flex-wrap items-center gap-1">
                                 <span className="w-1.5 h-1.5 rounded-full bg-purple-600 shrink-0" />
-                                Dependent Details / Name / Relation *
+                                Dependent Details / Name / Relation <span className="text-red-500 font-bold">*</span>
                               </label>
                               <input
                                 type="text"
@@ -3523,7 +3667,7 @@ export default function Contacts() {
                           {/* Row 2: Source, Assigned Employee, Follow-up Date, Expected Premium */}
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div>
-                              <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Lead Source *</label>
+                              <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Lead Source <span className="text-red-500 font-bold">*</span></label>
                               <input
                                 type="text"
                                 disabled={isExisting}
@@ -3552,16 +3696,20 @@ export default function Contacts() {
                                 {getAssignableEmployees(employeesList, editTarget || personalFields).map((emp: any) => {
                                   const empUserId = emp.userId || emp.user?.id || emp.id;
                                   const empName = `${emp.firstName || emp.employeeProfile?.firstName || emp.user?.firstName || ''} ${emp.lastName || emp.employeeProfile?.lastName || emp.user?.lastName || ''}`.trim() || emp.name || emp.email || 'Employee';
+                                  const empEmail = emp.email || emp.user?.email || '';
+                                  const label = empEmail && !empName.toLowerCase().includes(empEmail.toLowerCase())
+                                    ? `${empName} (${empEmail})`
+                                    : (empName || empEmail || 'Employee');
                                   return (
                                     <option key={emp.id || empUserId} value={empUserId}>
-                                      {empName}
+                                      {label}
                                     </option>
                                   );
                                 })}
                               </select>
                             </div>
                             <div>
-                              <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Follow-up Date *</label>
+                              <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Follow-up Date <span className="text-red-500 font-bold">*</span></label>
                               <DatePicker
                                 disabled={isExisting}
                                 className={`input w-full text-xs ${isExisting ? 'opacity-75 bg-slate-100 cursor-not-allowed' : ''}`}
@@ -3570,7 +3718,7 @@ export default function Contacts() {
                               />
                             </div>
                             <div>
-                              <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Expected Premium / Budget (₹) *</label>
+                              <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Expected Premium / Budget (₹) <span className="text-red-500 font-bold">*</span></label>
                               <input
                                 type="number"
                                 disabled={isExisting}

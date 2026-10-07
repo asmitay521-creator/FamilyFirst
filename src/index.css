@@ -72,16 +72,10 @@
   input[type='number']::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
   input[type='number'] { appearance: textfield; -moz-appearance: textfield; }
   /* Global Table Styles */
-  table {
-    @apply w-full border-collapse border border-[#EDE5F0];
-  }
-  th, td {
-    @apply border border-[#EDE5F0];
-  }
-  tbody tr:nth-child(even) {
+  .crm-striped-table tbody tr:nth-child(even) {
     @apply bg-[#FCF6FA]/60;
   }
-  tbody tr:nth-child(odd) {
+  .crm-striped-table tbody tr:nth-child(odd) {
     @apply bg-white;
   }
 }
@@ -322,6 +316,17 @@
   body { background: white; }
 }
 
+/* ── Hide scrollbar utility ────────────────────────────────────────────────── */
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+.no-scrollbar {
+  -ms-overflow-style: none !important; /* IE and Edge */
+  scrollbar-width: none !important; /* Firefox */
+}
+
 /* ── Tailwind primary color shim (used via primary-600 etc.) ───────────────── */
 
 .bg-primary-100 { background-color: #dbeafe; }
@@ -344,6 +349,20 @@
 .page-subtitle { color: #4b5563 !important; }
 
 /* ── Sidebar specific overrides (keeps them crisp on dark bg) ────────────── */
+aside,
+aside nav,
+aside * {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+aside::-webkit-scrollbar,
+aside nav::-webkit-scrollbar,
+aside *::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
 aside .text-slate-400 { color: #cbd5e1 !important; }
 aside .text-slate-500 { color: #94a3b8 !important; }
 aside .text-blue-400 { color: #38bdf8 !important; }

@@ -1,7 +1,7 @@
 import React from 'react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Pencil, UserX, UserCheck, AlertTriangle, Eye, EyeOff } from 'lucide-react';
+import { Pencil, UserX, UserCheck, AlertTriangle, Eye, EyeOff, Trash2 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { employeesService } from '@api/index';
 import DataTable, { Column } from '@comps/common/DataTable';
@@ -52,6 +52,7 @@ export default function Employees() {
   const [editTarget, setEditTarget]         = useState<Employee | null>(null);
   const [showPassword, setShowPassword]     = useState(false);
   const [deactivateTarget, setDeactivateTarget] = useState<Employee | null>(null);
+  const [deleteTarget, setDeleteTarget]     = useState<Employee | null>(null);
   const qc = useQueryClient();
 
   const [sortKey, setSortKey] = useState<string>('');
@@ -117,6 +118,16 @@ export default function Employees() {
       setDeactivateTarget(null);
     },
     onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to update employee status'),
+  });
+
+  const deleteEmployee = useMutation({
+    mutationFn: (id: string) => employeesService.delete(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['employees'] });
+      toast.success('Employee deleted permanently');
+      setDeleteTarget(null);
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to delete employee'),
   });
 
   const openEdit = async (emp: Employee) => {
@@ -210,18 +221,27 @@ export default function Employees() {
             </button>
           )}
           {canManageEmployees && (
-            <button
-              title={r.isActive ? "Deactivate Employee" : "Activate Employee"}
-              className={clsx(
-                "p-2 rounded-xl text-white font-bold flex items-center justify-center cursor-pointer shadow-md transition-all hover:scale-105",
-                r.isActive
-                  ? "bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 shadow-rose-500/20"
-                  : "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-emerald-500/20"
-              )}
-              onClick={() => setDeactivateTarget(r)}
-            >
-              {r.isActive ? <UserX size={14} /> : <UserCheck size={14} />}
-            </button>
+            <>
+              <button
+                title={r.isActive ? "Deactivate Employee" : "Activate Employee"}
+                className={clsx(
+                  "p-2 rounded-xl text-white font-bold flex items-center justify-center cursor-pointer shadow-md transition-all hover:scale-105",
+                  r.isActive
+                    ? "bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 shadow-orange-500/20"
+                    : "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-emerald-500/20"
+                )}
+                onClick={() => setDeactivateTarget(r)}
+              >
+                {r.isActive ? <UserX size={14} /> : <UserCheck size={14} />}
+              </button>
+              <button
+                title="Delete Employee"
+                className="p-2 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white font-bold flex items-center justify-center cursor-pointer shadow-md shadow-rose-500/20 hover:shadow-lg hover:scale-105 transition-all"
+                onClick={() => setDeleteTarget(r)}
+              >
+                <Trash2 size={14} />
+              </button>
+            </>
           )}
           {!canEditEmployees && !canManageEmployees && (
             <span className="text-xs text-slate-400 italic">View Only</span>
@@ -459,7 +479,7 @@ export default function Employees() {
       {/* Deactivate / Activate Confirm Modal */}
       <Modal open={!!deactivateTarget} onClose={() => setDeactivateTarget(null)} title={deactivateTarget?.isActive ? "Deactivate Employee" : "Activate Employee"} size="sm">
         <div className="flex items-start gap-3 mb-4">
-          <AlertTriangle className={clsx("w-5 h-5 flex-shrink-0 mt-0.5", deactivateTarget?.isActive ? "text-red-500" : "text-green-500")} />
+          <AlertTriangle className={clsx("w-5 h-5 flex-shrink-0 mt-0.5", deactivateTarget?.isActive ? "text-amber-500" : "text-green-500")} />
           <p className="text-sm text-gray-600">
             {deactivateTarget?.isActive ? (
               <>Deactivate <strong>{deactivateTarget?.firstName} {deactivateTarget?.lastName}</strong>? They will lose access to login.</>
@@ -478,6 +498,26 @@ export default function Employees() {
             {deactivateEmployee.isPending
               ? (deactivateTarget?.isActive ? 'Deactivating…' : 'Activating…')
               : (deactivateTarget?.isActive ? 'Deactivate' : 'Activate')}
+          </button>
+        </div>
+      </Modal>
+
+      {/* Delete Employee Confirm Modal */}
+      <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Delete Employee" size="sm">
+        <div className="flex items-start gap-3 mb-4">
+          <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5 text-rose-600" />
+          <p className="text-sm text-gray-600">
+            Are you sure you want to permanently delete <strong>{deleteTarget?.firstName} {deleteTarget?.lastName}</strong>? This employee will be removed completely from both the website and Firebase database.
+          </p>
+        </div>
+        <div className="flex flex-wrap justify-end gap-2">
+          <button className="btn-secondary" onClick={() => setDeleteTarget(null)}>Cancel</button>
+          <button
+            className="btn-danger"
+            disabled={deleteEmployee.isPending}
+            onClick={() => deleteEmployee.mutate(deleteTarget!.id)}
+          >
+            {deleteEmployee.isPending ? 'Deleting…' : 'Delete Permanently'}
           </button>
         </div>
       </Modal>

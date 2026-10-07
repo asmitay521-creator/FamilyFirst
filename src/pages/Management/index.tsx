@@ -206,10 +206,7 @@ export default function Management() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) {
-      toast.error('Please enter a Template Title (शीर्षक आवश्यक आहे)');
-      return;
-    }
+    const effectiveTitle = title.trim() || (category === 'SEMINAR' ? 'Seminar WhatsApp Message' : 'Lead WhatsApp Message');
     if (!message.trim()) {
       toast.error('Please enter the Message Text (संदेश मजकूर आवश्यक आहे)');
       return;
@@ -222,8 +219,8 @@ export default function Management() {
     if (editTarget) {
       const updatedTmpl: WhatsAppTemplate = {
         ...editTarget,
-        name: title.trim(),
-        title: title.trim(),
+        name: effectiveTitle,
+        title: effectiveTitle,
         category,
         triggerEvent: triggerEvent.trim() || 'Custom Broadcast',
         message: message.trim(),
@@ -248,8 +245,8 @@ export default function Management() {
       const newId = `tmpl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       const newTmpl: WhatsAppTemplate = {
         id: newId,
-        name: title.trim(),
-        title: title.trim(),
+        name: effectiveTitle,
+        title: effectiveTitle,
         category,
         triggerEvent: triggerEvent.trim() || 'Custom Broadcast',
         message: message.trim(),
@@ -423,12 +420,12 @@ export default function Management() {
             </div>
 
             {/* Bottom Actions Bar */}
-            <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 mt-2">
+            <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-slate-100 mt-2">
               <button
                 type="button"
                 onClick={() => handleCopy(tmpl)}
                 className={clsx(
-                  'w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border shadow-2xs',
+                  'flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border shadow-2xs',
                   copiedId === tmpl.id
                     ? 'bg-emerald-600 text-white border-emerald-600 shadow-emerald-500/20'
                     : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
@@ -436,6 +433,24 @@ export default function Management() {
               >
                 {copiedId === tmpl.id ? <Check size={13} /> : <Copy size={13} />}
                 {copiedId === tmpl.id ? 'Copied!' : 'Copy Text'}
+              </button>
+              <button
+                type="button"
+                onClick={() => openEditModal(tmpl)}
+                className="px-3 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs flex items-center gap-1.5 border border-purple-200 transition-all cursor-pointer shadow-2xs"
+                title="Edit Template"
+              >
+                <Pencil size={13} />
+                <span>Edit</span>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => handleDelete(tmpl.id, e)}
+                className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold text-xs flex items-center gap-1.5 border border-rose-200 transition-all cursor-pointer shadow-2xs"
+                title="Delete Template"
+              >
+                <Trash2 size={13} />
+                <span>Delete</span>
               </button>
             </div>
           </div>

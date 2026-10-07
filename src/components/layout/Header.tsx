@@ -199,13 +199,6 @@ export default function Header({ title, setMobileOpen }: { title?: string, setMo
                     Edit Profile
                   </button>
                   <button
-                    onClick={() => { navigate('/settings'); setShowDropdown(false); }}
-                    className="flex flex-wrap items-center gap-2.5 w-full px-3 py-2 text-xs font-semibold text-slate-650 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-colors text-left"
-                  >
-                    <Settings size={14} className="text-slate-450" />
-                    Settings
-                  </button>
-                  <button
                     onClick={handleLogout}
                     className="flex flex-wrap items-center gap-2.5 w-full px-3 py-2 text-[10px] sm:text-xs font-semibold text-slate-650 hover:text-red-650 hover:bg-red-50/50 rounded-xl transition-colors text-left"
                   >

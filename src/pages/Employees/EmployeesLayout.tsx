@@ -424,7 +424,7 @@ export default function EmployeesLayout() {
                 <input
                   type="text"
                   className="w-full bg-white border border-slate-300 rounded-xl pl-10 pr-10 py-2.5 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all shadow-2xs"
-                  placeholder="Search or select employee / contact (e.g. Vaishnavi, Asmita, Super Admin)..."
+                  placeholder="Search or select employee / contact (e.g. PRIYA NIRALGI, AANANDA WAVRE)..."
                   value={contactSearch}
                   onFocus={() => setIsContactDropdownOpen(true)}
                   onClick={() => setIsContactDropdownOpen(true)}

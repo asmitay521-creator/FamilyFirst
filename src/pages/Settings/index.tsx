@@ -1,19 +1,11 @@
-import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@store/auth.store';
-import { authService } from '@api/auth.service';
 import { tenantService, subscriptionsService } from '@api/index';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-
-const pwSchema = z.object({
-  currentPassword: z.string().min(1),
-  newPassword: z.string().min(8).regex(/(?=.*[A-Z])(?=.*[0-9])/, 'Must contain uppercase + number'),
-});
-type PwForm = z.infer<typeof pwSchema>;
 
 const tenantSchema = z.object({
   name: z.string().min(1, 'Required'),
@@ -28,9 +20,7 @@ type TenantForm = z.infer<typeof tenantSchema>;
 export default function Settings() {
   const user = useAuthStore(s => s.user);
   const isOwner = user?.role === 'OWNER' || user?.role === 'SUPERADMIN';
-  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<PwForm>({ resolver: zodResolver(pwSchema) });
 
   // Subscription checking
   const { data: subRes } = useQuery({
@@ -66,24 +56,11 @@ export default function Settings() {
     onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Update failed'),
   });
 
-  const onSubmit = async (data: PwForm) => {
-    setLoading(true);
-    try {
-      await authService.changePassword(data);
-      toast.success('Password changed successfully');
-      reset();
-    } catch (e: any) {
-      toast.error(e.response?.data?.message ?? 'Failed to change password');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex flex-col gap-1">
-        <h2 className="page-title">Settings</h2>
-        <p className="page-subtitle">Manage your profile, change credentials, and configure agency configurations.</p>
+        <h2 className="page-title">Edit Profile</h2>
+        <p className="page-subtitle">Manage your profile and configure agency configurations.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -123,43 +100,8 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* Right Side: Change Password & Agency Settings */}
+        {/* Right Side: Agency Settings */}
         <div className="space-y-6 lg:col-span-2">
-          {/* Change Password */}
-          <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
-            <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-400 mb-4">Change Password</h3>
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-              <div>
-                <label className="label">Current Password</label>
-                <input
-                  {...register('currentPassword')}
-                  type="password"
-                  className="input focus:ring-4 focus:ring-blue-500/5 transition-all duration-200"
-                  placeholder="Enter current password"
-                />
-                {errors.currentPassword && <p className="text-[10px] text-red-500 font-semibold mt-1">{errors.currentPassword.message}</p>}
-              </div>
-              <div>
-                <label className="label">New Password</label>
-                <input
-                  {...register('newPassword')}
-                  type="password"
-                  className="input focus:ring-4 focus:ring-blue-500/5 transition-all duration-200"
-                  placeholder="At least 8 chars with uppercase + number"
-                />
-                {errors.newPassword && <p className="text-[10px] text-red-500 font-semibold mt-1">{errors.newPassword.message}</p>}
-              </div>
-              <div className="pt-2">
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="inline-flex items-center justify-center px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-[10px] sm:text-xs font-bold bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 transition-colors shadow-md shadow-blue-500/10"
-                >
-                  {loading ? 'Updating…' : 'Update Password'}
-                </button>
-              </div>
-            </form>
-          </div>
 
           {/* Tenant Profile (OWNER only) */}
           {isOwner && (

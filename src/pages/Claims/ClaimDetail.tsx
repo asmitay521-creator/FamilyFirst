@@ -1,9 +1,9 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { claimsService, documentsService } from '@api/index';
+import { claimsService, documentsService, employeesService, getLocalEmployees } from '@api/index';
 import { ArrowLeft, Upload, FileText, Trash2, X, Plus, DollarSign } from 'lucide-react';
 import Modal from '@comps/common/Modal';
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { useLookupStore } from '@store/lookup.store';
@@ -43,7 +43,23 @@ export default function ClaimDetail() {
   const { user: authUser } = useAuthStore();
 
   // Lookup store
-  const employees = useLookupStore(s => s.employees);
+  const { employees, loadEmployees } = useLookupStore();
+
+  useEffect(() => {
+    loadEmployees();
+  }, [loadEmployees]);
+
+  const { data: empQueryRes } = useQuery({
+    queryKey: ['employees', 'all-for-claim-detail'],
+    queryFn: () => employeesService.list({ page: 1, limit: 500 }),
+    staleTime: 60_000,
+  });
+
+  const employeesList = useMemo(() => {
+    const raw = empQueryRes?.data ?? empQueryRes ?? (employees as any)?.data ?? employees;
+    const list = Array.isArray(raw) && raw.length > 0 ? raw : getLocalEmployees();
+    return Array.isArray(list) ? list : [];
+  }, [empQueryRes, employees]);
 
   const [uploadModal, setUploadModal] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -148,7 +164,7 @@ export default function ClaimDetail() {
   const notesData = getClaimNotesData(cl.notes);
   const displayStatus = cl.status;
 
-  const emp = employees.find(e => e.userId === cl.assignedEmployeeId);
+  const emp = employeesList.find(e => e.id === cl.assignedEmployeeId || e.userId === cl.assignedEmployeeId || e.user?.id === cl.assignedEmployeeId);
   const assigneeName = emp ? `${emp.firstName} ${emp.lastName}` : 'Unassigned';
 
   // Expense Calculations
@@ -189,10 +205,16 @@ export default function ClaimDetail() {
             <h3 className="text-sm font-semibold text-gray-700">Claim Details</h3>
             <InfoRow label="Claim Number" value={cl.claimNumber} />
             <InfoRow label="Type" value={cl.claimType} />
+            <InfoRow label="Patient Name" value={notesData.patientName || (cl as any).patientName || (cl.contact ? `${cl.contact.firstName} ${cl.contact.lastName}` : '—')} />
+            {notesData.patientRelationship && <InfoRow label="Relationship" value={notesData.patientRelationship} />}
             <InfoRow label="Diagnosis" value={notesData.diagnosis || '—'} />
-            <InfoRow label="Hospital" value={notesData.hospital || '—'} />
+            <InfoRow label="Hospital Name" value={notesData.hospitalName || notesData.hospital || (cl as any).hospitalName || '—'} />
+            {notesData.hospitalAddress && <InfoRow label="Hospital Address" value={notesData.hospitalAddress} />}
+            {notesData.hospitalCity && <InfoRow label="City / State" value={`${notesData.hospitalCity}${notesData.hospitalState ? `, ${notesData.hospitalState}` : ''}`} />}
+            {notesData.hospitalContactNo && <InfoRow label="Hospital Phone" value={notesData.hospitalContactNo} />}
             <InfoRow label="Admission Date" value={notesData.admissionAt ? format(new Date(notesData.admissionAt), 'dd/MMM/yyyy') : '—'} />
             <InfoRow label="Discharge Date" value={notesData.dischargeAt ? format(new Date(notesData.dischargeAt), 'dd/MMM/yyyy') : '—'} />
+            {notesData.roomCategory && <InfoRow label="Room Category" value={notesData.roomCategory} />}
             <InfoRow label="Claim Amount" value={`₹${Number(cl.claimAmount).toLocaleString('en-IN')}`} />
             <InfoRow label="Approved Amount" value={cl.approvedAmount ? `₹${Number(cl.approvedAmount).toLocaleString('en-IN')}` : '—'} />
             <InfoRow label="Intimated At" value={cl.intimatedAt ? format(new Date(cl.intimatedAt), 'dd/MMM/yyyy') : '—'} />

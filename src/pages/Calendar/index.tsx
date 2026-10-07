@@ -209,17 +209,29 @@ export default function Calendar() {
         const firestoreList: any[] = [];
         snapshot.forEach(docSnap => {
           const data = docSnap.data();
-          const fullName = (data.fullName || data.name || 'Website Lead').trim();
-          const parts = fullName.split(/\s+/);
-          const firstName = parts[0] || 'Web';
-          const lastName = parts.slice(1).join(' ') || 'User';
-          const service = data.serviceRequired || data.service || 'Financial Advisory';
-          const phone = data.phone || data.mobile || '';
+          const rawName = (
+            data.fullName || data.name || data.clientName || data.customerName || data.contactName ||
+            data.personName || data.userName || data.user_name || data.client_name || data.customer_name ||
+            data.contact?.fullName || data.contact?.name ||
+            (data.firstName ? `${data.firstName} ${data.lastName || ''}` : '') ||
+            ''
+          ).trim();
+          const fullName = rawName || 'Website Lead';
+          const parts = fullName.split(/\s+/).filter(Boolean);
+          const firstName = data.contact?.firstName || data.firstName || parts[0] || (rawName ? '' : 'Website');
+          const lastName = data.contact?.lastName || data.lastName || parts.slice(1).join(' ') || (rawName ? '' : 'Lead');
+          const service = data.serviceRequired || data.service || data.requirement || data.planName || 'Financial Advisory';
+          const phone = (data.phone || data.mobile || data.contactNumber || data.phoneNumber || data.contactNo || data.mobileNumber || data.whatsappNumber || data.callingNumber || data.contact?.phone || data.contact?.mobile || '').trim();
+          const email = (data.email || data.mail || data.contact?.email || '').trim();
           const createdAtDate = data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (data.timestamp ? new Date(data.timestamp).toISOString() : new Date().toISOString());
 
           if (!isDeletedItem('fs_' + docSnap.id)) {
             firestoreList.push({
               id: 'fs_' + docSnap.id,
+              name: fullName,
+              fullName,
+              phone,
+              email,
               stage: data.stage === 'OPEN' || !data.stage ? 'TO_CONTACT' : data.stage,
               createdAt: createdAtDate,
               followUpDate: data.followUpDate ? data.followUpDate.slice(0, 10) : (data.nextFollowUpDate ? data.nextFollowUpDate.slice(0, 10) : new Date().toISOString().split('T')[0]),
@@ -229,6 +241,7 @@ export default function Calendar() {
                 firstName,
                 lastName,
                 phone,
+                email,
               },
               plan: { name: service, category: 'LIFE' }
             });

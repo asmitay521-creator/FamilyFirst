@@ -220,6 +220,257 @@ function parseLeadNotes(notes?: string | null): Record<string, any> {
   }
 }
 
+// ── Robust Contact Details Extractor ──────────────────────────────────────────
+export function getLeadContactDetails(leadOrContact: any, allLeadsList?: any[], allContactsList?: any[]) {
+  if (!leadOrContact) {
+    return {
+      fullName: 'Lead',
+      firstName: 'Lead',
+      lastName: '',
+      initials: 'L',
+      singleInitial: 'L',
+      phone: '',
+      email: '',
+      hasRealName: false,
+      leadNumStr: '',
+    };
+  }
+
+  const c = (typeof leadOrContact.contact === 'object' && leadOrContact.contact) ? leadOrContact.contact : (
+    (typeof leadOrContact.client === 'object' && leadOrContact.client) ? leadOrContact.client : (
+      (typeof leadOrContact.customer === 'object' && leadOrContact.customer) ? leadOrContact.customer : (
+        (typeof leadOrContact.user === 'object' && leadOrContact.user) ? leadOrContact.user : (
+          (typeof leadOrContact.formData === 'object' && leadOrContact.formData) ? leadOrContact.formData : (
+            (typeof leadOrContact.applicant === 'object' && leadOrContact.applicant) ? leadOrContact.applicant : {}
+          )
+        )
+      )
+    )
+  );
+
+  let notesData: any = {};
+  if (typeof leadOrContact.notes === 'string') {
+    try {
+      notesData = parseLeadNotes(leadOrContact.notes);
+    } catch {}
+  } else if (typeof leadOrContact.notes === 'object' && leadOrContact.notes) {
+    notesData = leadOrContact.notes;
+  }
+
+  // 1. Phone extraction from all standard and custom fields
+  let rawPhone =
+    c.phone || c.mobile || c.phoneNumber || c.phone_number || c.contactNumber || c.contact_number || c.contactNo || c.contact_no || c.whatsappNumber || c.whatsapp_number || c.mobileNumber || c.mobile_no || c.callingNumber || c.tel || c.cell || c.number ||
+    leadOrContact.phone || leadOrContact.mobile || leadOrContact.phoneNumber || leadOrContact.phone_number || leadOrContact.contactNumber || leadOrContact.contact_number || leadOrContact.contactNo || leadOrContact.contact_no ||
+    leadOrContact.mobileNumber || leadOrContact.mobile_no || leadOrContact.whatsappNumber || leadOrContact.callingNumber || leadOrContact.tel || leadOrContact.cell || leadOrContact.number ||
+    notesData.phone || notesData.mobile || notesData.contactNumber || notesData.phoneNumber || notesData.mobileNumber || notesData.contactNo || '';
+
+  if (!rawPhone && typeof leadOrContact.notes === 'string') {
+    const pMatch = leadOrContact.notes.match(/(?:Phone|Mobile|Contact|WhatsApp|Cell|Tel|Number|Call)[\s:=–-]+(\+?[0-9\s-]{10,14})/i) || leadOrContact.notes.match(/(?:\+91[\s-]?)?([6789]\d{9})/);
+    if (pMatch && pMatch[1]) {
+      rawPhone = pMatch[1].trim();
+    }
+  }
+  if (!rawPhone && notesData.descriptionDetails) {
+    const pMatch = String(notesData.descriptionDetails).match(/(?:Phone|Mobile|Contact|WhatsApp|Cell|Tel|Number|Call)[\s:=–-]+(\+?[0-9\s-]{10,14})/i) || String(notesData.descriptionDetails).match(/(?:\+91[\s-]?)?([6789]\d{9})/);
+    if (pMatch && pMatch[1]) {
+      rawPhone = pMatch[1].trim();
+    }
+  }
+
+  const phone = String(rawPhone || '').trim();
+
+  // 2. Email extraction
+  let rawEmail = c.email || c.mail || c.emailAddress || leadOrContact.email || leadOrContact.mail || leadOrContact.emailAddress || notesData.email || '';
+  if (!rawEmail && typeof leadOrContact.notes === 'string') {
+    const eMatch = leadOrContact.notes.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+    if (eMatch) rawEmail = eMatch[0];
+  }
+  const email = String(rawEmail || '').trim();
+
+  // 3. Name extraction
+  let rawName = '';
+
+  const allNameCandidates = [
+    c.name, c.fullName, c.firstName ? `${c.firstName} ${c.lastName || ''}`.trim() : '',
+    leadOrContact.name, leadOrContact.fullName,
+    leadOrContact.firstName ? `${leadOrContact.firstName} ${leadOrContact.lastName || ''}`.trim() : '',
+    notesData.name, notesData.fullName,
+    notesData.firstName ? `${notesData.firstName} ${notesData.lastName || ''}`.trim() : '',
+    notesData.contact?.name, notesData.contact?.fullName,
+    notesData.contact?.firstName ? `${notesData.contact.firstName} ${notesData.contact.lastName || ''}`.trim() : '',
+    c.clientName, c.customerName, c.contactName, c.personName, c.displayName,
+    leadOrContact.clientName, leadOrContact.customerName, leadOrContact.contactName, leadOrContact.personName,
+    leadOrContact.userName, leadOrContact.leadName, leadOrContact.prospectName,
+    leadOrContact.insuredName, leadOrContact.applicantName, leadOrContact.displayName,
+    leadOrContact.user_name, leadOrContact.client_name, leadOrContact.customer_name,
+    notesData.clientName, notesData.customerName, notesData.contactName,
+    notesData.userName, notesData.displayName, notesData.leadName,
+    notesData.user?.name,
+  ];
+
+  for (const cand of allNameCandidates) {
+    if (cand && typeof cand === 'string') {
+      const trimmed = cand.trim();
+      if (
+        trimmed &&
+        trimmed.toLowerCase() !== 'website lead' &&
+        trimmed.toLowerCase() !== 'web user' &&
+        trimmed.toLowerCase() !== 'lead' &&
+        trimmed.toLowerCase() !== 'null' &&
+        trimmed.toLowerCase() !== 'undefined' &&
+        trimmed.toLowerCase() !== 'health checkup lead'
+      ) {
+        rawName = trimmed;
+        break;
+      }
+    }
+  }
+
+  if (!rawName && typeof leadOrContact.notes === 'string') {
+    const match = leadOrContact.notes.match(/(?:Client\s*Name|Customer\s*Name|Contact\s*Name|Contact\s*Person|Applicant\s*Name|Insured\s*Name|Full\s*Name|User\s*Name|Name|Client|Customer|Contact)\s*[:=–-]\s*([A-Za-z0-9\s.]+)(?:,|\n|;|$|\})/i);
+    if (match && match[1]) {
+      const parsed = match[1].trim();
+      if (parsed && parsed.toLowerCase() !== 'website lead' && parsed.toLowerCase() !== 'web user' && parsed.toLowerCase() !== 'lead') {
+        rawName = parsed;
+      }
+    }
+  }
+
+  if (!rawName && notesData.descriptionDetails) {
+    const match = String(notesData.descriptionDetails).match(/(?:Client\s*Name|Customer\s*Name|Contact\s*Name|Contact\s*Person|Name|Client|Customer|Contact)\s*[:=–-]\s*([A-Za-z0-9\s.]+)(?:,|\n|;|$|\})/i);
+    if (match && match[1]) {
+      const parsed = match[1].trim();
+      if (parsed && parsed.toLowerCase() !== 'website lead' && parsed.toLowerCase() !== 'web user' && parsed.toLowerCase() !== 'lead') {
+        rawName = parsed;
+      }
+    }
+  }
+
+  if (!rawName && typeof leadOrContact.contact === 'string' && !leadOrContact.contact.match(/^[0-9a-fA-F-]{20,}$/)) {
+    const trimmed = leadOrContact.contact.trim();
+    if (trimmed && trimmed.toLowerCase() !== 'website lead' && trimmed.toLowerCase() !== 'lead') {
+      rawName = trimmed;
+    }
+  }
+
+  // Cross-reference with allContactsList (contacts service) + local contacts
+  const candidateContacts: any[] = [
+    ...(allContactsList && Array.isArray(allContactsList) ? allContactsList : []),
+    ...(() => {
+      try {
+        const loc = JSON.parse(localStorage.getItem('insumitra_contacts') || '[]');
+        return Array.isArray(loc) ? loc : [];
+      } catch { return []; }
+    })()
+  ];
+
+  if (candidateContacts.length > 0) {
+    const contactId = leadOrContact.contactId || (typeof leadOrContact.contact === 'object' ? (leadOrContact.contact?.id || leadOrContact.contact?._id) : null) || (typeof leadOrContact.contact === 'string' ? leadOrContact.contact : null);
+    const phoneDigits = String(phone || rawPhone || leadOrContact.phone || leadOrContact.mobile || '').replace(/\D/g, '');
+    const cleanLast10 = phoneDigits.length >= 10 ? phoneDigits.slice(-10) : phoneDigits;
+    const cleanLast8 = phoneDigits.length >= 8 ? phoneDigits.slice(-8) : phoneDigits;
+
+    const matchedContact = candidateContacts.find((cnt: any) => {
+      if (!cnt) return false;
+      const cid = String(cnt.id || cnt._id || cnt.customId || '').toLowerCase();
+      if (contactId && (cid === String(contactId).toLowerCase() || ('fs_contact_' + cid) === String(contactId).toLowerCase() || cid.includes(String(contactId).toLowerCase()))) return true;
+      
+      const phones = [
+        cnt.phone, cnt.mobile, cnt.whatsappNumber, cnt.callingNumber,
+        cnt.alternatePhone, cnt.phoneNumber, cnt.contactNumber, cnt.tel, cnt.cell
+      ].map(p => String(p || '').replace(/\D/g, '')).filter(p => p.length >= 6);
+
+      if (cleanLast10 && phones.some(p => p === phoneDigits || p.slice(-10) === cleanLast10 || p.includes(cleanLast10) || cleanLast10.includes(p))) return true;
+      if (cleanLast8 && phones.some(p => p.slice(-8) === cleanLast8)) return true;
+
+      if (email && cnt.email && String(cnt.email).trim().toLowerCase() === email.toLowerCase()) return true;
+      return false;
+    });
+
+    if (matchedContact) {
+      const fn = (matchedContact.firstName || matchedContact.first_name || '').trim();
+      const ln = (matchedContact.lastName || matchedContact.last_name || '').trim();
+      const cName = `${fn} ${ln}`.trim() || matchedContact.name || matchedContact.fullName || matchedContact.clientName || matchedContact.customerName;
+      if (cName && cName.toLowerCase() !== 'website lead' && cName.toLowerCase() !== 'web user' && cName.toLowerCase() !== 'lead') {
+        rawName = cName;
+      }
+      const cPhone = matchedContact.phone || matchedContact.mobile || matchedContact.whatsappNumber || matchedContact.callingNumber || matchedContact.contactNumber;
+      if (cPhone) {
+        rawPhone = cPhone;
+      }
+    }
+  }
+
+  // Cross-reference with allLeadsList or localStorage if still no name
+  if (!rawName && allLeadsList && allLeadsList.length > 0) {
+    const matched = allLeadsList.find((l: any) => {
+      if (!l) return false;
+      if (l.id && leadOrContact.id && l.id === leadOrContact.id) return true;
+      if (phone && (l.phone === phone || l.contact?.phone === phone || l.mobile === phone)) return true;
+      return false;
+    });
+    if (matched && matched !== leadOrContact) {
+      const matchedInfo = getLeadContactDetails(matched, undefined, allContactsList);
+      if (matchedInfo.hasRealName) {
+        rawName = matchedInfo.fullName;
+      }
+      if (!rawPhone && matchedInfo.phone) {
+        rawPhone = matchedInfo.phone;
+      }
+    }
+  }
+
+  const hasRealName = Boolean(
+    rawName &&
+    rawName.toLowerCase() !== 'website lead' &&
+    rawName.toLowerCase() !== 'web user' &&
+    rawName.toLowerCase() !== 'lead' &&
+    rawName.toLowerCase() !== 'health checkup lead'
+  );
+
+  const cleanDigits = String(leadOrContact.id || '').replace(/\D/g, '');
+  const leadNumStr = leadOrContact.leadNumber
+    ? `L${leadOrContact.leadNumber}`
+    : (leadOrContact.leadNo ? `L${leadOrContact.leadNo}` : (cleanDigits.length >= 2 ? `L${cleanDigits.slice(-3)}` : ''));
+
+  const cleanName = hasRealName
+    ? rawName
+    : 'Website Lead';
+
+  const parts = cleanName.split(/\s+/).filter(Boolean);
+  const firstName = parts[0] || (hasRealName ? '' : 'Website');
+  const lastName = parts.slice(1).join(' ') || (hasRealName ? '' : 'Lead');
+
+  let initials = 'WL';
+  let singleInitial = 'W';
+  if (hasRealName && parts.length > 0) {
+    singleInitial = parts[0][0]?.toUpperCase() || 'L';
+    if (parts.length === 1) {
+      initials = parts[0].slice(0, 2).toUpperCase();
+    } else {
+      initials = `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase();
+    }
+  } else if (cleanName && cleanName.toLowerCase() !== 'website lead' && cleanName !== '?') {
+    singleInitial = cleanName[0]?.toUpperCase() || 'L';
+    initials = cleanName.slice(0, 2).toUpperCase();
+  } else {
+    initials = 'WL';
+    singleInitial = 'W';
+  }
+
+  return {
+    fullName: cleanName,
+    firstName,
+    lastName,
+    initials,
+    singleInitial,
+    phone: String(rawPhone || phone).trim(),
+    email,
+    hasRealName,
+    leadNumStr,
+  };
+}
+
 // ── Form schema ───────────────────────────────────────────────────────────────
 const schema = z.object({
   firstName: z.string().min(1, 'Required'),
@@ -421,39 +672,92 @@ export default function Leads() {
   const [showFilters, setShowFilters] = useState(false);
   const [createInitialStage, setCreateInitialStage] = useState<string>('TO_CONTACT');
 
-  // WhatsApp Templates from Firebase
-  const [waTemplates, setWaTemplates] = useState<any[]>(DEFAULT_WA_TEMPLATES);
+  // WhatsApp Templates from Firebase & LocalStorage
+  const [waTemplates, setWaTemplates] = useState<any[]>(() => {
+    try {
+      const raw = localStorage.getItem('familyfirst_whatsapp_management_templates_v2');
+      const mgmt = raw ? JSON.parse(raw) : [];
+      const seen = new Set<string>();
+      const list: any[] = [];
+      (Array.isArray(mgmt) ? mgmt : []).forEach((t: any) => {
+        if (t.isActive !== false) {
+          const n = (t.name || t.title || '').trim().toLowerCase();
+          if (n && !seen.has(n)) { seen.add(n); list.push(t); }
+        }
+      });
+      (PRELOAD_TEMPLATES as any[]).forEach((t: any) => {
+        const n = (t.name || t.title || '').trim().toLowerCase();
+        if (n && !seen.has(n)) { seen.add(n); list.push(t); }
+      });
+      return list;
+    } catch {
+      return (PRELOAD_TEMPLATES as any[]) || [];
+    }
+  });
 
   useEffect(() => {
     preloadWhatsAppTemplates();
+    const loadAllTemplates = (snapshotDocs?: any[]) => {
+      const list: any[] = [];
+      const seen = new Set<string>();
+
+      // 1. Snapshot docs from Firestore
+      if (snapshotDocs && snapshotDocs.length > 0) {
+        snapshotDocs.forEach(docSnap => {
+          const data = typeof docSnap.data === 'function' ? docSnap.data() : docSnap;
+          if (data.isActive !== false) {
+            const nameLower = (data.name || data.title || '').trim().toLowerCase();
+            if (nameLower && !seen.has(nameLower)) {
+              seen.add(nameLower);
+              list.push({ id: docSnap.id || data.id, ...data });
+            }
+          }
+        });
+      }
+
+      // 2. Templates from localStorage (Management page)
+      try {
+        const raw = localStorage.getItem('familyfirst_whatsapp_management_templates_v2');
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(parsed)) {
+          parsed.forEach((t: any) => {
+            if (t.isActive !== false) {
+              const nameLower = (t.name || t.title || '').trim().toLowerCase();
+              if (nameLower && !seen.has(nameLower)) {
+                seen.add(nameLower);
+                list.push(t);
+              }
+            }
+          });
+        }
+      } catch {}
+
+      // 3. Built-in preloaded templates
+      (PRELOAD_TEMPLATES as any[]).forEach((t: any) => {
+        const nameLower = (t.name || t.title || '').trim().toLowerCase();
+        if (nameLower && !seen.has(nameLower)) {
+          seen.add(nameLower);
+          list.push(t);
+        }
+      });
+
+      setWaTemplates(list);
+    };
+
     let unsub = () => { };
     try {
       if (db) {
         unsub = onSnapshot(collection(db, 'whatsappTemplates'), (snapshot) => {
-          const list: any[] = [];
-          const seen = new Set<string>();
-          snapshot.forEach(docSnap => {
-            const data = docSnap.data();
-            if (data.isActive !== false && data.category?.toUpperCase() !== 'SEMINAR') {
-              const nameLower = (data.name || data.title || '').trim().toLowerCase();
-              if (nameLower && !seen.has(nameLower)) {
-                seen.add(nameLower);
-                list.push({ id: docSnap.id, ...data });
-              }
-            }
-          });
-          if (list.length > 0) {
-            setWaTemplates(list);
-          } else {
-            setWaTemplates(DEFAULT_WA_TEMPLATES);
-          }
+          loadAllTemplates(snapshot.docs);
         }, (err) => {
           console.warn('[WhatsApp Templates Notice]:', err);
-          setWaTemplates(DEFAULT_WA_TEMPLATES);
+          loadAllTemplates();
         });
+      } else {
+        loadAllTemplates();
       }
     } catch {
-      setWaTemplates(DEFAULT_WA_TEMPLATES);
+      loadAllTemplates();
     }
     return unsub;
   }, []);
@@ -600,10 +904,10 @@ export default function Leads() {
     setPolicyLead(leadObj);
     const plan = leadObj.plan || {};
 
-    if (plan.id) {
+    if (plan.id || plan.name) {
       setPolicySelectedType(plan.category || '');
       setPolicySelectedCompany(plan.company?.name || '');
-      setPolicySelectedPlanId(plan.id);
+      setPolicySelectedPlanId(plan.name || plan.id || '');
     } else {
       setPolicySelectedType('');
       setPolicySelectedCompany('');
@@ -625,7 +929,7 @@ export default function Leads() {
   const handlePolicyFormSubmit = async (data: any) => {
     if (!policyLead) return;
     if (!policySelectedPlanId) {
-      toast.error('Please select an insurance plan');
+      toast.error('Please enter an insurance plan');
       return;
     }
 
@@ -748,7 +1052,18 @@ export default function Leads() {
         res.cleanNotes = parsed.cleanNotes || '';
         res.dependencyType = parsed.dependencyType || 'SELF';
         res.dependentDetails = parsed.dependentDetails || '';
-        res.descriptionDetails = parsed.descriptionDetails || '';
+        let desc = parsed.descriptionDetails || '';
+        // If it got polluted by the old bug (nested JSON string)
+        while (typeof desc === 'string' && desc.trim().startsWith('{') && (desc.includes('"leadStatus"') || desc.includes('"fullName"'))) {
+          try {
+            const inner = JSON.parse(desc);
+            desc = inner.descriptionDetails || '';
+          } catch {
+            desc = '';
+            break;
+          }
+        }
+        res.descriptionDetails = desc;
         return res;
       } catch (e) { }
     }
@@ -922,6 +1237,54 @@ export default function Leads() {
     return Array.isArray(raw) ? raw : [];
   }, [empRes]);
 
+  const { data: contactsRes } = useQuery({
+    queryKey: ['contacts-for-leads-matching'],
+    queryFn: () => contactsService.list({ limit: 1000 }),
+    staleTime: 60_000,
+  });
+  const contactsList = useMemo(() => {
+    const raw = (contactsRes as any)?.data?.data || (contactsRes as any)?.data || contactsRes || [];
+    return Array.isArray(raw) ? raw : [];
+  }, [contactsRes]);
+
+  const { contactsById, contactsByPhone } = useMemo(() => {
+    const byId = new Map<string, any>();
+    const byPhone = new Map<string, any>();
+    
+    // Combine contactsList from query + local storage contacts
+    const combinedContacts: any[] = [...contactsList];
+    try {
+      const local = JSON.parse(localStorage.getItem('insumitra_contacts') || '[]');
+      if (Array.isArray(local)) {
+        local.forEach((lc: any) => {
+          if (!combinedContacts.some((c: any) => (c.id && c.id === lc.id) || (c._id && c._id === lc.id))) {
+            combinedContacts.push(lc);
+          }
+        });
+      }
+    } catch {}
+
+    combinedContacts.forEach((c: any) => {
+      if (!c) return;
+      if (c.id) byId.set(String(c.id).toLowerCase(), c);
+      if (c._id) byId.set(String(c._id).toLowerCase(), c);
+      if (c.customId) byId.set(String(c.customId).toLowerCase(), c);
+      
+      const phoneFields = [
+        c.phone, c.mobile, c.whatsappNumber, c.callingNumber,
+        c.alternatePhone, c.phoneNumber, c.contactNumber, c.tel, c.cell,
+        c.whatsapp, c.phone_number, c.contact_number
+      ];
+      phoneFields.forEach(pf => {
+        const digits = String(pf || '').replace(/\D/g, '');
+        if (digits.length >= 10) {
+          byPhone.set(digits.slice(-10), c);
+        }
+      });
+    });
+    return { contactsById: byId, contactsByPhone: byPhone };
+  }, [contactsList]);
+
   // Real-time Web / Firestore Consultation Leads Listener
   const [deletedKeys, setDeletedKeys] = useState<string[]>(() => {
     try {
@@ -965,13 +1328,72 @@ export default function Leads() {
         const rahulLeads = JSON.parse(localStorage.getItem('rahul_kulkarni_leads') || '[]');
         const rahulCheckups = JSON.parse(localStorage.getItem('rahul_kulkarni_checkups') || '[]');
 
+        const extractLocalItemDetails = (item: any) => {
+          const clientObj = (typeof item.contact === 'object' && item.contact) ? item.contact : (
+            (typeof item.client === 'object' && item.client) ? item.client : (
+              (typeof item.customer === 'object' && item.customer) ? item.customer : (
+                (typeof item.user === 'object' && item.user) ? item.user : (
+                  (typeof item.formData === 'object' && item.formData) ? item.formData : {}
+                )
+              )
+            )
+          );
+
+          let rawName = (
+            item.fullName || item.name || item.clientName || item.customerName || item.contactName ||
+            item.personName || item.userName || item.user_name || item.client_name || item.customer_name ||
+            item.leadName || item.lead_name || item.prospectName || item.applicantName || item.insuredName ||
+            clientObj.fullName || clientObj.name || clientObj.clientName || clientObj.customerName ||
+            (clientObj.firstName ? `${clientObj.firstName} ${clientObj.lastName || ''}`.trim() : '') ||
+            (item.firstName ? `${item.firstName} ${item.lastName || ''}`.trim() : '') ||
+            ''
+          ).trim();
+
+          let rawPhone = (
+            item.phone || item.mobile || item.phoneNumber || item.phone_number || item.contactNumber || item.contact_number ||
+            item.contactNo || item.contact_no || item.mobileNumber || item.mobile_no || item.whatsappNumber || item.callingNumber ||
+            clientObj.phone || clientObj.mobile || clientObj.phoneNumber || clientObj.contactNumber || clientObj.whatsappNumber ||
+            ''
+          ).trim();
+
+          if (!rawName && typeof item.notes === 'string') {
+            const match = item.notes.match(/(?:Client\s*Name|Customer\s*Name|Contact\s*Name|Contact\s*Person|Applicant\s*Name|Insured\s*Name|Full\s*Name|User\s*Name|Name|Client|Customer|Contact)\s*[:=–-]\s*([A-Za-z0-9\s.]+)(?:,|\n|;|$|\})/i);
+            if (match && match[1]) {
+              const parsed = match[1].trim();
+              if (parsed && parsed.toLowerCase() !== 'website lead' && parsed.toLowerCase() !== 'web user' && parsed.toLowerCase() !== 'lead') {
+                rawName = parsed;
+              }
+            }
+          }
+
+          if (!rawPhone && typeof item.notes === 'string') {
+            const pMatch = item.notes.match(/(?:Phone|Mobile|Contact|WhatsApp|Cell|Tel|Number|Call)[\s:=–-]+(\+?[0-9\s-]{10,14})/i) || item.notes.match(/(?:\+91[\s-]?)?([6789]\d{9})/);
+            if (pMatch && pMatch[1]) {
+              rawPhone = pMatch[1].trim();
+            }
+          }
+
+          const hasRealName = rawName && rawName.toLowerCase() !== 'website lead' && rawName.toLowerCase() !== 'lead';
+          const fullName = hasRealName ? rawName : 'Website Lead';
+          const parts = fullName.split(/\s+/).filter(Boolean);
+          const firstName = clientObj.firstName || item.firstName || (hasRealName ? parts[0] : '');
+          const lastName = clientObj.lastName || item.lastName || (hasRealName ? parts.slice(1).join(' ') : '');
+          const email = (item.email || item.mail || clientObj.email || '').trim();
+
+          return { fullName, firstName, lastName, phone: rawPhone, email, clientObj, hasRealName };
+        };
+
         const mappedRahul = rahulLeads.map((item: any) => {
-          const fullName = item.name || item.fullName || 'Website Lead';
-          const parts = fullName.trim().split(/\s+/);
+          const d = extractLocalItemDetails(item);
+
           return {
             id: 'local_lead_' + (item.id || item.timestamp || Date.now()),
-            stage: 'TO_CONTACT',
-            uiStage: 'To Contact',
+            name: d.fullName,
+            fullName: d.fullName,
+            phone: d.phone,
+            email: d.email,
+            stage: item.stage || 'TO_CONTACT',
+            uiStage: BACKEND_TO_UI[item.stage || 'TO_CONTACT'] || 'To Contact',
             createdAt: item.date || item.createdAt || new Date().toISOString(),
             notes: JSON.stringify({
               leadStatus: 'INTERESTED',
@@ -982,10 +1404,10 @@ export default function Leads() {
             interests: [item.service || 'Financial Advisory'],
             contact: {
               id: 'local_contact_' + (item.id || item.timestamp || Date.now()),
-              firstName: parts[0] || 'Web',
-              lastName: parts.slice(1).join(' ') || 'User',
-              phone: item.phone || item.mobile || '',
-              email: item.email || '',
+              firstName: d.firstName,
+              lastName: d.lastName,
+              phone: d.phone,
+              email: d.email,
               tags: ['Website Consultation']
             },
             plan: {
@@ -996,12 +1418,16 @@ export default function Leads() {
         });
 
         const mappedCheckups = rahulCheckups.map((item: any) => {
-          const fullName = item.name || item.fullName || 'Health Checkup Lead';
-          const parts = fullName.trim().split(/\s+/);
+          const d = extractLocalItemDetails(item);
+
           return {
             id: 'checkup_lead_' + (item.id || item.timestamp || Date.now()),
-            stage: 'TO_CONTACT',
-            uiStage: 'To Contact',
+            name: d.fullName,
+            fullName: d.fullName,
+            phone: d.phone,
+            email: d.email,
+            stage: item.stage || 'TO_CONTACT',
+            uiStage: BACKEND_TO_UI[item.stage || 'TO_CONTACT'] || 'To Contact',
             createdAt: item.timestamp || new Date().toISOString(),
             notes: JSON.stringify({
               leadStatus: 'INTERESTED',
@@ -1012,10 +1438,10 @@ export default function Leads() {
             interests: ['Financial Health Checkup'],
             contact: {
               id: 'checkup_contact_' + (item.id || item.timestamp || Date.now()),
-              firstName: parts[0] || 'Web',
-              lastName: parts.slice(1).join(' ') || 'User',
-              phone: item.phone || item.mobile || '',
-              email: item.email || '',
+              firstName: d.firstName,
+              lastName: d.lastName,
+              phone: d.phone,
+              email: d.email,
               tags: ['Financial Checkup']
             },
             plan: {
@@ -1026,7 +1452,11 @@ export default function Leads() {
         });
 
         const combined = [...local, ...mappedRahul, ...mappedCheckups];
-        return combined.filter(l => !isDeletedItem(String(l.id || '')));
+        return combined.filter(l => {
+          const id = String(l.id || '');
+          if (id.startsWith('contact_lead_') || id.startsWith('auto_')) return false;
+          return !isDeletedItem(id);
+        });
       } catch (e) {
         return [];
       }
@@ -1035,13 +1465,58 @@ export default function Leads() {
     setWebLeads(loadLocalWebLeads());
 
     const normalizeWebLeadItem = (item: any, idFallback: string) => {
-      const fullName = (item.fullName || item.name || item.contact?.firstName || 'Website Lead').trim();
-      const parts = fullName.split(/\s+/);
-      const firstName = item.contact?.firstName || parts[0] || 'Web';
-      const lastName = item.contact?.lastName || parts.slice(1).join(' ') || 'User';
+      const clientObj = (typeof item.contact === 'object' && item.contact) ? item.contact : (
+        (typeof item.client === 'object' && item.client) ? item.client : (
+          (typeof item.customer === 'object' && item.customer) ? item.customer : (
+            (typeof item.user === 'object' && item.user) ? item.user : (
+              (typeof item.formData === 'object' && item.formData) ? item.formData : {}
+            )
+          )
+        )
+      );
+
+      let rawName = (
+        item.fullName || item.name || item.clientName || item.customerName || item.contactName ||
+        item.personName || item.userName || item.user_name || item.client_name || item.customer_name ||
+        item.leadName || item.lead_name || item.prospectName || item.applicantName || item.insuredName ||
+        clientObj.fullName || clientObj.name || clientObj.clientName || clientObj.customerName ||
+        (clientObj.firstName ? `${clientObj.firstName} ${clientObj.lastName || ''}`.trim() : '') ||
+        (item.firstName ? `${item.firstName} ${item.lastName || ''}`.trim() : '') ||
+        ''
+      ).trim();
+
+      let rawPhone = (
+        item.phone || item.mobile || item.phoneNumber || item.phone_number || item.contactNumber || item.contact_number ||
+        item.contactNo || item.contact_no || item.mobileNumber || item.mobile_no || item.whatsappNumber || item.callingNumber ||
+        clientObj.phone || clientObj.mobile || clientObj.phoneNumber || clientObj.contactNumber || clientObj.whatsappNumber ||
+        ''
+      ).trim();
+
+      if (!rawName && typeof item.notes === 'string') {
+        const match = item.notes.match(/(?:Client\s*Name|Customer\s*Name|Contact\s*Name|Contact\s*Person|Applicant\s*Name|Insured\s*Name|Full\s*Name|User\s*Name|Name|Client|Customer|Contact)\s*[:=–-]\s*([A-Za-z0-9\s.]+)(?:,|\n|;|$|\})/i);
+        if (match && match[1]) {
+          const parsed = match[1].trim();
+          if (parsed && parsed.toLowerCase() !== 'website lead' && parsed.toLowerCase() !== 'web user' && parsed.toLowerCase() !== 'lead') {
+            rawName = parsed;
+          }
+        }
+      }
+
+      if (!rawPhone && typeof item.notes === 'string') {
+        const pMatch = item.notes.match(/(?:Phone|Mobile|Contact|WhatsApp|Cell|Tel|Number|Call)[\s:=–-]+(\+?[0-9\s-]{10,14})/i) || item.notes.match(/(?:\+91[\s-]?)?([6789]\d{9})/);
+        if (pMatch && pMatch[1]) {
+          rawPhone = pMatch[1].trim();
+        }
+      }
+
+      const hasRealName = rawName && rawName.toLowerCase() !== 'website lead' && rawName.toLowerCase() !== 'lead';
+      const fullName = hasRealName ? rawName : 'Website Lead';
+      const parts = fullName.split(/\s+/).filter(Boolean);
+      const firstName = clientObj.firstName || item.firstName || (hasRealName ? parts[0] : '');
+      const lastName = clientObj.lastName || item.lastName || (hasRealName ? parts.slice(1).join(' ') : '');
       const service = item.serviceRequired || item.service || item.plan?.name || (item.interests && item.interests[0]) || 'Financial Advisory';
-      const phone = item.phone || item.mobile || item.contact?.phone || '';
-      const email = item.email || item.contact?.email || '';
+      const phone = rawPhone;
+      const email = (item.email || item.mail || clientObj.email || '').trim();
       const sUpper = (service || '').toUpperCase();
       const category = sUpper.includes('HEALTH') || sUpper.includes('MEDICLAIM')
         ? 'HEALTH'
@@ -1053,6 +1528,10 @@ export default function Leads() {
 
       return {
         id: item.id || idFallback,
+        name: fullName,
+        fullName,
+        phone,
+        email,
         stage: item.stage === 'OPEN' || !item.stage ? 'TO_CONTACT' : item.stage,
         uiStage: 'To Contact',
         createdAt: item.createdAt || new Date().toISOString(),
@@ -1113,20 +1592,66 @@ export default function Leads() {
     // 4. Firestore Realtime Snapshot Listener
     let unsubscribeFirestore: (() => void) | null = null;
     try {
-      const isSuperAdmin = Boolean((user?.role === 'SUPER_ADMIN' || user?.role === 'SUPERADMIN' || user?.role === 'ADMIN' || user?.role === 'OWNER'));
-      if (isSuperAdmin) {
+      if (db) {
         const leadsCol = collection(db, 'leads');
         unsubscribeFirestore = onSnapshot(leadsCol, (snapshot) => {
           const firestoreList: any[] = [];
           snapshot.forEach(docSnap => {
             const data = docSnap.data();
-            const fullName = (data.fullName || data.name || data.clientName || 'Website Lead').trim();
-            const parts = fullName.split(/\s+/);
-            const firstName = parts[0] || 'Web';
-            const lastName = parts.slice(1).join(' ') || 'User';
+            const clientObj = (typeof data.contact === 'object' && data.contact) ? data.contact : (
+              (typeof data.client === 'object' && data.client) ? data.client : (
+                (typeof data.customer === 'object' && data.customer) ? data.customer : (
+                  (typeof data.user === 'object' && data.user) ? data.user : (
+                    (typeof data.formData === 'object' && data.formData) ? data.formData : (
+                      (typeof data.applicant === 'object' && data.applicant) ? data.applicant : {}
+                    )
+                  )
+                )
+              )
+            );
+
+            let rawName = (
+              data.fullName || data.name || data.clientName || data.customerName || data.contactName ||
+              data.personName || data.userName || data.user_name || data.client_name || data.customer_name ||
+              data.leadName || data.lead_name || data.prospectName || data.applicantName || data.insuredName ||
+              clientObj.fullName || clientObj.name || clientObj.clientName || clientObj.customerName ||
+              (clientObj.firstName ? `${clientObj.firstName} ${clientObj.lastName || ''}`.trim() : '') ||
+              (data.firstName ? `${data.firstName} ${data.lastName || ''}`.trim() : '') ||
+              ''
+            ).trim();
+
+            let rawPhone = (
+              data.phone || data.mobile || data.phoneNumber || data.phone_number || data.contactNumber || data.contact_number ||
+              data.contactNo || data.contact_no || data.mobileNumber || data.mobile_no || data.whatsappNumber || data.callingNumber ||
+              clientObj.phone || clientObj.mobile || clientObj.phoneNumber || clientObj.contactNumber || clientObj.whatsappNumber ||
+              ''
+            ).trim();
+
+            if (!rawName && typeof data.notes === 'string') {
+              const match = data.notes.match(/(?:Client\s*Name|Customer\s*Name|Contact\s*Name|Contact\s*Person|Applicant\s*Name|Insured\s*Name|Full\s*Name|User\s*Name|Name|Client|Customer|Contact)\s*[:=–-]\s*([A-Za-z0-9\s.]+)(?:,|\n|;|$|\})/i);
+              if (match && match[1]) {
+                const parsed = match[1].trim();
+                if (parsed && parsed.toLowerCase() !== 'website lead' && parsed.toLowerCase() !== 'web user' && parsed.toLowerCase() !== 'lead') {
+                  rawName = parsed;
+                }
+              }
+            }
+
+            if (!rawPhone && typeof data.notes === 'string') {
+              const pMatch = data.notes.match(/(?:Phone|Mobile|Contact|WhatsApp|Cell|Tel|Number|Call)[\s:=–-]+(\+?[0-9\s-]{10,14})/i) || data.notes.match(/(?:\+91[\s-]?)?([6789]\d{9})/);
+              if (pMatch && pMatch[1]) {
+                rawPhone = pMatch[1].trim();
+              }
+            }
+
+            const hasRealName = rawName && rawName.toLowerCase() !== 'website lead' && rawName.toLowerCase() !== 'lead';
+            const fullName = hasRealName ? rawName : 'Website Lead';
+            const parts = fullName.split(/\s+/).filter(Boolean);
+            const firstName = clientObj.firstName || data.firstName || (hasRealName ? parts[0] : '');
+            const lastName = clientObj.lastName || data.lastName || (hasRealName ? parts.slice(1).join(' ') : '');
             const service = data.serviceRequired || data.service || data.requirement || data.planName || 'Financial Planning';
-            const phone = data.phone || data.mobile || data.contactNumber || '';
-            const email = data.email || '';
+            const phone = rawPhone;
+            const email = (data.email || data.mail || clientObj.email || '').trim();
             const createdAtDate = data.createdAt?.toDate
               ? data.createdAt.toDate().toISOString()
               : (data.createdAtIso || (data.timestamp ? new Date(Number(data.timestamp)).toISOString() : new Date().toISOString()));
@@ -1149,6 +1674,10 @@ export default function Leads() {
 
               firestoreList.push({
                 id: 'fs_' + docSnap.id,
+                name: fullName,
+                fullName,
+                phone,
+                email,
                 stage: data.stage === 'OPEN' || !data.stage ? 'TO_CONTACT' : data.stage,
                 uiStage: 'To Contact',
                 createdAt: createdAtDate,
@@ -1249,33 +1778,178 @@ export default function Leads() {
       return false;
     };
 
+    const enrichLeadWithContacts = (card: any) => {
+      if (!card) return card;
+      let contactObj = (typeof card.contact === 'object' && card.contact) ? { ...card.contact } : null;
+      const contactId = card.contactId || (contactObj ? (contactObj.id || contactObj._id) : null) || (typeof card.contact === 'string' ? card.contact : null);
+
+      let foundContact: any = null;
+      if (contactId && contactsById.has(String(contactId).toLowerCase())) {
+        foundContact = contactsById.get(String(contactId).toLowerCase());
+      }
+      
+      const rawPhone = String(card.phone || card.mobile || contactObj?.phone || contactObj?.mobile || '').replace(/\D/g, '');
+      if (!foundContact && rawPhone.length >= 6) {
+        const last10 = rawPhone.length >= 10 ? rawPhone.slice(-10) : rawPhone;
+        const last8 = rawPhone.length >= 8 ? rawPhone.slice(-8) : rawPhone;
+        if (contactsByPhone.has(last10)) {
+          foundContact = contactsByPhone.get(last10);
+        } else {
+          for (const [pKey, cVal] of contactsByPhone.entries()) {
+            if (pKey === last10 || pKey.slice(-8) === last8 || pKey.includes(rawPhone) || rawPhone.includes(pKey)) {
+              foundContact = cVal;
+              break;
+            }
+          }
+        }
+      }
+
+      // Check notes JSON if still no contact
+      if (!foundContact && typeof card.notes === 'string') {
+        const extra: any = parseLeadNotes(card.notes);
+        if (extra.phone) {
+          const epDigits = String(extra.phone).replace(/\D/g, '').slice(-10);
+          if (contactsByPhone.has(epDigits)) {
+            foundContact = contactsByPhone.get(epDigits);
+          }
+        }
+        if (!foundContact && extra.fullName) {
+          const extraName = String(extra.fullName).trim();
+          if (extraName && extraName.toLowerCase() !== 'website lead') {
+            return {
+              ...card,
+              name: extraName,
+              fullName: extraName,
+              phone: extra.phone || card.phone,
+              contact: { ...contactObj, name: extraName, fullName: extraName, firstName: extra.firstName || extraName.split(' ')[0], lastName: extra.lastName || extraName.split(' ').slice(1).join(' '), phone: extra.phone || card.phone },
+            };
+          }
+        }
+      }
+
+      if (foundContact) {
+        const fn = (foundContact.firstName || foundContact.first_name || '').trim();
+        const ln = (foundContact.lastName || foundContact.last_name || '').trim();
+        const fName = `${fn} ${ln}`.trim() || foundContact.name || foundContact.fullName || foundContact.clientName;
+        const fPhone = foundContact.phone || foundContact.mobile || foundContact.whatsappNumber || foundContact.callingNumber || foundContact.contactNumber;
+
+        contactObj = {
+          ...contactObj,
+          ...foundContact,
+          firstName: fn || contactObj?.firstName,
+          lastName: ln || contactObj?.lastName,
+          name: fName || contactObj?.name,
+          fullName: fName || contactObj?.fullName,
+          phone: fPhone || contactObj?.phone || card.phone,
+        };
+
+        return {
+          ...card,
+          name: fName || card.name,
+          fullName: fName || card.fullName,
+          phone: fPhone || card.phone,
+          contact: contactObj,
+        };
+      }
+
+      return {
+        ...card,
+        contact: contactObj || card.contact,
+      };
+    };
+
     const rawData = kanbanRes?.data ?? {};
     const flat: any[] = [];
     Object.keys(rawData).forEach(backendStage => {
       (rawData[backendStage] || []).forEach((card: any) => {
         if (!isDeletedCard(card)) {
-          flat.push({ ...card, uiStage: BACKEND_TO_UI[card.stage] || 'To Contact' });
+          const cidStr = String(card.id || '');
+          if (cidStr.startsWith('contact_lead_') || cidStr.startsWith('auto_')) return;
+          const enriched = enrichLeadWithContacts(card);
+          flat.push({ ...enriched, uiStage: BACKEND_TO_UI[card.stage] || 'To Contact' });
         }
       });
     });
 
     // Merge webLeads without blocking same phone or unique IDs
     const seenIds = new Set(flat.map(l => String(l.id)));
+    const seenContactIds = new Set(flat.map(l => String(l.contactId || l.contact?.id || l.contact?._id || '')).filter(Boolean));
+    const seenPhones = new Set(flat.map(l => String(l.phone || l.mobile || l.contact?.phone || l.contact?.mobile || '').replace(/\D/g, '').slice(-10)).filter(p => p.length >= 10));
+
     webLeads.forEach(wl => {
       if (!isDeletedCard(wl)) {
-        const idStr = String(wl.id);
+        const idStr = String(wl.id || '');
+        if (idStr.startsWith('contact_lead_') || idStr.startsWith('auto_')) return;
         if (!seenIds.has(idStr)) {
           seenIds.add(idStr);
-          flat.unshift({ ...wl, uiStage: BACKEND_TO_UI[wl.stage] || 'To Contact' });
+          const enriched = enrichLeadWithContacts(wl);
+          flat.unshift({ ...enriched, uiStage: BACKEND_TO_UI[wl.stage] || 'To Contact' });
         }
       }
+    });
+
+    // Enrich existing genuine leads in flat with real contact names and phone numbers
+    const combinedContactsForLeads: any[] = [...contactsList];
+    try {
+      const local = JSON.parse(localStorage.getItem('insumitra_contacts') || '[]');
+      if (Array.isArray(local)) {
+        local.forEach((lc: any) => {
+          if (!combinedContactsForLeads.some((c: any) => (c.id && c.id === lc.id) || (c._id && c._id === lc.id))) {
+            combinedContactsForLeads.push(lc);
+          }
+        });
+      }
+    } catch {}
+
+    combinedContactsForLeads.forEach(cnt => {
+      if (!cnt) return;
+      const cId = String(cnt.id || cnt._id || cnt.customId || '');
+      const fn = (cnt.firstName || cnt.first_name || '').trim();
+      const ln = (cnt.lastName || cnt.last_name || '').trim();
+      const fullName = `${fn} ${ln}`.trim() || cnt.name || cnt.fullName || cnt.clientName || '';
+      const phone = cnt.phone || cnt.mobile || cnt.whatsappNumber || cnt.callingNumber || cnt.alternatePhone || cnt.contactNumber || '';
+      const cleanP10 = String(phone).replace(/\D/g, '').slice(-10);
+
+      // 1. If an existing lead in flat matches by contactId, phone, or follow-up date, update that lead with the real contact name & phone!
+      const matchedExisting = flat.find(l => {
+        const lCid = String(l.contactId || l.contact?.id || l.contact?._id || '').toLowerCase();
+        if (cId && lCid && (lCid === cId.toLowerCase() || lCid.includes(cId.toLowerCase()) || cId.toLowerCase().includes(lCid))) return true;
+        const lPhones = [l.phone, l.mobile, l.contact?.phone, l.contact?.mobile, l.contact?.whatsappNumber].map(p => String(p || '').replace(/\D/g, '')).filter(p => p.length >= 6);
+        if (cleanP10 && lPhones.some(lp => lp === cleanP10 || lp.slice(-10) === cleanP10 || lp.slice(-8) === cleanP10.slice(-8) || lp.includes(cleanP10) || cleanP10.includes(lp))) return true;
+        const lFDate = String(l.followUpDate || '').split('T')[0];
+        const cntFDate = String(cnt.followUpDate || cnt.nextFollowUp || '').split('T')[0];
+        if (cntFDate && lFDate && cntFDate === lFDate && (l.name === 'Website Lead' || !l.name || String(l.name).startsWith('Lead ('))) return true;
+        return false;
+      });
+
+      if (matchedExisting) {
+        if (fullName && (!matchedExisting.name || matchedExisting.name === 'Website Lead' || String(matchedExisting.name).startsWith('Lead ('))) {
+          matchedExisting.name = fullName;
+          matchedExisting.fullName = fullName;
+        }
+        if (phone && !matchedExisting.phone) {
+          matchedExisting.phone = phone;
+        }
+        matchedExisting.contact = {
+          ...(typeof matchedExisting.contact === 'object' ? matchedExisting.contact : {}),
+          id: cId || matchedExisting.contact?.id,
+          firstName: fn || matchedExisting.contact?.firstName,
+          lastName: ln || matchedExisting.contact?.lastName,
+          name: fullName || matchedExisting.contact?.name,
+          fullName: fullName || matchedExisting.contact?.fullName,
+          phone: phone || matchedExisting.phone,
+          email: cnt.email || matchedExisting.email,
+        };
+      }
+      // Note: We do NOT create synthetic lead cards for existing directory contacts!
+      // Existing directory contacts belong in Contacts & Customers, not in the Leads pipeline.
     });
 
     // Ensure newest leads appear at the top
     flat.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 
     return flat;
-  }, [kanbanRes, webLeads, deletedKeys]);
+  }, [kanbanRes, webLeads, deletedKeys, contactsById, contactsByPhone, contactsList]);
 
   // Client-side filter
   const filteredLeads = useMemo(() => {
@@ -1283,18 +1957,29 @@ export default function Leads() {
     return leadsFlat.filter(lead => {
       // Filter ONLY for EMPLOYEE role if not owner/admin: Show only leads assigned by, created by, or assigned to this employee
       const userRole = String(user?.role || '').toUpperCase().trim();
-      const isOwnerOrAdmin = userRole === 'OWNER' || userRole === 'SUPERADMIN' || userRole === 'SUPER_ADMIN' || userRole === 'SUPER ADMIN' || userRole === 'ADMIN' || userRole === 'MANAGER' || !userRole;
-      const isEmployeeRole = userRole === 'EMPLOYEE' && !isOwnerOrAdmin;
+      const isOwnerOrAdmin = userRole === 'OWNER' || userRole === 'SUPERADMIN' || userRole === 'SUPER_ADMIN' || userRole === 'SUPER ADMIN' || userRole === 'ADMIN' || userRole === 'MANAGER';
+      const isEmployeeRole = userRole === 'EMPLOYEE' || !isOwnerOrAdmin;
 
-      if (isEmployeeRole) {
+      if (isEmployeeRole && !isOwnerOrAdmin) {
         const currentUserId = String(user?.id || '').toLowerCase().trim();
+        const currentUserEmail = String(user?.email || '').toLowerCase().trim();
         const myEmp = employeesList.find((e: any) => {
           const eUid = String(e.userId || e.user?.id || e.id || '').toLowerCase().trim();
-          return eUid && eUid === currentUserId;
+          const eEmail = String(e.email || e.user?.email || '').toLowerCase().trim();
+          return (eUid && eUid === currentUserId) || (eEmail && eEmail === currentUserEmail);
         });
 
         const validMyIds = new Set(
-          [currentUserId, myEmp?.id, myEmp?.userId, myEmp?.user?.id]
+          [
+            currentUserId,
+            (user as any)?._id,
+            (user as any)?.employeeId,
+            myEmp?.id,
+            myEmp?._id,
+            myEmp?.userId,
+            myEmp?.user?.id,
+            myEmp?.employeeId,
+          ]
             .filter(Boolean)
             .map(id => String(id).toLowerCase().trim())
         );
@@ -1302,57 +1987,78 @@ export default function Leads() {
         const myFirst = String(user?.firstName || '').toLowerCase().trim();
         const myLast = String(user?.lastName || '').toLowerCase().trim();
         const myFullName = `${myFirst} ${myLast}`.trim();
+        const myEmpName = String(myEmp?.name || `${myEmp?.firstName || ''} ${myEmp?.lastName || ''}`).toLowerCase().trim();
+
         const myNames = [
           myFullName,
+          myEmpName,
           myFirst,
           (user as any)?.name ? String((user as any).name).toLowerCase().trim() : '',
           myEmp?.name ? String(myEmp.name).toLowerCase().trim() : '',
           myEmp?.firstName ? String(myEmp.firstName).toLowerCase().trim() : '',
+          currentUserEmail,
+          String(myEmp?.email || '').toLowerCase().trim()
         ].filter(n => n && n.length >= 3);
 
         const extra: any = parseLeadNotes(lead.notes);
 
         // 1. Check Assignee
-        const assignedEmpId = String(lead.assignedEmployeeId || lead.assignedEmployee?.id || lead.assignedEmployee?.userId || extra?.assignedEmployeeId || '').toLowerCase().trim();
-        const assignedToName = String(lead.assignedToName || extra?.assignedToName || extra?.assignedEmployeeName || '').toLowerCase().trim();
+        const assignedEmpId = String(
+          lead.assignedEmployeeId ||
+          lead.assignedTo ||
+          lead.employeeId ||
+          lead.assignedEmployee?.id ||
+          lead.assignedEmployee?.userId ||
+          lead.assignedEmployee?._id ||
+          extra?.assignedEmployeeId ||
+          extra?.assignedTo ||
+          ''
+        ).toLowerCase().trim();
+
+        const assignedToName = String(
+          lead.assignedToName ||
+          lead.assignedEmployeeName ||
+          lead.assignedEmployee?.name ||
+          extra?.assignedToName ||
+          extra?.assignedEmployeeName ||
+          ''
+        ).toLowerCase().trim();
+
+        const assignedEmail = String(
+          lead.assignedEmployee?.email ||
+          lead.assignedEmail ||
+          extra?.assignedEmail ||
+          ''
+        ).toLowerCase().trim();
 
         const isAssignedToMe = (assignedEmpId && validMyIds.has(assignedEmpId)) ||
-          (assignedToName && myNames.some(mn => mn.length >= 3 && (assignedToName.includes(mn) || mn.includes(assignedToName))));
+          (currentUserEmail && (assignedEmpId === currentUserEmail || assignedEmail === currentUserEmail)) ||
+          (assignedToName && myNames.some(mn => mn.length >= 3 && (assignedToName === mn || assignedToName.includes(mn) || mn.includes(assignedToName))));
 
         // 2. Check Assigner
         const assignedById = String(lead.assignedById || extra?.assignedById || '').toLowerCase().trim();
         const assignedByName = String(lead.assignedByName || extra?.assignedByName || '').toLowerCase().trim();
 
         const isAssignedByMe = (assignedById && validMyIds.has(assignedById)) ||
-          (assignedByName && myNames.some(mn => mn.length >= 3 && (assignedByName.includes(mn) || mn.includes(assignedByName))));
+          (assignedByName && myNames.some(mn => mn.length >= 3 && (assignedByName === mn || assignedByName.includes(mn) || mn.includes(assignedByName))));
 
         // 3. Check Creator
-        const createdById = String(lead.createdById || extra?.createdById || '').toLowerCase().trim();
+        const createdById = String(lead.createdById || lead.creatorId || lead.userId || extra?.createdById || '').toLowerCase().trim();
         const createdByName = String(lead.createdByName || extra?.createdByName || '').toLowerCase().trim();
 
         const isCreatedByMe = (createdById && validMyIds.has(createdById)) ||
-          (createdByName && myNames.some(mn => mn.length >= 3 && (createdByName.includes(mn) || mn.includes(createdByName))));
+          (createdByName && myNames.some(mn => mn.length >= 3 && (createdByName === mn || createdByName.includes(mn) || mn.includes(createdByName))));
 
-        // 4. Check Client / Contact Name (e.g. Lead for Vaishnavi Bhosale assigned to Asmita Yadav)
-        const contactFirst = String(lead.contact?.firstName || '').toLowerCase().trim();
-        const contactLast = String(lead.contact?.lastName || '').toLowerCase().trim();
-        const contactFullName = `${contactFirst} ${contactLast}`.trim();
-        const rawLeadName = String(lead.fullName || lead.name || lead.clientName || '').toLowerCase().trim();
+        const isUnassigned = !assignedEmpId && !assignedToName && !assignedById && !createdById;
 
-        const isClientNameMe = myNames.some(mn =>
-          mn.length >= 3 && (
-            (contactFullName && (contactFullName.includes(mn) || mn.includes(contactFullName))) ||
-            (rawLeadName && (rawLeadName.includes(mn) || mn.includes(rawLeadName)))
-          )
-        );
-
-        if (!isAssignedByMe && !isCreatedByMe && !isAssignedToMe && !isClientNameMe) {
+        if (!isAssignedToMe && !isAssignedByMe && !isCreatedByMe && !isUnassigned) {
           return false;
         }
       }
 
-      const fullName = `${lead.contact?.firstName || ''} ${lead.contact?.lastName || ''}`.toLowerCase();
-      if (search && !fullName.includes(sTerm) && !(lead.contact?.phone || '').includes(sTerm)) return false;
+      const searchName = (lead.fullName || lead.name || `${lead.contact?.firstName || ''} ${lead.contact?.lastName || ''}` || lead.contact?.name || '').toLowerCase();
+      const searchPhone = String(lead.contact?.phone || lead.phone || lead.mobile || '').toLowerCase();
+      if (sTerm && !searchName.includes(sTerm) && !searchPhone.includes(sTerm)) return false;
 
       // Active / Inactive Status Badges Filter
       const extra = parseLeadNotes(lead.notes);
@@ -1444,30 +2150,209 @@ export default function Leads() {
   const expectedBusiness = (uiStage: string) =>
     (filteredBoard[uiStage] ?? []).reduce((sum, c) => sum + (c.premiumBudget ?? 0), 0);
 
+  // ── WhatsApp Direct & Template Handlers ─────────────────────────────────────
   const [waModalOpen, setWaModalOpen] = useState(false);
   const [waTargetPhone, setWaTargetPhone] = useState('');
   const [waTargetLead, setWaTargetLead] = useState<any>(null);
-  const [waMessage, setWaMessage] = useState('');
+  const [waCustomMessage, setWaCustomMessage] = useState('');
+  const [waModalCategoryFilter, setWaModalCategoryFilter] = useState<'ALL' | 'LEAD' | 'SEMINAR'>('ALL');
 
+  // Extract and format clean 10-digit / international phone number
+  const getNormalizedPhone = (lead: any, phone?: string) => {
+    let raw = phone || '';
+    if (!raw && lead) {
+      raw = lead?.contact?.phone || lead?.phone || lead?.mobile || lead?.whatsappNumber || lead?.callingNumber || lead?.phoneNumber || lead?.contactNumber || lead?.contact?.mobile || lead?.contact?.whatsappNumber || lead?.client?.phone || lead?.applicant?.phone || '';
+      if (!raw && typeof lead.notes === 'string') {
+        const pMatch = lead.notes.match(/(?:Phone|Mobile|Contact|WhatsApp|Cell|Tel|Number|Call)[\s:=–-]+(\+?[0-9\s-]{10,14})/i) ||
+          lead.notes.match(/(?:\+91[\s-]?)?([6789]\d{9})/);
+        if (pMatch && pMatch[1]) raw = pMatch[1].trim();
+      }
+      if (!raw) {
+        try {
+          const info = getLeadContactDetails(lead, undefined, contactsList);
+          if (info.phone) raw = info.phone;
+        } catch {}
+      }
+    }
+    const cleanDigits = String(raw || '').replace(/\D/g, '');
+    if (!cleanDigits) return { fullPhone: '', rawPhone: raw };
+
+    // Standard 10 digits Indian mobile -> 91 + 10 digits
+    if (cleanDigits.length === 10) {
+      return { fullPhone: `91${cleanDigits}`, rawPhone: raw };
+    }
+    // Already has 91 prefix (12 digits, e.g. 919876543210)
+    if (cleanDigits.length === 12 && cleanDigits.startsWith('91')) {
+      return { fullPhone: cleanDigits, rawPhone: raw };
+    }
+    // Leading 0 (11 digits, e.g. 09876543210)
+    if (cleanDigits.length === 11 && cleanDigits.startsWith('0')) {
+      return { fullPhone: `91${cleanDigits.slice(1)}`, rawPhone: raw };
+    }
+    // More than 10 digits and ends with an Indian 10-digit number
+    if (cleanDigits.length > 10) {
+      const last10 = cleanDigits.slice(-10);
+      if (/^[6789]\d{9}$/.test(last10)) {
+        return { fullPhone: `91${last10}`, rawPhone: raw };
+      }
+    }
+    return { fullPhone: cleanDigits, rawPhone: raw };
+  };
+
+  const getLeadDisplayName = (lead: any) => {
+    if (!lead) return '';
+    try {
+      const info = getLeadContactDetails(lead, undefined, contactsList);
+      if (info.hasRealName && info.fullName) return info.fullName;
+    } catch {}
+    const cName = lead?.contact ? `${lead.contact.firstName || ''} ${lead.contact.lastName || ''}`.trim() : '';
+    if (cName) return cName;
+    const lName = `${lead?.firstName || ''} ${lead?.lastName || ''}`.trim();
+    if (lName) return lName;
+    if (lead?.name && !['website lead', 'lead', 'web user'].includes(lead.name.toLowerCase())) return lead.name;
+    return lead?.clientName || '';
+  };
+
+  const buildDefaultWhatsAppMessage = (lead: any) => {
+    const leadName = getLeadDisplayName(lead);
+    let consultantName = user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : '';
+    if (!consultantName || ['agency owner', 'owner admin', 'owner', 'admin', 'super admin', 'superadmin', 'agency'].includes(consultantName.toLowerCase())) {
+      consultantName = 'Family Welfare Consultant';
+    }
+    const planInfo = lead?.planName || lead?.insuranceType || lead?.policyType || '';
+
+    let text = `नमस्कार / Hello${leadName ? ` *${leadName}*` : ''},\n\n`;
+    text += `Greetings from *Family First*! I am *${consultantName}*, your insurance advisor.\n`;
+    if (planInfo) {
+      text += `Regarding your interest in *${planInfo}* insurance,\n`;
+    }
+    text += `How can we assist you today? Please feel free to reply or let us know a convenient time to discuss.\n\nThank you! 🙏`;
+    return text;
+  };
+
+  // Reliable cross-platform direct WhatsApp launcher
+  const triggerWhatsAppChat = (fullPhone: string, message?: string) => {
+    if (!fullPhone) return;
+    const cleanNumber = fullPhone.replace(/\D/g, '');
+    if (!cleanNumber) return;
+    const encoded = message ? encodeURIComponent(message) : '';
+
+    const isMobile = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+    // On Desktop, web.whatsapp.com/send directly opens the chat in WhatsApp Web without the intermediate "Continue to chat" prompt
+    // On Mobile, api.whatsapp.com/send opens the native WhatsApp application directly
+    const waUrl = isMobile
+      ? (encoded ? `https://api.whatsapp.com/send?phone=${cleanNumber}&text=${encoded}` : `https://api.whatsapp.com/send?phone=${cleanNumber}`)
+      : (encoded ? `https://web.whatsapp.com/send?phone=${cleanNumber}&text=${encoded}` : `https://web.whatsapp.com/send?phone=${cleanNumber}`);
+
+    try {
+      const anchor = document.createElement('a');
+      anchor.href = waUrl;
+      anchor.target = '_blank';
+      anchor.rel = 'noopener noreferrer';
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+    } catch (e) {
+      window.open(waUrl, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  // DIRECT WhatsApp Action: Open Template Modal so user can choose any template or send custom/default message
   const handleWhatsApp = (lead: any, phone?: string) => {
-    const rawPhone = phone || lead?.contact?.phone || lead?.phone || lead?.mobile || lead?.whatsappNumber || lead?.callingNumber || '';
-    if (!rawPhone) {
-      toast.error('No phone number found for this lead');
+    handleOpenWaModal(lead, phone);
+  };
+
+  // Open Template Modal (for selecting specific templates or custom message)
+  const handleOpenWaModal = (lead: any, phone?: string) => {
+    const { fullPhone } = getNormalizedPhone(lead, phone);
+    if (!fullPhone) {
+      toast.error('No valid phone number found for this lead (मोबाईल नंबर सापडला नाही)');
       return;
     }
+    try {
+      const raw = localStorage.getItem('familyfirst_whatsapp_management_templates_v2');
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        setWaTemplates(prev => {
+          const seen = new Set(prev.map(p => (p.name || p.title || '').trim().toLowerCase()));
+          const toAdd = parsed.filter(t => t.isActive !== false && !seen.has((t.name || t.title || '').trim().toLowerCase()));
+          return toAdd.length > 0 ? [...toAdd, ...prev] : prev;
+        });
+      }
+    } catch {}
     setWaTargetLead(lead);
-    setWaTargetPhone(rawPhone.replace(/\D/g, ''));
-    setWaMessage('');
+    setWaTargetPhone(fullPhone);
+    setWaCustomMessage(buildDefaultWhatsAppMessage(lead));
     setWaModalOpen(true);
   };
 
+  const handleDeleteWaTemplate = async (templateId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm('Delete this template permanently? (हे टेम्पलेट डिलीट करायचे आहे का?)')) return;
+
+    // 1. Update state
+    setWaTemplates(prev => prev.filter(t => t.id !== templateId));
+
+    // 2. Remove from localStorage
+    try {
+      const raw = localStorage.getItem('familyfirst_whatsapp_management_templates_v2');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          const filtered = parsed.filter((t: any) => t.id !== templateId);
+          localStorage.setItem('familyfirst_whatsapp_management_templates_v2', JSON.stringify(filtered));
+        }
+      }
+    } catch {}
+
+    // 3. Delete from Firestore
+    try {
+      if (db && templateId && !templateId.startsWith('default_')) {
+        await deleteDoc(doc(db, 'whatsappTemplates', templateId)).catch(() => {});
+      }
+    } catch {}
+
+    toast.success('Template deleted successfully (टेम्पलेट डिलीट झाले)');
+  };
+
+  // Derived filtered templates based on selected category in the modal
+  const displayedWaTemplates = useMemo(() => {
+    if (waModalCategoryFilter === 'ALL') return waTemplates;
+    if (waModalCategoryFilter === 'SEMINAR') {
+      return waTemplates.filter(t => t.category?.toUpperCase() === 'SEMINAR' || (t.category || '').toLowerCase().includes('seminar'));
+    }
+    return waTemplates.filter(t => t.category?.toUpperCase() !== 'SEMINAR' && !(t.category || '').toLowerCase().includes('seminar'));
+  }, [waTemplates, waModalCategoryFilter]);
+
   const handleWhatsAppSelectTemplate = (msg: string) => {
+    const leadName = getLeadDisplayName(waTargetLead);
+    let cName = user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : '';
+    if (!cName || ['agency owner', 'owner admin', 'owner', 'admin', 'super admin', 'superadmin', 'agency'].includes(cName.toLowerCase())) {
+      cName = 'Family Welfare Consultant';
+    }
+    const todayStr = format(new Date(), 'dd MMM yyyy');
+    const todayDay = ['रविवार', 'सोमवार', 'मंगळवार', 'बुधवार', 'गुरुवार', 'शुक्रवार', 'शनिवार'][new Date().getDay()];
     const customized = replaceWhatsAppVariables(msg, {
-      name: waTargetLead?.contact?.firstName || waTargetLead?.firstName || waTargetLead?.name,
-      consultantName: user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : 'Consultant',
+      name: leadName || waTargetLead?.contact?.firstName || waTargetLead?.firstName || waTargetLead?.name || 'Customer',
+      customerName: leadName || waTargetLead?.contact?.firstName || waTargetLead?.firstName || waTargetLead?.name || 'Customer',
+      consultantName: cName,
+      consultant: cName,
+      date: todayStr,
+      day: todayDay,
+      time: '11:00 AM',
+      topic: waTargetLead?.planName || waTargetLead?.insuranceType || 'Financial & Insurance Planning Seminar',
+      venue: 'Family First Main Office / Online',
+      speaker: cName,
     });
     if (!waTargetPhone || !customized.trim()) return;
-    window.open(`https://wa.me/91${waTargetPhone}?text=${encodeURIComponent(customized)}`, '_blank');
+    triggerWhatsAppChat(waTargetPhone, customized);
+    setWaModalOpen(false);
+  };
+
+  const handleSendCustomWhatsApp = () => {
+    if (!waTargetPhone) return;
+    triggerWhatsAppChat(waTargetPhone, waCustomMessage || '');
     setWaModalOpen(false);
   };
 
@@ -1569,8 +2454,8 @@ export default function Leads() {
     const toastId = toast.loading(editTarget || editContactId ? 'Updating lead...' : 'Creating lead...');
     try {
       const mergedTags = [...selectedCampaigns];
-      if (!mergedTags.includes('contact')) {
-        mergedTags.push('contact');
+      if (!mergedTags.includes('lead_only')) {
+        mergedTags.push('lead_only');
       }
 
       let contactId = editContactId || editTarget?.contactId || editTarget?.contact?.id;
@@ -1863,45 +2748,52 @@ export default function Leads() {
 
   const openEdit = async (card: any) => {
     setEditTarget(card);
-    const contactId = card.contactId || card.contact?.id;
+    const contactId = card.contactId || card.contact?.id || (typeof card.contact === 'string' ? card.contact : null);
 
-    // 1. Pre-fill all personal fields directly from the card (works for ALL leads: web/landing/firestore/backend)
-    const cardFullName = (card.contact?.firstName || card.contact?.lastName)
-      ? `${card.contact?.firstName || ''} ${card.contact?.lastName || ''}`.trim()
-      : (card.name || card.fullName || card.clientName || '').trim();
-    const cardPhone = card.contact?.phone || card.phone || card.mobile || '';
-    const cardEmail = card.contact?.email || card.email || '';
-    const cardDob = card.contact?.dateOfBirth ? card.contact.dateOfBirth.split('T')[0] : (card.dob ? card.dob.split('T')[0] : '');
+    const contactInfo = getLeadContactDetails(card, leadsFlat, contactsList);
+    const matchedContact = (contactId && contactsById.get(String(contactId).toLowerCase())) ||
+      (contactId && contactsList.find((c: any) => String(c.id || c._id).toLowerCase() === String(contactId).toLowerCase())) ||
+      (contactInfo.phone && contactsByPhone.get(contactInfo.phone.replace(/\D/g, '').slice(-10))) ||
+      null;
+
+    const cObj = matchedContact || (typeof card.contact === 'object' && card.contact ? card.contact : null) || {};
+
+    const firstName = cObj.firstName || (contactInfo.hasRealName ? contactInfo.firstName : '') || '';
+    const lastName = cObj.lastName || (contactInfo.hasRealName ? contactInfo.lastName : '') || '';
+    const fullName = contactInfo.hasRealName ? contactInfo.fullName : (`${firstName} ${lastName}`.trim() || cObj.name || '');
+    const phone = cObj.phone || cObj.mobile || contactInfo.phone || card.phone || card.mobile || '';
+    const email = cObj.email || contactInfo.email || card.email || '';
+    const dob = cObj.dateOfBirth ? String(cObj.dateOfBirth).split('T')[0] : (card.dob ? String(card.dob).split('T')[0] : '');
 
     const initialPersonal = {
-      firstName: card.contact?.firstName || cardFullName.split(' ')[0] || '',
-      middleName: card.contact?.middleName || '',
-      lastName: card.contact?.lastName || cardFullName.split(' ').slice(1).join(' ') || '',
-      fullName: cardFullName,
-      gender: card.contact?.gender || card.gender || '',
-      maritalStatus: card.contact?.maritalStatus || card.maritalStatus || '',
-      dateOfBirth: cardDob,
-      email: cardEmail,
-      aadhaarNumber: card.contact?.aadhaarNumber || card.aadhaarNumber || '',
-      whatsappNumber: cardPhone,
+      firstName: firstName,
+      middleName: cObj.middleName || card.middleName || '',
+      lastName: lastName,
+      fullName: fullName,
+      gender: cObj.gender || card.gender || '',
+      maritalStatus: cObj.maritalStatus || card.maritalStatus || '',
+      dateOfBirth: dob,
+      email: email,
+      aadhaarNumber: cObj.aadhaarNumber || card.aadhaarNumber || '',
+      whatsappNumber: phone,
       sameAsWhatsapp: true,
-      callingNumber: cardPhone,
-      education: card.contact?.education || card.education || '',
-      annualIncome: card.contact?.annualIncome ? String(card.contact.annualIncome) : (card.annualIncome ? String(card.annualIncome) : ''),
-      occupationType: card.contact?.occupationType || card.occupation || '',
-      companyName: card.contact?.companyName || '',
-      state: card.contact?.state || card.state || '',
-      district: card.contact?.district || card.district || '',
-      city: card.contact?.city || card.city || '',
-      pincode: card.contact?.pincode || card.pincode || '',
-      streetAddress: card.contact?.streetAddress || card.address || '',
-      bankName: card.contact?.bankName || card.bankName || card.contact?.bankDetails?.bankName || '',
-      bankAccountNumber: card.contact?.bankAccountNumber || card.bankAccountNumber || card.contact?.bankDetails?.accountNumber || card.contact?.bankDetails?.bankAccountNumber || '',
-      bankIfsc: card.contact?.bankIfsc || card.bankIfsc || card.contact?.bankDetails?.ifscCode || card.contact?.bankDetails?.bankIfsc || '',
-      bankBranch: card.contact?.bankBranch || card.bankBranch || card.contact?.bankDetails?.branchName || card.contact?.bankDetails?.bankBranch || '',
-      declaredMedicalHistory: card.contact?.declaredMedicalHistory || [],
-      notDeclaredMedicalHistory: card.contact?.notDeclaredMedicalHistory || [],
-      medicalHistoryDetails: card.contact?.medicalHistoryDetails || ''
+      callingNumber: cObj.alternatePhone || phone,
+      education: cObj.education || card.education || '',
+      annualIncome: cObj.annualIncome ? String(cObj.annualIncome) : (card.annualIncome ? String(card.annualIncome) : ''),
+      occupationType: cObj.occupationType || card.occupation || '',
+      companyName: cObj.companyName || '',
+      state: cObj.state || card.state || '',
+      district: cObj.district || card.district || '',
+      city: cObj.city || card.city || '',
+      pincode: cObj.pincode || card.pincode || '',
+      streetAddress: cObj.streetAddress || cObj.notes || card.address || '',
+      bankName: cObj.bankName || card.bankName || cObj.bankDetails?.bankName || '',
+      bankAccountNumber: cObj.bankAccountNumber || card.bankAccountNumber || cObj.bankDetails?.accountNumber || cObj.bankDetails?.bankAccountNumber || '',
+      bankIfsc: cObj.bankIfsc || card.bankIfsc || cObj.bankDetails?.ifscCode || cObj.bankDetails?.bankIfsc || '',
+      bankBranch: cObj.bankBranch || card.bankBranch || cObj.bankDetails?.branchName || cObj.bankDetails?.bankBranch || '',
+      declaredMedicalHistory: cObj.declaredMedicalHistory || card.declaredMedicalHistory || [],
+      notDeclaredMedicalHistory: cObj.notDeclaredMedicalHistory || card.notDeclaredMedicalHistory || [],
+      medicalHistoryDetails: cObj.medicalHistoryDetails || card.medicalHistoryDetails || ''
     };
 
     setPersonalFields(initialPersonal);
@@ -1913,6 +2805,8 @@ export default function Leads() {
     const cardStage = card.stage || 'TO_CONTACT';
     const cardPremium = card.premiumBudget ? String(card.premiumBudget) : (card.expectedPremium ? String(card.expectedPremium) : '');
     const cardFollowUp = card.followUpDate ? card.followUpDate.split('T')[0] : '';
+    
+    const parsedNotes = parseLeadNotes(card.notes);
 
     setProductInterests([
       {
@@ -1920,12 +2814,12 @@ export default function Leads() {
         collapsed: false,
         interestedIn: cardInterests,
         otherProduct: '',
-        descriptionDetails: card.notes || '',
+        descriptionDetails: parsedNotes.descriptionDetails || '',
         leadStage: cardStage,
-        leadStatus: 'ACTIVE_LEAD',
-        dependencyType: 'SELF',
-        dependentDetails: '',
-        leadType: 'FRESH',
+        leadStatus: parsedNotes.leadStatus || 'ACTIVE_LEAD',
+        dependencyType: parsedNotes.dependencyType || 'SELF',
+        dependentDetails: parsedNotes.dependentDetails || '',
+        leadType: parsedNotes.leadType || 'FRESH',
         leadSource: card.source || 'Social Media',
         assignedEmployeeId: card.assignedEmployeeId || '',
         followUpDate: cardFollowUp,
@@ -1942,39 +2836,40 @@ export default function Leads() {
         const contact = res?.data ?? res;
         if (contact) {
           setLoadedContact(contact);
-          setEditContactId(contact.id);
+          setEditContactId(contact.id || contact._id || contactId);
           const primaryAddr = contact.addresses?.find((a: any) => a.isPrimary) || contact.addresses?.[0];
           const primaryOcc = contact.occupations?.find((o: any) => o.isPrimary) || contact.occupations?.[0];
-          setPersonalFields({
-            firstName: contact.firstName || initialPersonal.firstName,
-            middleName: contact.middleName || initialPersonal.middleName,
-            lastName: contact.lastName || initialPersonal.lastName,
-            fullName: `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || initialPersonal.fullName,
-            gender: contact.gender || initialPersonal.gender,
-            maritalStatus: contact.maritalStatus || initialPersonal.maritalStatus,
-            dateOfBirth: contact.dateOfBirth ? contact.dateOfBirth.split('T')[0] : initialPersonal.dateOfBirth,
-            email: contact.email || initialPersonal.email,
-            aadhaarNumber: contact.aadhaarNumber || initialPersonal.aadhaarNumber,
-            whatsappNumber: contact.phone || initialPersonal.whatsappNumber,
+          setPersonalFields(prev => ({
+            ...prev,
+            firstName: contact.firstName || prev.firstName,
+            middleName: contact.middleName || prev.middleName,
+            lastName: contact.lastName || prev.lastName,
+            fullName: `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || prev.fullName,
+            gender: contact.gender || prev.gender,
+            maritalStatus: contact.maritalStatus || prev.maritalStatus,
+            dateOfBirth: contact.dateOfBirth ? String(contact.dateOfBirth).split('T')[0] : prev.dateOfBirth,
+            email: contact.email || prev.email,
+            aadhaarNumber: contact.aadhaarNumber || prev.aadhaarNumber,
+            whatsappNumber: contact.phone || prev.whatsappNumber,
             sameAsWhatsapp: contact.phone === contact.alternatePhone,
-            callingNumber: contact.alternatePhone || contact.phone || initialPersonal.callingNumber,
-            education: contact.education || initialPersonal.education,
-            annualIncome: contact.annualIncome ? String(contact.annualIncome) : initialPersonal.annualIncome,
-            occupationType: primaryOcc?.type || initialPersonal.occupationType,
-            companyName: primaryOcc?.companyName || initialPersonal.companyName,
-            state: primaryAddr?.state || initialPersonal.state,
-            district: primaryAddr?.district || initialPersonal.district,
-            city: primaryAddr?.city || initialPersonal.city,
-            pincode: primaryAddr?.pincode || initialPersonal.pincode,
-            streetAddress: primaryAddr?.line1 || contact.notes || initialPersonal.streetAddress,
-            bankName: contact.bankName || contact.bankDetails?.bankName || initialPersonal.bankName,
-            bankAccountNumber: contact.bankAccountNumber || contact.accountNumber || contact.bankDetails?.accountNumber || contact.bankDetails?.bankAccountNumber || initialPersonal.bankAccountNumber,
-            bankIfsc: contact.bankIfsc || contact.ifscCode || contact.bankDetails?.ifscCode || contact.bankDetails?.bankIfsc || initialPersonal.bankIfsc,
-            bankBranch: contact.bankBranch || contact.branchName || contact.bankDetails?.branchName || contact.bankDetails?.bankBranch || initialPersonal.bankBranch,
-            declaredMedicalHistory: contact.declaredMedicalHistory || [],
-            notDeclaredMedicalHistory: contact.notDeclaredMedicalHistory || [],
-            medicalHistoryDetails: contact.medicalHistoryDetails || ''
-          });
+            callingNumber: contact.alternatePhone || contact.phone || prev.callingNumber,
+            education: contact.education || prev.education,
+            annualIncome: contact.annualIncome ? String(contact.annualIncome) : prev.annualIncome,
+            occupationType: primaryOcc?.type || contact.occupationType || prev.occupationType,
+            companyName: primaryOcc?.companyName || contact.companyName || prev.companyName,
+            state: primaryAddr?.state || contact.state || prev.state,
+            district: primaryAddr?.district || contact.district || prev.district,
+            city: primaryAddr?.city || contact.city || prev.city,
+            pincode: primaryAddr?.pincode || contact.pincode || prev.pincode,
+            streetAddress: primaryAddr?.line1 || contact.streetAddress || contact.notes || prev.streetAddress,
+            bankName: contact.bankName || contact.bankDetails?.bankName || prev.bankName,
+            bankAccountNumber: contact.bankAccountNumber || contact.accountNumber || contact.bankDetails?.accountNumber || contact.bankDetails?.bankAccountNumber || prev.bankAccountNumber,
+            bankIfsc: contact.bankIfsc || contact.ifscCode || contact.bankDetails?.ifscCode || contact.bankDetails?.bankIfsc || prev.bankIfsc,
+            bankBranch: contact.bankBranch || contact.branchName || contact.bankDetails?.branchName || contact.bankDetails?.bankBranch || prev.bankBranch,
+            declaredMedicalHistory: contact.declaredMedicalHistory || prev.declaredMedicalHistory,
+            notDeclaredMedicalHistory: contact.notDeclaredMedicalHistory || prev.notDeclaredMedicalHistory,
+            medicalHistoryDetails: contact.medicalHistoryDetails || prev.medicalHistoryDetails
+          }));
         }
       } catch (cErr) {
         console.warn('[Edit Lead Contact fetch notice]', cErr);
@@ -2434,20 +3329,171 @@ export default function Leads() {
 
   return (
     <div className="space-y-4 font-sans text-slate-800">
-      <Modal open={waModalOpen} onClose={() => setWaModalOpen(false)} title="Select WhatsApp Template" size="lg">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 h-[480px] min-h-[480px] overflow-y-auto p-1 custom-scrollbar">
-          {waTemplates.length === 0 ? (
-            <div className="col-span-full h-full flex items-center justify-center text-slate-500 text-sm">
-              No active LEAD templates found. Add them in Management.
-            </div>
-          ) : (
-            waTemplates.map(t => (
-              <div key={t.id} onClick={() => handleWhatsAppSelectTemplate(t.message)} className="bg-slate-50 border border-slate-200 hover:border-green-400 hover:shadow-md transition-all rounded-xl p-3.5 cursor-pointer group flex flex-col gap-1.5 h-[140px] shrink-0 justify-between">
-                <h4 className="text-sm font-bold text-slate-800 group-hover:text-green-700 truncate">{t.name || t.title}</h4>
-                {t.message && <p className="text-xs text-slate-500 line-clamp-4 leading-relaxed whitespace-pre-wrap">{t.message}</p>}
+      <Modal open={waModalOpen} onClose={() => setWaModalOpen(false)} title="WhatsApp Message & Templates" size="lg">
+        <div className="space-y-4 p-1">
+          {/* Recipient info & direct action */}
+          <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-green-50 border border-green-200/80 rounded-2xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <h4 className="text-sm font-bold text-slate-800">
+                  {getLeadDisplayName(waTargetLead) || 'Lead Contact'}
+                </h4>
+                <span className="text-[11px] font-mono font-bold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-full border border-emerald-300">
+                  +{waTargetPhone}
+                </span>
               </div>
-            ))
-          )}
+              <p className="text-xs text-slate-500">
+                Direct WhatsApp chat किंवा खालील टेम्पलेट निवडून मेसेज पाठवा
+              </p>
+            </div>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => {
+                  triggerWhatsAppChat(waTargetPhone, '');
+                  setWaModalOpen(false);
+                }}
+                className="flex-1 sm:flex-initial px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all shadow-2xs cursor-pointer flex items-center justify-center gap-1.5"
+                title="Open WhatsApp chat without pre-filled text"
+              >
+                <span>Direct Chat</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleSendCustomWhatsApp}
+                className="flex-1 sm:flex-initial px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-sm shadow-emerald-600/20 hover:shadow-md cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Send size={13} />
+                <span>Send Now</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Custom Message Editor */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <MessageCircle size={13} className="text-emerald-600" />
+                Direct Message Text (थेट संदेश)
+              </label>
+              <span className="text-[11px] text-slate-400">Edit before sending</span>
+            </div>
+            <textarea
+              rows={3}
+              value={waCustomMessage}
+              onChange={e => setWaCustomMessage(e.target.value)}
+              placeholder="Type your WhatsApp message here..."
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:bg-white transition-all shadow-2xs font-sans leading-relaxed resize-none"
+            />
+          </div>
+
+          {/* Quick Templates Section */}
+          <div className="space-y-2.5 pt-1">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <h5 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <FileText size={13} className="text-purple-600" />
+                Pre-defined Templates (टेम्पलेट निवडून थेट पाठवा)
+              </h5>
+              
+              {/* Category Filter Tabs */}
+              <div className="flex items-center gap-1 bg-slate-100/90 p-1 rounded-xl border border-slate-200/60 text-[11px] font-medium self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => setWaModalCategoryFilter('ALL')}
+                  className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                    waModalCategoryFilter === 'ALL'
+                      ? 'bg-white text-emerald-700 font-bold shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <span>All</span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-200/70 font-semibold">{waTemplates.length}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWaModalCategoryFilter('LEAD')}
+                  className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                    waModalCategoryFilter === 'LEAD'
+                      ? 'bg-white text-emerald-700 font-bold shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <span>Leads</span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 font-semibold">
+                    {waTemplates.filter(t => t.category?.toUpperCase() !== 'SEMINAR' && !(t.category || '').toLowerCase().includes('seminar')).length}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWaModalCategoryFilter('SEMINAR')}
+                  className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                    waModalCategoryFilter === 'SEMINAR'
+                      ? 'bg-white text-purple-700 font-bold shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <span>Seminars</span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-purple-100 text-purple-800 font-semibold">
+                    {waTemplates.filter(t => t.category?.toUpperCase() === 'SEMINAR' || (t.category || '').toLowerCase().includes('seminar')).length}
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 max-h-[260px] overflow-y-auto p-1 custom-scrollbar">
+              {displayedWaTemplates.length === 0 ? (
+                <div className="col-span-full py-8 flex flex-col items-center justify-center text-slate-500 text-xs gap-1">
+                  <span>या कॅटेगरीमध्ये कोणतेही ॲक्टिव्ह टेम्पलेट सापडले नाहीत.</span>
+                  <span className="text-[10px] text-slate-400">Management पेजवरून नवीन टेम्पलेट जोडू शकता.</span>
+                </div>
+              ) : (
+                displayedWaTemplates.map(t => {
+                  const isSem = t.category?.toUpperCase() === 'SEMINAR' || (t.category || '').toLowerCase().includes('seminar');
+                  return (
+                    <div
+                      key={t.id}
+                      onClick={() => handleWhatsAppSelectTemplate(t.message)}
+                      className="bg-white border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/20 hover:shadow-md transition-all rounded-xl p-3 cursor-pointer group flex flex-col gap-1.5 justify-between"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <h4 className="text-xs font-bold text-slate-800 group-hover:text-emerald-700 truncate">
+                          {t.name || t.title}
+                        </h4>
+                        <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
+                          {t.category && (
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                              isSem
+                                ? 'text-purple-700 bg-purple-50 border-purple-200'
+                                : 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                            }`}>
+                              {t.category}
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteWaTemplate(t.id, e)}
+                            title="Delete Template (टेम्पलेट हटवा)"
+                            className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                      {t.message && (
+                        <p className="text-[11px] text-slate-500 line-clamp-3 leading-relaxed whitespace-pre-wrap">
+                          {t.message}
+                        </p>
+                      )}
+                      <div className="flex items-center justify-end text-[10px] font-bold text-emerald-600 group-hover:translate-x-0.5 transition-transform pt-1">
+                        <span>Send Template →</span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
         </div>
       </Modal>
 
@@ -2608,9 +3654,13 @@ export default function Leads() {
               {getAssignableEmployees(employeesList).map((emp: any) => {
                 const empUserId = emp.userId || emp.user?.id || emp.id;
                 const empName = `${emp.firstName || emp.employeeProfile?.firstName || emp.user?.firstName || ''} ${emp.lastName || emp.employeeProfile?.lastName || emp.user?.lastName || ''}`.trim() || emp.name || emp.email || 'Employee';
+                const empEmail = emp.email || emp.user?.email || '';
+                const label = empEmail && !empName.toLowerCase().includes(empEmail.toLowerCase())
+                  ? `${empName} (${empEmail})`
+                  : (empName || empEmail || 'Employee');
                 return (
                   <option key={emp.id || empUserId} value={empUserId}>
-                    {empName}
+                    {label}
                   </option>
                 );
               })}
@@ -2680,6 +3730,8 @@ export default function Leads() {
                     }}
                     onDragOver={e => {
                       e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                      if (draggedOverStage !== stage) setDraggedOverStage(stage);
                     }}
                     onDragLeave={() => {
                       if (draggedOverStage === stage) setDraggedOverStage(null);
@@ -2687,17 +3739,38 @@ export default function Leads() {
                     onDrop={e => {
                       e.preventDefault();
                       setDraggedOverStage(null);
-                      const cardId = e.dataTransfer.getData('cardId');
+                      const cardId = e.dataTransfer.getData('cardId') || e.dataTransfer.getData('text/plain');
                       if (cardId && backendStage) {
-                        const draggedLead = filteredLeads.find(l => l.id === cardId);
-                        if (backendStage === 'PROCESS_COMPLETED') {
-                          if (draggedLead) {
-                            triggerPolicyCreationForLead(draggedLead);
-                            return;
-                          }
-                        }
+                        const draggedLead = filteredLeads.find(l => String(l.id) === String(cardId));
                         if (draggedLead && draggedLead.stage !== backendStage) {
-                          return;
+                          // 1. Optimistic instant local state update for super smooth UI
+                          setWebLeads(prev =>
+                            prev.map(l =>
+                              String(l.id) === String(cardId) || String(l.id) === String(cardId).replace('fs_', '')
+                                ? { ...l, stage: backendStage, uiStage: stage }
+                                : l
+                            )
+                          );
+
+                          // Policy creation is no longer triggered automatically
+                          // if (backendStage === 'PROCESS_COMPLETED') {
+                          //   triggerPolicyCreationForLead(draggedLead);
+                          // }
+
+                          // 3. Move stage in backend, Firestore, and localStorage
+                          moveStage.mutate(
+                            { id: cardId, stage: backendStage },
+                            {
+                              onSuccess: () => {
+                                toast.success(`Lead moved to "${stage}"`);
+                                qc.invalidateQueries({ queryKey: ['leads'] });
+                                qc.invalidateQueries({ queryKey: ['leads', 'kanban'] });
+                              },
+                              onError: () => {
+                                toast.error('Failed to move lead stage');
+                              }
+                            }
+                          );
                         }
                       }
                     }}
@@ -2739,11 +3812,14 @@ export default function Leads() {
                           key={card.id}
                           card={card}
                           employeesList={employeesList}
+                          allLeadsList={leadsFlat}
+                          contactsList={contactsList}
                           onEdit={openEdit}
                           onDelete={c => setDeleteTarget(c)}
                           onOpen={openDetail}
                           onCall={handleCall}
                           onWhatsApp={handleWhatsApp}
+                          onOpenTemplate={handleOpenWaModal}
                         />
                       ))}
                     </div>
@@ -2756,6 +3832,8 @@ export default function Leads() {
           <LeadsTable
             data={sortedLeads}
             employeesList={employeesList}
+            allLeadsList={leadsFlat}
+            contactsList={contactsList}
             loading={isLoading}
             visibleColumns={visibleColumns}
             sortKey={sortKey}
@@ -2766,6 +3844,7 @@ export default function Leads() {
             onDelete={c => setDeleteTarget(c)}
             onCall={handleCall}
             onWhatsApp={handleWhatsApp}
+            onOpenTemplate={handleOpenWaModal}
             onCreate={() => openCreate('TO_CONTACT')}
           />
         )}
@@ -2806,7 +3885,7 @@ export default function Leads() {
 
           {/* Modal sub-navigation tabs */}
           <div className="flex bg-slate-200/60 p-1.5 rounded-2xl mt-0 mb-3 gap-2 border border-slate-200/80 overflow-x-auto shadow-2xs">
-            {['Personal', 'Family'].map(tab => (
+            {['Product Interest', 'Personal', 'Family'].map(tab => (
               <button
                 key={tab}
                 type="button"
@@ -2933,16 +4012,14 @@ export default function Leads() {
                           </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
-                          {!isExisting && (
-                            <button
-                              type="button"
-                              onClick={e => { e.stopPropagation(); removeProductInterest(card.id); }}
-                              className="p-1 rounded-lg bg-white/10 hover:bg-red-500/80 text-white transition-all"
-                              title="Remove"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={e => { e.stopPropagation(); removeProductInterest(card.id); }}
+                            className="p-1 rounded-lg bg-white/10 hover:bg-red-500/80 text-white transition-all cursor-pointer"
+                            title="Remove"
+                          >
+                            <Trash2 size={13} />
+                          </button>
                           <ChevronDown
                             size={16}
                             className={`text-white transition-transform duration-200 ${card.collapsed ? 'rotate-180' : ''}`}
@@ -2958,16 +4035,10 @@ export default function Leads() {
                           <div>
                             <div className="flex items-center justify-between mb-2">
                               <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Interested In</label>
-                              {isExisting && (
-                                <span className="text-[10px] text-slate-400 font-medium italic">
-                                  Category fixed for existing records. Change status below or click "+ Add Product Interest" for a new product.
-                                </span>
-                              )}
                             </div>
                             <div className="flex flex-wrap gap-2">
                               {['Health', 'Life', 'Term', 'Accident Policy', 'Motor', 'Mutual Funds', 'Porting', 'Other'].map(prod => {
                                 const isSel = card.interestedIn.includes(prod);
-                                const isAlreadySelected = false;
                                 const PILL_COLORS: Record<string, string> = {
                                   Health: isSel ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100',
                                   Life: isSel ? 'bg-purple-600 border-blue-600 text-white' : 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100',
@@ -2983,12 +4054,11 @@ export default function Leads() {
                                   <button
                                     key={prod}
                                     type="button"
-                                    disabled={isExisting}
                                     onClick={() => {
                                       const next = isSel ? [] : [prod];
                                       updateProductInterest(card.id, 'interestedIn', next);
                                     }}
-                                    className={`px-3 py-1.5 rounded-xl text-[11px] font-bold border transition-all select-none ${btnStyle} ${isExisting ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                    className={`px-3 py-1.5 rounded-xl text-[11px] font-bold border transition-all select-none cursor-pointer ${btnStyle}`}
                                   >
                                     {isSel ? '✓ ' : '+ '}{prod}
                                   </button>
@@ -3013,12 +4083,11 @@ export default function Leads() {
                             {card.interestedIn.includes('Other') && (
                               <div className="bg-slate-100/90 border-2 border-slate-300 rounded-xl p-3 space-y-1.5 animate-fadeIn mt-2.5">
                                 <label className="label text-[10px] font-extrabold text-slate-700 uppercase tracking-wider block">
-                                  Specify Other Product Name *
+                                  Specify Other Product Name <span className="text-red-500 font-bold">*</span>
                                 </label>
                                 <input
                                   type="text"
-                                  disabled={isExisting}
-                                  className={`w-full text-xs px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-800 placeholder-slate-400 font-medium focus:ring-2 focus:ring-slate-500 focus:border-slate-500 outline-none shadow-xs ${isExisting ? 'opacity-75 bg-slate-100 cursor-not-allowed' : ''}`}
+                                  className="w-full text-xs px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-800 placeholder-slate-400 font-medium focus:ring-2 focus:ring-slate-500 focus:border-slate-500 outline-none shadow-xs"
                                   placeholder="Specify product name..."
                                   value={card.otherProduct}
                                   onChange={e => updateProductInterest(card.id, 'otherProduct', e.target.value)}
@@ -3063,7 +4132,7 @@ export default function Leads() {
                             </div>
                             <div>
                               <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                                Lead Status <span className="text-red-500">*</span>{isExisting ? ' (Editable)' : ''}
+                                Lead Status <span className="text-red-500">*</span>
                               </label>
                               <select
                                 className="input w-full text-xs"
@@ -3077,23 +4146,10 @@ export default function Leads() {
                                 <option value="LEAD_LOST">Lead Lost</option>
                               </select>
                             </div>
-                            {/* <div>
-                              <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Dependency *</label>
-                              <select
-                                disabled={isExisting}
-                                className={`input w-full text-xs ${isExisting ? 'opacity-75 bg-slate-100 cursor-not-allowed' : ''}`}
-                                value={card.dependencyType || 'SELF'}
-                                onChange={e => updateProductInterest(card.id, 'dependencyType', e.target.value)}
-                              >
-                                <option value="SELF">Self</option>
-                                <option value="DEPENDENT">Depend</option>
-                              </select>
-                            </div> */}
                             <div>
                               <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Lead Type <span className="text-red-500">*</span></label>
                               <select
-                                disabled={isExisting}
-                                className={`input w-full text-xs ${isExisting ? 'opacity-75 bg-slate-100 cursor-not-allowed' : ''}`}
+                                className="input w-full text-xs"
                                 value={card.leadType}
                                 onChange={e => updateProductInterest(card.id, 'leadType', e.target.value)}
                               >
@@ -3104,18 +4160,14 @@ export default function Leads() {
                             </div>
                           </div>
 
-                          {/* Members Included Multi-Select Box */}
-
-
                           {/* Row 2: Source, Assigned Employee, Follow-up Date, Expected Premium */}
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div>
                               <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Lead Source <span className="text-red-500">*</span></label>
                               <input
                                 type="text"
-                                disabled={isExisting}
                                 list={`lead-source-list-${card.id}`}
-                                className={`input w-full text-xs ${isExisting ? 'opacity-75 bg-slate-100 cursor-not-allowed' : ''}`}
+                                className="input w-full text-xs"
                                 placeholder="e.g. Social Media"
                                 value={card.leadSource}
                                 onChange={e => updateProductInterest(card.id, 'leadSource', e.target.value)}
@@ -3139,9 +4191,13 @@ export default function Leads() {
                                 {getAssignableEmployees(employeesList, editTarget || personalFields).map((emp: any) => {
                                   const empUserId = emp.userId || emp.user?.id || emp.id;
                                   const empName = `${emp.firstName || emp.employeeProfile?.firstName || emp.user?.firstName || ''} ${emp.lastName || emp.employeeProfile?.lastName || emp.user?.lastName || ''}`.trim() || emp.name || emp.email || 'Employee';
+                                  const empEmail = emp.email || emp.user?.email || '';
+                                  const label = empEmail && !empName.toLowerCase().includes(empEmail.toLowerCase())
+                                    ? `${empName} (${empEmail})`
+                                    : (empName || empEmail || 'Employee');
                                   return (
                                     <option key={emp.id || empUserId} value={empUserId}>
-                                      {empName}
+                                      {label}
                                     </option>
                                   );
                                 })}
@@ -3150,8 +4206,7 @@ export default function Leads() {
                             <div>
                               <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Follow-up Date <span className="text-red-500">*</span></label>
                               <DatePicker
-                                disabled={isExisting}
-                                className={`input w-full text-xs ${isExisting ? 'opacity-75 bg-slate-100 cursor-not-allowed' : ''}`}
+                                className="input w-full text-xs"
                                 value={card.followUpDate}
                                 onChange={val => updateProductInterest(card.id, 'followUpDate', val)}
                               />
@@ -3160,8 +4215,7 @@ export default function Leads() {
                               <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Expected Premium / Budget (₹) <span className="text-red-500">*</span></label>
                               <input
                                 type="number"
-                                disabled={isExisting}
-                                className={`input w-full text-xs ${isExisting ? 'opacity-75 bg-slate-100 cursor-not-allowed' : ''}`}
+                                className="input w-full text-xs"
                                 placeholder="e.g. 12000"
                                 min={0}
                                 value={card.expectedPremium}
@@ -3912,7 +4966,7 @@ export default function Leads() {
                         </div>
 
                         {/* Row 3: Whatsapp | Calling Number | Education */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 px-4 pt-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 px-4 pt-3 pb-4">
                           <div>
                             <label className="label text-[10px] font-bold text-gray-500 uppercase tracking-wider">Whatsapp</label>
                             <div className="flex border border-slate-200 rounded-xl overflow-hidden bg-white focus-within:ring-2 focus-within:ring-blue-500/10 focus-within:border-blue-500 transition-all mt-1">
@@ -3963,249 +5017,9 @@ export default function Leads() {
                             )}
                           </div>
                         </div>
-
-                        {/* Row 4: Medical History */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 px-4 pt-3 pb-3">
-                          {/* Generic Medical History */}
-                          <div className="col-span-3">
-                            <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Medical History (Select if applicable)</label>
-                            <div className="flex flex-wrap gap-x-6 gap-y-2">
-                              {['BP', 'Sugar', 'Heart', 'Thyroid', 'Others'].map((condition) => {
-                                const isOthers = condition === 'Others';
-                                const current = member.medicalHistory || [];
-                                const isSelected = isOthers
-                                  ? current.some((c: string) => !['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c))
-                                  : current.includes(condition);
-                                return (
-                                  <label key={condition} className="flex flex-wrap items-center gap-1.5 cursor-pointer select-none">
-                                    <input
-                                      type="checkbox"
-                                      className="accent-blue-600 w-3.5 h-3.5"
-                                      checked={isSelected}
-                                      onChange={() => {
-                                        setFamilyMembers(prev => prev.map((m, i) => {
-                                          if (i !== idx) return m;
-                                          const list: string[] = m.medicalHistory || [];
-                                          if (isOthers) {
-                                            if (isSelected) {
-                                              return {
-                                                ...m,
-                                                medicalHistory: list.filter((c: string) => ['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c))
-                                              };
-                                            } else {
-                                              return {
-                                                ...m,
-                                                medicalHistory: [...list, '']
-                                              };
-                                            }
-                                          } else {
-                                            return {
-                                              ...m,
-                                              medicalHistory: isSelected
-                                                ? list.filter((c: string) => c !== condition)
-                                                : [...list, condition]
-                                            };
-                                          }
-                                        }));
-                                      }}
-                                    />
-                                    <span className="text-xs text-slate-600 font-medium">{condition}</span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                            {(member.medicalHistory || []).some((c: string) => !['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c)) && (
-                              <div className="mt-2 animate-fadeIn">
-                                <input
-                                  type="text"
-                                  className="input w-full text-xs py-1 px-2.5"
-                                  placeholder="Type medical conditions..."
-                                  value={(member.medicalHistory || []).find((c: string) => !['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c)) || ''}
-                                  onChange={e => {
-                                    const val = e.target.value;
-                                    setFamilyMembers(prev => prev.map((m, i) => {
-                                      if (i !== idx) return m;
-                                      const current: string[] = m.medicalHistory || [];
-                                      const baseVal = current.filter((c: string) => ['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c));
-                                      return {
-                                        ...m,
-                                        medicalHistory: [...baseVal, val]
-                                      };
-                                    }));
-                                  }}
-                                />
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Declared Medical History */}
-                          <div className="col-span-3">
-                            <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Declared Medical History</label>
-                            <div className="flex flex-wrap gap-x-6 gap-y-2">
-                              {['BP', 'Sugar', 'Heart', 'Thyroid', 'Others'].map((condition) => {
-                                const isOthers = condition === 'Others';
-                                const current = member.declaredMedicalHistory || [];
-                                const isSelected = isOthers
-                                  ? current.some((c: string) => !['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c))
-                                  : current.includes(condition);
-                                return (
-                                  <label key={condition} className="flex flex-wrap items-center gap-1.5 cursor-pointer select-none">
-                                    <input
-                                      type="checkbox"
-                                      className="accent-blue-600 w-3.5 h-3.5"
-                                      checked={isSelected}
-                                      onChange={() => {
-                                        setFamilyMembers(prev => prev.map((m, i) => {
-                                          if (i !== idx) return m;
-                                          const list: string[] = m.declaredMedicalHistory || [];
-                                          if (isOthers) {
-                                            if (isSelected) {
-                                              return {
-                                                ...m,
-                                                declaredMedicalHistory: list.filter((c: string) => ['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c))
-                                              };
-                                            } else {
-                                              return {
-                                                ...m,
-                                                declaredMedicalHistory: [...list, '']
-                                              };
-                                            }
-                                          } else {
-                                            return {
-                                              ...m,
-                                              declaredMedicalHistory: isSelected
-                                                ? list.filter((c: string) => c !== condition)
-                                                : [...list, condition]
-                                            };
-                                          }
-                                        }));
-                                      }}
-                                    />
-                                    <span className="text-xs text-slate-600 font-medium">{condition}</span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                            {(member.declaredMedicalHistory || []).some((c: string) => !['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c)) && (
-                              <div className="mt-2 animate-fadeIn">
-                                <input
-                                  type="text"
-                                  className="input w-full text-xs py-1 px-2.5"
-                                  placeholder="Type medical conditions..."
-                                  value={(member.declaredMedicalHistory || []).find((c: string) => !['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c)) || ''}
-                                  onChange={e => {
-                                    const val = e.target.value;
-                                    setFamilyMembers(prev => prev.map((m, i) => {
-                                      if (i !== idx) return m;
-                                      const current: string[] = m.declaredMedicalHistory || [];
-                                      const baseVal = current.filter((c: string) => ['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c));
-                                      return {
-                                        ...m,
-                                        declaredMedicalHistory: [...baseVal, val]
-                                      };
-                                    }));
-                                  }}
-                                />
-                              </div>
-                            )}
-                          </div>
-
-                          {/* NOT Declared Medical History */}
-                          <div className="col-span-3">
-                            <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-2">NOT Declared Medical History</label>
-                            <div className="flex flex-wrap gap-x-6 gap-y-2">
-                              {['BP', 'Sugar', 'Heart', 'Thyroid', 'Others'].map((condition) => {
-                                const isOthers = condition === 'Others';
-                                const current = member.notDeclaredMedicalHistory || [];
-                                const isSelected = isOthers
-                                  ? current.some((c: string) => !['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c))
-                                  : current.includes(condition);
-                                return (
-                                  <label key={condition} className="flex flex-wrap items-center gap-1.5 cursor-pointer select-none">
-                                    <input
-                                      type="checkbox"
-                                      className="accent-orange-500 w-3.5 h-3.5"
-                                      checked={isSelected}
-                                      onChange={() => {
-                                        setFamilyMembers(prev => prev.map((m, i) => {
-                                          if (i !== idx) return m;
-                                          const list: string[] = m.notDeclaredMedicalHistory || [];
-                                          if (isOthers) {
-                                            if (isSelected) {
-                                              return {
-                                                ...m,
-                                                notDeclaredMedicalHistory: list.filter((c: string) => ['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c))
-                                              };
-                                            } else {
-                                              return {
-                                                ...m,
-                                                notDeclaredMedicalHistory: [...list, '']
-                                              };
-                                            }
-                                          } else {
-                                            return {
-                                              ...m,
-                                              notDeclaredMedicalHistory: isSelected
-                                                ? list.filter((c: string) => c !== condition)
-                                                : [...list, condition]
-                                            };
-                                          }
-                                        }));
-                                      }}
-                                    />
-                                    <span className="text-xs text-slate-600 font-medium">{condition}</span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                            {(member.notDeclaredMedicalHistory || []).some((c: string) => !['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c)) && (
-                              <div className="mt-2 animate-fadeIn">
-                                <input
-                                  type="text"
-                                  className="input w-full text-xs py-1 px-2.5"
-                                  placeholder="Type medical conditions..."
-                                  value={(member.notDeclaredMedicalHistory || []).find((c: string) => !['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c)) || ''}
-                                  onChange={e => {
-                                    const val = e.target.value;
-                                    setFamilyMembers(prev => prev.map((m, i) => {
-                                      if (i !== idx) return m;
-                                      const current: string[] = m.notDeclaredMedicalHistory || [];
-                                      const baseVal = current.filter((c: string) => ['BP', 'Sugar', 'Heart', 'Thyroid'].includes(c));
-                                      return {
-                                        ...m,
-                                        notDeclaredMedicalHistory: [...baseVal, val]
-                                      };
-                                    }));
-                                  }}
-                                />
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Details of Medical History */}
-                          <div className="col-span-3">
-                            <label className="label text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Details of Medical History</label>
-                            <textarea
-                              className="input w-full resize-none"
-                              rows={2}
-                              placeholder="Add any additional medical history details..."
-                              value={member.medicalHistoryDetails || ''}
-                              onChange={e => setFamilyMembers(prev => prev.map((m, i) => i === idx ? { ...m, medicalHistoryDetails: e.target.value } : m))}
-                            />
-                          </div>
-                        </div>
                       </div>
                     ))}
 
-                    {!editContactId && (
-                      <button
-                        type="button"
-                        onClick={() => setFamilyMembers(prev => [...(prev.length === 0 ? [createEmptyFamilyMember()] : prev), createEmptyFamilyMember()])}
-                        className="w-full py-3 border-2 border-dashed border-purple-200 hover:border-purple-400 bg-purple-50/40 hover:bg-purple-50 text-purple-700 font-bold text-xs rounded-2xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs hover:shadow-xs"
-                      >
-                        + Add Another Family Member
-                      </button>
-                    )}
                   </div>
                 </fieldset>
               </div>
@@ -4625,21 +5439,37 @@ export default function Leads() {
       <Modal
         open={detailOpen}
         onClose={() => { setDetailOpen(false); setDetailTarget(null); }}
-        title={detailTarget ? `${detailTarget.contact?.firstName ?? ''} ${detailTarget.contact?.lastName ?? ''}` : 'Lead Details'}
+        title={(() => {
+          if (!detailTarget) return 'Lead Details';
+          const info = getLeadContactDetails(detailTarget, leadsFlat, contactsList);
+          return info.fullName || 'Lead Details';
+        })()}
+        subtitle={(() => {
+          if (!detailTarget) return undefined;
+          const info = getLeadContactDetails(detailTarget, leadsFlat, contactsList);
+          return info.phone ? `Contact: ${info.phone}` : undefined;
+        })()}
         size="xl"
+        heightClass="h-[88vh] max-h-[760px] min-h-[580px]"
       >
         {detailTarget && (
-          <LeadDetailPopup
-            lead={detailTarget}
-            tab={detailTab}
-            onTabChange={setDetailTab}
-            employees={employeesList}
-            allLeads={leadsFlat}
-            isOwner={isOwner}
-            onEdit={() => { setDetailOpen(false); openEdit(detailTarget); }}
-            onTriggerPolicyCreation={triggerPolicyCreationForLead}
-            onUpdateLead={handleLeadDetailUpdated}
-          />
+          <div className="h-full flex flex-col min-h-0">
+            <LeadDetailPopup
+              lead={detailTarget}
+              tab={detailTab}
+              onTabChange={setDetailTab}
+              employees={employeesList}
+              allLeads={leadsFlat}
+              contactsList={contactsList}
+              isOwner={isOwner}
+              onEdit={() => { setDetailOpen(false); openEdit(detailTarget); }}
+              onTriggerPolicyCreation={triggerPolicyCreationForLead}
+              onUpdateLead={handleLeadDetailUpdated}
+              onCall={handleCall}
+              onWhatsApp={handleWhatsApp}
+              onWhatsAppTemplate={handleOpenWaModal}
+            />
+          </div>
         )}
       </Modal>
 
@@ -4684,61 +5514,43 @@ export default function Leads() {
               />
             </div>
 
-            {/* Policy Type (Select category) */}
+            {/* Policy Type (Text Input) */}
             <div className="flex flex-col gap-1 col-span-2 md:col-span-1">
               <label className="label">Policy Type *</label>
-              <select
+              <input
+                type="text"
                 className="input h-10 text-xs rounded-xl bg-white border border-slate-200"
                 value={policySelectedType}
-                onChange={e => {
-                  setPolicySelectedType(e.target.value);
-                  setPolicySelectedCompany('');
-                  setPolicySelectedPlanId('');
-                }}
+                onChange={e => setPolicySelectedType(e.target.value)}
+                placeholder="e.g. Life Insurance, Health Insurance"
                 required
-              >
-                <option value="">Select Type</option>
-                {availableTypes.map(t => (
-                  <option key={t} value={t}>{t === 'HEALTH' ? 'Health Insurance' : t === 'LIFE' ? 'Life Insurance' : t}</option>
-                ))}
-              </select>
+              />
             </div>
 
-            {/* Insurance Company */}
+            {/* Insurance Company (Text Input) */}
             <div className="flex flex-col gap-1 col-span-2 md:col-span-1">
               <label className="label">Insurance Company *</label>
-              <select
+              <input
+                type="text"
                 className="input h-10 text-xs rounded-xl bg-white border border-slate-200"
                 value={policySelectedCompany}
-                onChange={e => {
-                  setPolicySelectedCompany(e.target.value);
-                  setPolicySelectedPlanId('');
-                }}
-                disabled={!policySelectedType}
+                onChange={e => setPolicySelectedCompany(e.target.value)}
+                placeholder="e.g. LIC, HDFC Life"
                 required
-              >
-                <option value="">Select Company</option>
-                {availableCompanies.map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
+              />
             </div>
 
-            {/* Insurance Plan */}
+            {/* Insurance Plan (Text Input) */}
             <div className="flex flex-col gap-1 col-span-2 md:col-span-1">
               <label className="label">Insurance Plan *</label>
-              <select
+              <input
+                type="text"
                 className="input h-10 text-xs rounded-xl bg-white border border-slate-200"
                 value={policySelectedPlanId}
                 onChange={e => setPolicySelectedPlanId(e.target.value)}
-                disabled={!policySelectedCompany}
+                placeholder="e.g. Jeevan Anand"
                 required
-              >
-                <option value="">Select Plan</option>
-                {availablePlans.map((p: any) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
+              />
             </div>
 
             {/* Sum Assured */}
@@ -4826,10 +5638,32 @@ export default function Leads() {
   );
 }
 
-// ── Helper to filter assignable employees (excludes current client, Super Admin / Owner) ──
 export function getAssignableEmployees(empList: any[] = [], currentLeadOrContact?: any, otherLeadsOrContacts: any[] = []): any[] {
   const rawList = Array.isArray(empList) ? [...empList] : [];
   const contactsPool = Array.isArray(otherLeadsOrContacts) ? otherLeadsOrContacts : [];
+
+  // Add current logged in user / owner if available
+  try {
+    const currentUser = useAuthStore.getState().user;
+    if (currentUser) {
+      const curId = currentUser.id || (currentUser as any)._id;
+      const curEmail = currentUser.email || '';
+      const curFn = currentUser.firstName || '';
+      const curLn = currentUser.lastName || '';
+      const curFullName = `${curFn} ${curLn}`.trim() || curEmail || 'Owner';
+      if (!rawList.some((e: any) => String(e.userId || e.id || e.user?.id) === String(curId) || (curEmail && (e.email || e.user?.email) === curEmail))) {
+        rawList.unshift({
+          id: curId,
+          userId: curId,
+          firstName: curFn,
+          lastName: curLn,
+          email: curEmail,
+          name: curFullName,
+          role: currentUser.role || 'OWNER'
+        });
+      }
+    }
+  } catch (e) {}
 
   // Add other client/lead names from the system so they can be assigned if needed
   contactsPool.forEach((item: any) => {
@@ -4911,23 +5745,7 @@ export function getAssignableEmployees(empList: any[] = [], currentLeadOrContact
 
     if (empName && seenNames.has(empName)) return false;
 
-    // 1. Exclude Super Admin / Owner / System Admins (the assigners)
-    if (
-      role === 'SUPER_ADMIN' ||
-      role === 'OWNER' ||
-      empName.includes('super admin') ||
-      empName.includes('superadmin') ||
-      empName === 'owner' ||
-      empName === 'administrator' ||
-      designation.includes('super admin') ||
-      designation.includes('owner') ||
-      email.includes('superadmin') ||
-      email.startsWith('admin@')
-    ) {
-      return false;
-    }
-
-    // 2. Exclude the current Lead / Client themselves (match ID, first name, last name, normalized name, phone, or email)
+    // Exclude the current Lead / Client themselves (match ID, first name, last name, normalized name, phone, or email)
     if (currentLeadId && (id.toLowerCase() === currentLeadId || (currentLeadId.startsWith('fs_') && id.toLowerCase() === currentLeadId.replace('fs_', '')))) {
       return false;
     }
@@ -5124,14 +5942,17 @@ export function getAssignerDisplayName(item: any, empList?: any[]): string | nul
 }
 
 // ── Kanban Card ───────────────────────────────────────────────────────────────
-function KanbanCard({ card, employeesList, onEdit, onDelete, onOpen, onCall, onWhatsApp }: {
+function KanbanCard({ card, employeesList, allLeadsList, contactsList, onEdit, onDelete, onOpen, onCall, onWhatsApp, onOpenTemplate }: {
   card: any;
   employeesList?: any[];
+  allLeadsList?: any[];
+  contactsList?: any[];
   onEdit: (c: any) => void;
   onDelete: (c: any) => void;
   onOpen: (c: any) => void;
   onCall: (phone?: string) => void;
   onWhatsApp: (lead: any, phone?: string) => void;
+  onOpenTemplate?: (lead: any, phone?: string) => void;
 }) {
   let formattedDate = '';
   try {
@@ -5154,12 +5975,20 @@ function KanbanCard({ card, employeesList, onEdit, onDelete, onOpen, onCall, onW
   const assignerName = getAssignerDisplayName(card, employeesList);
   const hotness = deriveHotness(card);
   const hotnessConf = HOTNESS_CONFIG[hotness];
-
-  const clientFullName = (card.contact?.firstName || card.contact?.lastName)
-    ? `${card.contact?.firstName || ''} ${card.contact?.lastName || ''}`.trim()
-    : (card.name || card.fullName || card.clientName || 'Lead').trim();
-
-  const phoneNum = card.contact?.phone || card.phone || card.mobile || '';
+  const contactInfo = getLeadContactDetails(card, allLeadsList, contactsList);
+  const isGeneric = (n?: string) => !n || n === 'Website Lead' || n === 'Contact Lead' || n === 'Lead' || String(n).startsWith('Lead (');
+  const clientFullName = !isGeneric(card.fullName)
+    ? card.fullName
+    : (!isGeneric(card.name)
+      ? card.name
+      : (!isGeneric(card.contact?.fullName)
+        ? card.contact.fullName
+        : (!isGeneric(card.contact?.name)
+          ? card.contact.name
+          : (!isGeneric(contactInfo.fullName)
+            ? contactInfo.fullName
+            : (card.contact?.firstName ? `${card.contact.firstName} ${card.contact.lastName || ''}`.trim() : 'Website Lead')))));
+  const phoneNum = card.phone || card.mobile || card.contact?.phone || card.contact?.mobile || contactInfo.phone || '';
   const productName = card.plan?.name || (card.interests && card.interests.length > 0 ? card.interests.join(', ') : 'Mutual Funds');
   const premiumVal = Number(card.premiumBudget || card.expectedPremium || 0);
 
@@ -5192,7 +6021,11 @@ function KanbanCard({ card, employeesList, onEdit, onDelete, onOpen, onCall, onW
   return (
     <div
       draggable
-      onDragStart={e => e.dataTransfer.setData('cardId', card.id)}
+      onDragStart={e => {
+        e.dataTransfer.setData('cardId', String(card.id));
+        e.dataTransfer.setData('text/plain', String(card.id));
+        e.dataTransfer.effectAllowed = 'move';
+      }}
       onClick={() => onOpen(card)}
       className={clsx(
         'bg-white rounded-xl p-2.5 sm:p-3 border shadow-2xs hover:shadow-md transition-all duration-150 flex flex-col gap-1.5 group relative cursor-grab active:cursor-grabbing select-none',
@@ -5232,11 +6065,13 @@ function KanbanCard({ card, employeesList, onEdit, onDelete, onOpen, onCall, onW
       {/* Line 2: Created Date (Left) + Client Phone Number (Right) */}
       <div className="flex items-center justify-between gap-1 text-[10px] font-semibold leading-none">
         <span className="text-slate-400">Created {formattedDate}</span>
-        {phoneNum && (
+        {phoneNum ? (
           <span className="text-slate-700 font-bold flex items-center gap-1 bg-slate-50 border border-slate-200/70 px-1.5 py-0.5 rounded-md">
             <Phone size={9} className="text-purple-600" />
             {phoneNum}
           </span>
+        ) : (
+          <span className="text-slate-300 font-medium text-[9px]">—</span>
         )}
       </div>
 
@@ -5274,7 +6109,11 @@ function KanbanCard({ card, employeesList, onEdit, onDelete, onOpen, onCall, onW
           <button onClick={() => onCall(phoneNum)} className="p-1 rounded bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-600 cursor-pointer" title="Call">
             <Phone size={10} />
           </button>
-          <button onClick={() => onWhatsApp(card, phoneNum)} className="p-1 rounded bg-green-50 border border-green-200 hover:bg-green-100 text-green-600 cursor-pointer" title="WhatsApp">
+          <button
+            onClick={() => onWhatsApp(card, phoneNum)}
+            className="p-1 rounded bg-green-50 border border-green-200 hover:bg-green-100 text-green-600 cursor-pointer"
+            title="WhatsApp Message & Templates"
+          >
             <MessageCircle size={10} />
           </button>
         </div>
@@ -5284,9 +6123,11 @@ function KanbanCard({ card, employeesList, onEdit, onDelete, onOpen, onCall, onW
 }
 
 // ── Table Component ───────────────────────────────────────────────────────────
-function LeadsTable({ data, employeesList, loading, visibleColumns, sortKey, sortDir, onSort, onRowClick, onEdit, onDelete, onCall, onWhatsApp, onCreate }: {
+function LeadsTable({ data, employeesList, allLeadsList, contactsList, loading, visibleColumns, sortKey, sortDir, onSort, onRowClick, onEdit, onDelete, onCall, onWhatsApp, onOpenTemplate, onCreate }: {
   data: any[];
   employeesList?: any[];
+  allLeadsList?: any[];
+  contactsList?: any[];
   loading: boolean;
   visibleColumns: Record<string, boolean>;
   sortKey: string;
@@ -5297,6 +6138,7 @@ function LeadsTable({ data, employeesList, loading, visibleColumns, sortKey, sor
   onDelete: (r: any) => void;
   onCall: (phone?: string) => void;
   onWhatsApp: (lead: any, phone?: string) => void;
+  onOpenTemplate?: (lead: any, phone?: string) => void;
   onCreate?: () => void;
 }) {
   const sortableKeys = ['name', 'plan', 'premiumBudget', 'followUpDate', 'stage'];
@@ -5305,14 +6147,27 @@ function LeadsTable({ data, employeesList, loading, visibleColumns, sortKey, sor
     {
       key: 'name', label: 'Client Name',
       render: (r: any) => {
-        const clientName = (r.contact?.firstName || r.contact?.lastName)
-          ? `${r.contact?.firstName || ''} ${r.contact?.lastName || ''}`.trim()
-          : (r.name || r.fullName || r.clientName || 'Lead').trim();
-        const clientPhone = r.contact?.phone || r.phone || r.mobile || r.whatsappNumber || r.callingNumber || '';
+        const contactInfo = getLeadContactDetails(r, allLeadsList, contactsList);
+        const isGeneric = (n?: string) => !n || n === 'Website Lead' || n === 'Contact Lead' || n === 'Lead';
+        const clientFullName = !isGeneric(r.fullName)
+          ? r.fullName
+          : (!isGeneric(r.name)
+            ? r.name
+            : (!isGeneric(r.contact?.fullName)
+              ? r.contact.fullName
+              : (!isGeneric(r.contact?.name)
+                ? r.contact.name
+                : (!isGeneric(contactInfo.fullName)
+                  ? contactInfo.fullName
+                  : (contactInfo.phone ? `Lead (${contactInfo.phone})` : 'Website Lead')))));
+        const phoneNum = r.phone || r.mobile || r.contact?.phone || r.contact?.mobile || contactInfo.phone || '';
+
         return (
-          <div>
-            <p className="font-semibold text-gray-900 text-[13px]">{clientName}</p>
-            {clientPhone && <p className="text-[11px] text-gray-400">{clientPhone}</p>}
+          <div className="flex items-center gap-2">
+            <div>
+              <p className="font-bold text-gray-900 text-[13px]">{clientFullName}</p>
+              {phoneNum && <p className="text-[11px] text-gray-500 font-medium">{phoneNum}</p>}
+            </div>
           </div>
         );
       },
@@ -5382,10 +6237,11 @@ function LeadsTable({ data, employeesList, loading, visibleColumns, sortKey, sor
       render: (r: any) => (
         <div className="flex items-center justify-center gap-1.5 whitespace-nowrap" onClick={e => e.stopPropagation()}>
           <button
-            title="Share on WhatsApp"
+            title="WhatsApp Message & Templates"
             className="p-1.5 rounded-xl bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-bold flex items-center justify-center cursor-pointer shadow-sm shadow-green-500/20 hover:shadow-md hover:scale-105 transition-all"
             onClick={() => {
-              const phoneToUse = r.contact?.phone || r.phone || r.mobile || r.whatsappNumber || r.callingNumber || '';
+              const contactInfo = getLeadContactDetails(r, allLeadsList, contactsList);
+              const phoneToUse = r.phone || r.mobile || r.contact?.phone || r.contact?.mobile || r.whatsappNumber || r.callingNumber || contactInfo.phone || '';
               onWhatsApp(r, phoneToUse);
             }}
           >
@@ -5483,16 +6339,20 @@ function LeadsTable({ data, employeesList, loading, visibleColumns, sortKey, sor
 }
 
 // ── Lead Detail Popup ─────────────────────────────────────────────────────────
-function LeadDetailPopup({ lead, tab, onTabChange, employees, allLeads, isOwner, onEdit, onTriggerPolicyCreation, onUpdateLead }: {
+function LeadDetailPopup({ lead, tab, onTabChange, employees, allLeads, contactsList, isOwner, onEdit, onTriggerPolicyCreation, onUpdateLead, onCall, onWhatsApp, onWhatsAppTemplate }: {
   lead: any;
   tab: 'overview' | 'comments' | 'stage';
   onTabChange: (t: 'overview' | 'comments' | 'stage') => void;
   employees: any[];
   allLeads?: any[];
+  contactsList?: any[];
   isOwner: boolean;
   onEdit: () => void;
   onTriggerPolicyCreation?: (lead: any) => void;
   onUpdateLead?: (lead: any) => void;
+  onCall?: (phone?: string) => void;
+  onWhatsApp?: (lead: any, phone?: string) => void;
+  onWhatsAppTemplate?: (lead: any, phone?: string) => void;
 }) {
   const qc = useQueryClient();
   const moveStage = useMoveLeadStage();
@@ -5892,12 +6752,13 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, allLeads, isOwner,
   });
 
   const handleStageChange = async (newStage: string) => {
-    if (newStage === 'PROCESS_COMPLETED') {
-      if (onTriggerPolicyCreation) {
-        onTriggerPolicyCreation(fullLead || lead);
-        return;
-      }
-    }
+    // Policy creation is no longer triggered automatically here
+    // if (newStage === 'PROCESS_COMPLETED') {
+    //   if (onTriggerPolicyCreation) {
+    //     onTriggerPolicyCreation(fullLead || lead);
+    //     return;
+    //   }
+    // }
     await moveStage.mutateAsync({ id: lead.id, stage: newStage });
     toast.success('Stage updated');
     qc.invalidateQueries();
@@ -5916,11 +6777,55 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, allLeads, isOwner,
     }
   };
 
-  const c = fullLead.contact;
-  const hotness = deriveHotness(fullLead);
+  const matchedFromList = useMemo(() => {
+    if (!contactsList || !contactsList.length) return null;
+    const cid = String(contactId || '').trim();
+    const cPhone = String(fullLead?.phone || lead?.phone || fullLead?.mobile || lead?.mobile || '').replace(/\D/g, '').slice(-10);
+    const cEmail = String(fullLead?.email || lead?.email || '').trim().toLowerCase();
+    return contactsList.find((c: any) => {
+      const idMatches = cid && (c.id === cid || c._id === cid);
+      if (idMatches) return true;
+      const phoneMatches = cPhone && String(c.phone || c.mobile || '').replace(/\D/g, '').slice(-10) === cPhone;
+      if (phoneMatches) return true;
+      const emailMatches = cEmail && String(c.email || '').trim().toLowerCase() === cEmail;
+      if (emailMatches) return true;
+      return false;
+    });
+  }, [contactsList, contactId, fullLead, lead]);
+
+  const leadContactObj = typeof lead?.contact === 'object' && lead?.contact ? lead.contact : {};
+  const fullLeadContactObj = typeof fullLead?.contact === 'object' && fullLead?.contact ? fullLead.contact : {};
+  const fetchedContactObj = typeof contactData?.data === 'object' && contactData?.data ? contactData.data : (typeof contactData === 'object' && contactData ? contactData : {});
+
+  const mergedContact = {
+    ...matchedFromList,
+    ...leadContactObj,
+    ...fullLeadContactObj,
+    ...fetchedContactObj,
+    firstName: fetchedContactObj?.firstName || fullLeadContactObj?.firstName || leadContactObj?.firstName || matchedFromList?.firstName || '',
+    lastName: fetchedContactObj?.lastName || fullLeadContactObj?.lastName || leadContactObj?.lastName || matchedFromList?.lastName || '',
+    name: fetchedContactObj?.name || fullLeadContactObj?.name || leadContactObj?.name || matchedFromList?.name || '',
+    phone: fetchedContactObj?.phone || fetchedContactObj?.mobile || fullLeadContactObj?.phone || fullLeadContactObj?.mobile || leadContactObj?.phone || leadContactObj?.mobile || matchedFromList?.phone || matchedFromList?.mobile || fullLead?.phone || lead?.phone || '',
+    email: fetchedContactObj?.email || fullLeadContactObj?.email || leadContactObj?.email || matchedFromList?.email || fullLead?.email || lead?.email || '',
+  };
+
+  const mergedLead = {
+    ...lead,
+    ...fullLead,
+    contact: mergedContact,
+    name: fullLead?.name || lead?.name || mergedContact?.fullName || `${mergedContact?.firstName || ''} ${mergedContact?.lastName || ''}`.trim() || fullLead?.clientName || lead?.clientName || fullLead?.customerName || lead?.customerName,
+    fullName: fullLead?.fullName || lead?.fullName || mergedContact?.fullName || `${mergedContact?.firstName || ''} ${mergedContact?.lastName || ''}`.trim() || fullLead?.clientName || lead?.clientName || fullLead?.customerName || lead?.customerName,
+    clientName: fullLead?.clientName || lead?.clientName || mergedContact?.fullName || `${mergedContact?.firstName || ''} ${mergedContact?.lastName || ''}`.trim(),
+    customerName: fullLead?.customerName || lead?.customerName || mergedContact?.fullName || `${mergedContact?.firstName || ''} ${mergedContact?.lastName || ''}`.trim(),
+    phone: fullLead?.phone || lead?.phone || fullLead?.mobile || lead?.mobile || mergedContact?.phone || mergedContact?.mobile || mergedContact?.contactNumber,
+    email: fullLead?.email || lead?.email || mergedContact?.email,
+  };
+
+  const contactInfo = getLeadContactDetails(mergedLead, allLeads, contactsList);
+  const hotness = deriveHotness(mergedLead);
   const hotnessConf = HOTNESS_CONFIG[hotness];
-  const assigneeName = getAssigneeDisplayName(fullLead, employees);
-  const assignerName = getAssignerDisplayName(fullLead, employees);
+  const assigneeName = getAssigneeDisplayName(mergedLead, employees);
+  const assignerName = getAssignerDisplayName(mergedLead, employees);
 
   const tabs: { id: 'overview' | 'comments' | 'stage'; label: string }[] = [
     { id: 'overview', label: 'Overview' },
@@ -5929,39 +6834,103 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, allLeads, isOwner,
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="h-full flex flex-col space-y-3 min-h-0">
       {/* Header */}
-      <div className="flex items-start justify-between bg-gradient-to-r from-slate-50 to-blue-50/30 rounded-xl p-4 border border-slate-100">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-lg font-bold">
-            {c?.firstName?.[0]?.toUpperCase() ?? '?'}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-gradient-to-r from-slate-50 via-blue-50/20 to-indigo-50/20 rounded-2xl p-3.5 border border-slate-200/80 shadow-xs shrink-0">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-bold shadow-xs shrink-0 ring-1 ring-blue-200">
+            {contactInfo.singleInitial || contactInfo.initials?.[0] || 'L'}
           </div>
-          <div>
-            <h3 className="text-base font-bold text-gray-900">{c?.firstName} {c?.lastName}</h3>
-            <div className="flex flex-wrap items-center gap-2 mt-1 flex-wrap">
-              <span className={clsx('text-[9px] px-2 py-0.5 rounded-full font-bold border uppercase tracking-wider', BADGE_STYLES[fullLead.stage] ?? 'bg-gray-100 text-gray-700 border-gray-200')}>
-                {STAGE_LABELS[fullLead.stage] ?? fullLead.stage}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-base font-bold text-slate-900 truncate" title={contactInfo.fullName}>
+                {contactInfo.fullName}
+              </h3>
+              {contactInfo.phone && (
+                <a
+                  href={`tel:${contactInfo.phone}`}
+                  className="inline-flex items-center gap-1 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-lg transition-colors shadow-2xs"
+                >
+                  <Phone size={11} className="text-blue-600" />
+                  {contactInfo.phone}
+                </a>
+              )}
+              {contactInfo.email && (
+                <a
+                  href={`mailto:${contactInfo.email}`}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2 py-0.5 rounded-lg transition-colors"
+                >
+                  <Mail size={11} className="text-slate-500" />
+                  {contactInfo.email}
+                </a>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 mt-1">
+              {contactInfo.leadNumStr && (
+                <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-blue-100 text-blue-700 border border-blue-200 shadow-2xs">
+                  {contactInfo.leadNumStr}
+                </span>
+              )}
+              <span className={clsx('text-[10px] px-2 py-0.5 rounded font-bold border uppercase tracking-wider shadow-2xs', BADGE_STYLES[mergedLead.stage] ?? 'bg-blue-50 text-blue-700 border-blue-200')}>
+                {STAGE_LABELS[mergedLead.stage] ?? mergedLead.stage}
               </span>
-              <span className={clsx('flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded border font-bold', hotnessConf.cls)}>
+              <span className={clsx('flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded border font-bold shadow-2xs', hotnessConf.cls)}>
                 <HotnessIcon level={hotness} /> {hotnessConf.label}
               </span>
-              {fullLead.plan && <span className="text-[10px] text-slate-500">• {fullLead.plan.name}</span>}
-              <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200/80 px-2 py-0.5 rounded-full flex items-center gap-1">
+              {(mergedLead.plan?.name || mergedLead.planName) && (
+                <span className="text-xs text-slate-600 font-semibold flex items-center gap-1">
+                  • {mergedLead.plan?.name || mergedLead.planName}
+                </span>
+              )}
+              <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200/80 px-2 py-0.5 rounded-full flex items-center gap-1 shadow-2xs">
                 <UserCircle2 size={11} className="text-purple-600" /> {assigneeName}
               </span>
             </div>
           </div>
         </div>
-        <button onClick={onEdit} className="btn-secondary text-[10px] sm:text-xs flex flex-wrap items-center gap-1">
-          <Pencil size={12} /> Contact
-        </button>
+
+        <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+          {contactInfo.phone && (
+            <>
+              <button
+                type="button"
+                onClick={() => onCall?.(contactInfo.phone)}
+                className="p-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                title="Call"
+              >
+                <Phone size={13} className="text-blue-600" />
+              </button>
+              <button
+                type="button"
+                onClick={() => onWhatsApp?.(fullLead || lead, contactInfo.phone)}
+                className="px-2 py-1.5 rounded-xl bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 shadow-2xs transition-colors cursor-pointer flex items-center gap-1"
+                title="Direct WhatsApp"
+              >
+                <MessageCircle size={13} className="text-green-600" />
+                <span className="text-[10px] font-bold text-green-700 hidden sm:inline">Direct WA</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onWhatsAppTemplate?.(fullLead || lead, contactInfo.phone)}
+                className="px-2 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 shadow-2xs transition-colors cursor-pointer flex items-center gap-1"
+                title="Select WhatsApp Template"
+              >
+                <FileText size={13} className="text-purple-600" />
+                <span className="text-[10px] font-bold text-purple-700 hidden sm:inline">Templates</span>
+              </button>
+            </>
+          )}
+          <button onClick={onEdit} className="btn-secondary text-[10px] sm:text-xs flex items-center gap-1 font-bold">
+            <Pencil size={12} /> Contact
+          </button>
+        </div>
       </div>
 
       {/* Tab nav */}
-      <div className="flex border-b border-gray-200">
+      <div className="flex border-b border-gray-200 shrink-0">
         {tabs.map(t => (
           <button key={t.id} onClick={() => onTabChange(t.id)}
-            className={clsx('px-4 py-2 text-xs font-semibold border-b-2 transition-colors',
+            className={clsx('px-4 py-2 text-xs font-semibold border-b-2 transition-colors cursor-pointer',
               tab === t.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800')}>
             {t.label}
           </button>
@@ -5969,7 +6938,7 @@ function LeadDetailPopup({ lead, tab, onTabChange, employees, allLeads, isOwner,
       </div>
 
       {/* Compact tab content container */}
-      <div className="max-h-[75vh] overflow-y-auto custom-scrollbar pr-1 pb-2">
+      <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 pb-2 min-h-0">
         {/* Overview */}
         {tab === 'overview' && (
           <div className="space-y-3 pb-2">

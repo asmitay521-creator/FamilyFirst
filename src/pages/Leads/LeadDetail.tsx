@@ -146,10 +146,10 @@ export default function LeadDetail() {
   const triggerPolicyCreationForLead = (leadObj: any) => {
     const plan = leadObj.plan || {};
     
-    if (plan.id) {
+    if (plan.id || plan.name) {
       setPolicySelectedType(plan.category || '');
       setPolicySelectedCompany(plan.company?.name || '');
-      setPolicySelectedPlanId(plan.id);
+      setPolicySelectedPlanId(plan.name || plan.id || '');
     } else {
       setPolicySelectedType('');
       setPolicySelectedCompany('');
@@ -172,7 +172,7 @@ export default function LeadDetail() {
     const l = lead?.data ?? lead;
     if (!l) return;
     if (!policySelectedPlanId) {
-      toast.error('Please select an insurance plan');
+      toast.error('Please enter an insurance plan');
       return;
     }
     
@@ -403,61 +403,43 @@ export default function LeadDetail() {
               />
             </div>
 
-            {/* Policy Type (Select category) */}
+            {/* Policy Type (Text Input) */}
             <div className="flex flex-col gap-1 col-span-2 md:col-span-1">
               <label className="label">Policy Type <span className="text-red-500">*</span></label>
-              <select
+              <input
+                type="text"
                 className="input h-10 text-xs rounded-xl bg-white border border-slate-200"
                 value={policySelectedType}
-                onChange={e => {
-                  setPolicySelectedType(e.target.value);
-                  setPolicySelectedCompany('');
-                  setPolicySelectedPlanId('');
-                }}
+                onChange={e => setPolicySelectedType(e.target.value)}
+                placeholder="e.g. Life Insurance, Health Insurance"
                 required
-              >
-                <option value="">Select Type</option>
-                {availableTypes.map(t => (
-                  <option key={t} value={t}>{t === 'HEALTH' ? 'Health Insurance' : t === 'LIFE' ? 'Life Insurance' : t}</option>
-                ))}
-              </select>
+              />
             </div>
 
-            {/* Insurance Company */}
+            {/* Insurance Company (Text Input) */}
             <div className="flex flex-col gap-1 col-span-2 md:col-span-1">
               <label className="label">Insurance Company <span className="text-red-500">*</span></label>
-              <select
+              <input
+                type="text"
                 className="input h-10 text-xs rounded-xl bg-white border border-slate-200"
                 value={policySelectedCompany}
-                onChange={e => {
-                  setPolicySelectedCompany(e.target.value);
-                  setPolicySelectedPlanId('');
-                }}
-                disabled={!policySelectedType}
+                onChange={e => setPolicySelectedCompany(e.target.value)}
+                placeholder="e.g. LIC, HDFC Life"
                 required
-              >
-                <option value="">Select Company</option>
-                {availableCompanies.map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
+              />
             </div>
 
-            {/* Insurance Plan */}
+            {/* Insurance Plan (Text Input) */}
             <div className="flex flex-col gap-1 col-span-2 md:col-span-1">
               <label className="label">Insurance Plan <span className="text-red-500">*</span></label>
-              <select
+              <input
+                type="text"
                 className="input h-10 text-xs rounded-xl bg-white border border-slate-200"
                 value={policySelectedPlanId}
                 onChange={e => setPolicySelectedPlanId(e.target.value)}
-                disabled={!policySelectedCompany}
+                placeholder="e.g. Jeevan Anand"
                 required
-              >
-                <option value="">Select Plan</option>
-                {availablePlans.map((p: any) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
+              />
             </div>
 
             {/* Sum Assured */}

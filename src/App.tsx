@@ -75,7 +75,8 @@ const DeletionRequests = lazyWithRetry(() => import('@pages/DeletionRequests'));
 const GlobalSearch   = lazyWithRetry(() => import('@pages/Search'));
 const FirmProfile    = lazyWithRetry(() => import('@pages/FirmProfile'));
 const Management     = lazyWithRetry(() => import('@pages/Management'));
-const PublicLeadForm = lazyWithRetry(() => import('@pages/PublicLeadForm'));
+const LeadFormGenerator = lazyWithRetry(() => import('@pages/Management/LeadFormGenerator'));
+import PublicLeadForm from '@pages/PublicLeadForm';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
 
@@ -183,10 +184,10 @@ export default function App() {
       {/* Public */}
       <Route path="/login" element={<Login />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
-      <Route path="/yojana" element={<Suspense fallback={<Loader />}><PublicLeadForm /></Suspense>} />
-      <Route path="/offer" element={<Suspense fallback={<Loader />}><PublicLeadForm /></Suspense>} />
-      <Route path="/pension-plan" element={<Suspense fallback={<Loader />}><PublicLeadForm /></Suspense>} />
-      <Route path="/lead-form" element={<Suspense fallback={<Loader />}><PublicLeadForm /></Suspense>} />
+      <Route path="/yojana" element={<PublicLeadForm />} />
+      <Route path="/offer" element={<PublicLeadForm />} />
+      <Route path="/pension-plan" element={<PublicLeadForm />} />
+      <Route path="/lead-form" element={<PublicLeadForm />} />
 
       {/* SuperAdmin */}
       <Route path="/superadmin/login" element={<SuperAdminLogin />} />
@@ -254,6 +255,8 @@ export default function App() {
         <Route path="commissions"  element={<OwnerRoute><PlanProtectedRoute feature="commissions"><Suspense fallback={<Loader />}><Commissions /></Suspense></PlanProtectedRoute></OwnerRoute>} />
         <Route path="whatsapp/*"   element={<AdminOrAuthorizedRoute permission="manage_whatsapp"><PlanProtectedRoute feature="whatsapp"><Suspense fallback={<Loader />}><WhatsApp /></Suspense></PlanProtectedRoute></AdminOrAuthorizedRoute>} />
         <Route path="management"   element={<Suspense fallback={<Loader />}><Management /></Suspense>} />
+        <Route path="management/lead-generator" element={<Suspense fallback={<Loader />}><LeadFormGenerator /></Suspense>} />
+        <Route path="lead-generator" element={<Suspense fallback={<Loader />}><LeadFormGenerator /></Suspense>} />
         <Route path="management/leads" element={<Suspense fallback={<Loader />}><Management /></Suspense>} />
         <Route path="management/seminars" element={<OwnerRoute><Suspense fallback={<Loader />}><Management /></Suspense></OwnerRoute>} />
         <Route path="management/*" element={<Suspense fallback={<Loader />}><Management /></Suspense>} />

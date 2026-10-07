@@ -150,7 +150,7 @@ export default function EmployeeAttendance() {
           if (sortKey === k) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
           else { setSortKey(k); setSortDir('asc'); }
         }}
-        onRowClick={r => navigate(`/employees/${r.id}`)}
+        onRowClick={() => {}}
       />
     </>
   );

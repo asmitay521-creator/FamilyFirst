@@ -962,9 +962,9 @@ export default function Dashboard() {
           </div>
 
           {/* ── Bottom-section: Recent Claims + Top Performing Agents ────────── */}
-          <div className="grid lg:grid-cols-3 gap-6">
+          <div className="grid lg:grid-cols-3 gap-6 items-start">
             {/* Recent Claims Table */}
-            <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 p-5 shadow-sm overflow-hidden flex flex-col justify-between">
+            <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 p-5 shadow-sm overflow-hidden flex flex-col">
               <SectionHeader
                 title="Recent Claims"
                 action="View All"
@@ -976,7 +976,7 @@ export default function Dashboard() {
                   <p className="text-sm font-medium">No claims recorded yet</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto -mx-5 -mb-5 mt-2">
+                <div className="overflow-x-auto -mx-5 -mb-5 mt-4">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-gray-50/70 border-b border-gray-100">
@@ -1015,7 +1015,7 @@ export default function Dashboard() {
             </div>
 
             {/* Top Performing Agents */}
-            <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm flex flex-col justify-between">
+            <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm flex flex-col">
               <SectionHeader
                 title="Active Employees &amp; Advisors"
                 action="View All"

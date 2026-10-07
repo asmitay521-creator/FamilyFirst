@@ -1,7 +1,7 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { policiesService, documentsService } from '@api/index';
-import { ArrowLeft, Plus, Download, FileText, Trash2, Users, CreditCard, Award, Shield, Upload, X } from 'lucide-react';
+import { ArrowLeft, Plus, Download, FileText, Trash2, Users, CreditCard, Award, Shield, Upload, X, Pencil } from 'lucide-react';
 import clsx from 'clsx';
 import Modal from '@comps/common/Modal';
 import { useState } from 'react';
@@ -257,9 +257,18 @@ export default function PolicyDetail() {
             {p.plan?.name} · {p.plan?.company?.name}
           </p>
         </div>
-        <Link to={`/contacts/${p.contactId}`} className="text-sm text-primary-600 hover:underline">
-          {p.contact?.firstName} {p.contact?.lastName}
-        </Link>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate(`/policies?action=edit&id=${p.id}`)}
+            className="px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs"
+          >
+            <Pencil size={13} />
+            Edit Policy
+          </button>
+          <Link to={`/contacts/${p.contactId}`} className="text-sm text-primary-600 hover:underline">
+            {p.contact?.firstName} {p.contact?.lastName}
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

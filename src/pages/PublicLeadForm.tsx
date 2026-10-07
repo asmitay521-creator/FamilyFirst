@@ -1,15 +1,57 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { db } from '../services/firebase';
-import { collection, doc, setDoc } from 'firebase/firestore';
-import { User, Phone, Mail, ShieldCheck, CheckCircle2, ArrowRight, PhoneCall, MessageCircle, Sparkles } from 'lucide-react';
+import { doc, setDoc } from 'firebase/firestore';
+import { User, Phone, Mail, ShieldCheck, CheckCircle2, ArrowRight, PhoneCall, MessageCircle, Sparkles, Tag, ChevronDown } from 'lucide-react';
+import { PRODUCT_OPTIONS } from '../utils/productOptions';
 
 export default function PublicLeadForm() {
+  const [searchParams] = useSearchParams();
+
+  // URL Query Parameters
+  const paramProduct = searchParams.get('product') || 'pension';
+  const paramAssignee = searchParams.get('assignee') || '';
+  const paramTitle = searchParams.get('title') ? decodeURIComponent(searchParams.get('title')!) : '';
+  const paramOffer = searchParams.get('offer') ? decodeURIComponent(searchParams.get('offer')!) : '';
+  const paramNoBanner = searchParams.get('nobanner') === '1';
+
+  // Form State
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
+  const [selectedProduct, setSelectedProduct] = useState(paramProduct);
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Sync state if url param changes
+  useEffect(() => {
+    if (paramProduct) setSelectedProduct(paramProduct);
+  }, [paramProduct]);
+
+  // Selected product object
+  const currentProdObj = PRODUCT_OPTIONS.find(p => p.id === selectedProduct) || PRODUCT_OPTIONS[1];
+
+  // Dynamic Headings based on product
+  const formTitle = paramTitle || (
+    selectedProduct === 'pension' ? 'पेन्शन व निवृत्ती योजनेची मोफत माहिती मिळवा' :
+    selectedProduct === 'health_general' ? 'आरोग्य विमा (Health Insurance) मोफत माहिती व कोटेशन' :
+    selectedProduct === 'term_insurance' ? 'टर्म इन्शुरन्स मोफत माहिती व कोटेशन' :
+    selectedProduct === 'child_future' ? 'मुलांचे शिक्षण व लग्न नियोजन फंड माहिती' :
+    selectedProduct === 'investment' ? 'गुंतवणूक व हमी बचत योजना माहिती' :
+    selectedProduct === 'motor' ? 'गाडी / वाहन विमा (Motor Insurance) कोटेशन' :
+    'विमा व गुंतवणूक योजनेची मोफत माहिती मिळवा'
+  );
+
+  const offerHeadline = paramOffer || (
+    selectedProduct === 'pension' ? 'पेन्शन व निवृत्ती नियोजन — रिटायरमेंटला मिळवा भरघोस फंड + नियमित पेन्शन' :
+    selectedProduct === 'health_general' ? '100% कॅशलेस हॉस्पिटलायझेशन, अमर्याद कव्हर व कुटुंबासाठी संपूर्ण आरोग्य सुरक्षा' :
+    selectedProduct === 'term_insurance' ? 'कमीत कमी प्रीमियममध्ये तुमच्या कुटुंबाला द्या संपूर्ण आर्थिक सुरक्षा' :
+    selectedProduct === 'child_future' ? 'मुलांचे डॉक्टर, इंजिनिअर व उच्च शिक्षणासाठी हमखास गॅरंटीड फंड' :
+    selectedProduct === 'investment' ? 'गुंतवणूक व हमी बचत योजना — सुरक्षित भविष्य आणि उत्तम परतावा' :
+    selectedProduct === 'motor' ? 'गाडी / वाहन विमा — सर्वोत्कृष्ट क्लेम सपोर्ट व तत्काळ पॉलिसी' :
+    'Family First — Financial Planning, Insurance & Investments'
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,7 +66,7 @@ export default function PublicLeadForm() {
     }
 
     if (!cleanPhone || cleanPhone.length < 10) {
-      setErrorMsg('कृपया वैध १० अंकी मोबाईल नंबर प्रविष्ट करा.');
+      setErrorMsg('कृपया वैध १० अंकी मोबाईल नंबर लिहा.');
       return;
     }
 
@@ -36,35 +78,46 @@ export default function PublicLeadForm() {
       const firstName = nameParts[0] || cleanName;
       const lastName = nameParts.slice(1).join(' ') || '';
 
-      const leadData = {
+      const leadData: Record<string, any> = {
         id: leadId,
         _id: leadId,
         firstName,
         lastName,
         name: cleanName,
-        phone: cleanPhone.startsWith('91') && cleanPhone.length > 10 ? cleanPhone : cleanPhone,
+        phone: cleanPhone,
         email: email.trim() || '',
-        source: 'WhatsApp Status',
-        leadSource: 'WhatsApp Status',
+        source: 'WhatsApp Share',
+        leadSource: 'WhatsApp Share',
         stage: 'TO_CONTACT',
         leadStage: 'To Contact',
         status: 'NEW',
         leadStatus: 'Interested',
-        notes: `WhatsApp Status Lead: ₹399/दिवस पेन्शन योजना माहितीसाठी चौकशी. नाव: ${cleanName}, फोन: ${cleanPhone}`,
-        interests: ['निवृत्ती वेतन / पेन्शन योजना (₹399/दिवस, ₹70 लाख फंड + ₹6 लाख पेन्शन)'],
-        productInterests: ['Pension Plan', 'Retirement Planning'],
+        notes: `Customer Lead: ${currentProdObj.name}. नाव: ${cleanName}, फोन: ${cleanPhone}`,
+        interests: [currentProdObj.name],
+        productInterests: [currentProdObj.nameEn || currentProdObj.name],
         isWebsiteLead: true,
-        tags: ['whatsapp-lead', 'pension-plan', 'status-enquiry'],
+        tags: ['customer-form', 'web-lead', (currentProdObj.badge || 'general').toLowerCase()],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
+
+      if (paramAssignee && paramAssignee.trim()) {
+        leadData.assignedEmployeeId = paramAssignee.trim();
+      }
+
+      // Ensure no undefined values are sent to Firebase
+      Object.keys(leadData).forEach((key) => {
+        if (leadData[key] === undefined) {
+          delete leadData[key];
+        }
+      });
 
       // Save to Firebase Firestore
       if (db) {
         await setDoc(doc(db, 'leads', leadId), leadData, { merge: true });
       }
 
-      // Also cache to local storage for immediate offline sync if on same domain
+      // Offline Cache Sync
       try {
         const localLeads = JSON.parse(localStorage.getItem('insumitra_custom_leads') || '[]');
         localStorage.setItem('insumitra_custom_leads', JSON.stringify([leadData, ...localLeads]));
@@ -73,68 +126,56 @@ export default function PublicLeadForm() {
       setSubmitted(true);
     } catch (err: any) {
       console.error('Lead submission error:', err);
-      setErrorMsg('माहिती पाठवताना अडचण आली. कृपया पुन्हा प्रयत्न करा किंवा थेट कॉल करा.');
+      setErrorMsg('माहिती पाठवताना अडचण आली. कृपया पुन्हा प्रयत्न करा किंवा थेट 8421702419 वर कॉल करा.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col items-center justify-center p-3 sm:p-6 relative overflow-hidden font-sans select-none">
+    <div className="min-h-screen w-full bg-[#0a0f1d] text-slate-100 flex items-center justify-center p-3 sm:p-4 relative overflow-x-hidden font-sans">
+      
       {/* Dynamic Background Glows */}
-      <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-emerald-600/20 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-blue-600/20 rounded-full blur-[120px] pointer-events-none" />
+      <div className="fixed top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-emerald-500/15 rounded-full blur-[140px] pointer-events-none" />
+      <div className="fixed bottom-10 right-1/4 w-[350px] h-[350px] bg-blue-600/15 rounded-full blur-[140px] pointer-events-none" />
 
-      {/* Main Container */}
-      <div className="w-full max-w-lg relative z-10 my-auto">
+      {/* Main Container - Snug and Centered */}
+      <div className="w-full max-w-md mx-auto relative z-10 flex flex-col items-center justify-center">
         
-        {/* Banner Card Preview */}
-        <div className="bg-gradient-to-r from-blue-900 via-indigo-950 to-slate-900 border border-blue-500/30 rounded-2xl p-4 mb-4 shadow-xl text-center">
-          <div className="inline-flex items-center gap-1.5 bg-yellow-400/20 text-yellow-300 border border-yellow-400/30 px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase mb-2">
-            <Sparkles className="w-3.5 h-3.5 text-yellow-400 animate-pulse" /> विशेष योजना ऑफर
-          </div>
-          <h1 className="text-xl sm:text-2xl font-extrabold text-white leading-snug">
-            रोज बचत करा <span className="text-yellow-400 underline decoration-yellow-400 font-black">₹399 रु.</span>
-          </h1>
-          <p className="text-xs sm:text-sm text-blue-200 mt-1 font-medium">
-            रिटायरमेंटला मिळवा <span className="text-emerald-400 font-bold">₹70 लाखांपर्यंत Tax Free फंड</span> + <span className="text-yellow-300 font-bold">₹6 लाख वार्षिक पेन्शन</span>
-          </p>
-        </div>
-
-        {/* Modal / Form Card (Matching User's Reference Screenshot) */}
-        <div className="bg-white text-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-100 relative">
+        {/* Modal / Form Card */}
+        <div className="w-full bg-white text-slate-800 rounded-3xl p-5 sm:p-7 shadow-2xl border border-slate-100 relative">
           
           {!submitted ? (
             <>
               {/* Header */}
-              <div className="text-center mb-6">
-                <div className="inline-flex items-center justify-center gap-2 mb-2">
-                  <div className="w-8 h-8 rounded-full bg-emerald-800 flex items-center justify-center text-white font-bold text-sm shadow-sm">
-                    <ShieldCheck className="w-5 h-5 text-emerald-300" />
+              <div className="text-center mb-4">
+                <div className="inline-flex items-center justify-center gap-1.5 mb-1.5">
+                  <div className="w-7 h-7 rounded-full bg-emerald-800 flex items-center justify-center text-white font-bold text-xs shadow-sm">
+                    <ShieldCheck className="w-4 h-4 text-emerald-300" />
                   </div>
-                  <span className="text-xl font-bold text-emerald-900 tracking-tight">Family First</span>
+                  <span className="text-lg font-black text-emerald-950 tracking-tight">Family First</span>
                 </div>
                 
-                <h2 className="text-2xl font-extrabold text-emerald-800 mt-1">
-                  योजनेची मोफत माहिती मिळवा
+                <h2 className="text-xl sm:text-2xl font-extrabold text-emerald-800 leading-tight">
+                  {formTitle}
                 </h2>
-                <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                <p className="text-xs text-slate-500 mt-1">
                   खालील तपशील भरा, आमचे प्रतिनिधी त्वरित संपर्क करतील
                 </p>
               </div>
 
               {/* Form */}
-              <form onSubmit={handleSubmit} className="space-y-4">
+              <form onSubmit={handleSubmit} className="space-y-3">
                 {errorMsg && (
-                  <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl font-medium text-center">
+                  <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl font-medium text-center">
                     {errorMsg}
                   </div>
                 )}
 
                 {/* Name */}
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
-                    <User className="w-5 h-5" />
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    <User className="w-4 h-4" />
                   </div>
                   <input
                     type="text"
@@ -142,14 +183,14 @@ export default function PublicLeadForm() {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="तुमचे नाव लिहा *"
-                    className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border-2 border-slate-200 focus:border-emerald-600 focus:bg-white rounded-full text-slate-800 placeholder-slate-400 text-sm font-medium transition duration-200 outline-none shadow-sm"
+                    className="w-full pl-10 pr-3.5 py-3 bg-slate-50 border-2 border-slate-200 focus:border-emerald-600 focus:bg-white rounded-xl text-slate-800 placeholder-slate-400 text-xs sm:text-sm font-medium transition duration-200 outline-none shadow-xs"
                   />
                 </div>
 
                 {/* Mobile Number */}
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
-                    <Phone className="w-5 h-5" />
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    <Phone className="w-4 h-4" />
                   </div>
                   <input
                     type="tel"
@@ -158,44 +199,65 @@ export default function PublicLeadForm() {
                     value={phone}
                     onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
                     placeholder="१० अंकी मोबाईल नंबर लिहा *"
-                    className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border-2 border-slate-200 focus:border-emerald-600 focus:bg-white rounded-full text-slate-800 placeholder-slate-400 text-sm font-medium transition duration-200 outline-none shadow-sm"
+                    className="w-full pl-10 pr-3.5 py-3 bg-slate-50 border-2 border-slate-200 focus:border-emerald-600 focus:bg-white rounded-xl text-slate-800 placeholder-slate-400 text-xs sm:text-sm font-medium transition duration-200 outline-none shadow-xs"
                   />
                 </div>
 
                 {/* Email (Optional) */}
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
-                    <Mail className="w-5 h-5" />
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    <Mail className="w-4 h-4" />
                   </div>
                   <input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="ईमेल आयडी लिहा (पर्यायी)"
-                    className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border-2 border-slate-200 focus:border-emerald-600 focus:bg-white rounded-full text-slate-800 placeholder-slate-400 text-sm font-medium transition duration-200 outline-none shadow-sm"
+                    className="w-full pl-10 pr-3.5 py-3 bg-slate-50 border-2 border-slate-200 focus:border-emerald-600 focus:bg-white rounded-xl text-slate-800 placeholder-slate-400 text-xs sm:text-sm font-medium transition duration-200 outline-none shadow-xs"
                   />
+                </div>
+
+                {/* Product Dropdown (Contains all products) */}
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-emerald-600">
+                    <Tag className="w-4 h-4" />
+                  </div>
+                  <select
+                    value={selectedProduct}
+                    onChange={(e) => setSelectedProduct(e.target.value)}
+                    className="w-full pl-10 pr-9 py-3 bg-slate-50 border-2 border-slate-200 focus:border-emerald-600 focus:bg-white rounded-xl text-slate-800 text-xs sm:text-sm font-semibold transition duration-200 outline-none shadow-xs appearance-none cursor-pointer"
+                  >
+                    {PRODUCT_OPTIONS.filter(p => p.id !== 'all').map((prod) => (
+                      <option key={prod.id} value={prod.id}>
+                        {prod.name}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
+                    <ChevronDown className="w-4 h-4" />
+                  </div>
                 </div>
 
                 {/* Submit Button */}
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full py-4 px-6 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white font-bold rounded-full text-base flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 active:scale-[0.98] transition duration-200 disabled:opacity-60 cursor-pointer"
+                  className="w-full py-3.5 px-5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white font-bold rounded-xl text-sm sm:text-base flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 active:scale-[0.98] transition duration-200 disabled:opacity-60 cursor-pointer"
                 >
                   {loading ? (
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   ) : (
                     <>
                       <span>माहिती मिळवा</span>
-                      <ArrowRight className="w-5 h-5" />
+                      <ArrowRight className="w-4 h-4" />
                     </>
                   )}
                 </button>
               </form>
 
               {/* Privacy Footer */}
-              <div className="mt-5 text-center flex items-center justify-center gap-1.5 text-xs text-slate-500 font-medium">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+              <div className="mt-3.5 text-center flex items-center justify-center gap-1.5 text-xs text-slate-500 font-medium">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
                 <span>तुमची माहिती १००% सुरक्षित राहील.</span>
               </div>
             </>
@@ -209,13 +271,13 @@ export default function PublicLeadForm() {
                 धन्यवाद, {name}!
               </h3>
               <p className="text-slate-600 text-sm mb-6 leading-relaxed">
-                तुमची माहिती आम्हाला मिळाली आहे. <strong>Family First (राहुल कुलकर्णी)</strong> चे प्रतिनिधी लवकरच आपल्याशी फोनवर संपर्क साधतील.
+                तुमची माहिती आम्हाला मिळाली आहे. <strong>Family First (राहुल कुलकर्णी)</strong> चे प्रतिनिधी लवकरच <strong>{currentProdObj.name}</strong> बद्दल आपल्याशी फोनवर संपर्क साधतील.
               </p>
 
               {/* Quick Connect Actions */}
               <div className="space-y-3 pt-2">
                 <a
-                  href={`https://wa.me/918421702419?text=Namaste%2C%20Mi%20${encodeURIComponent(name)}.%20Mala%20%E2%82%B9399%20pension%20yojanabaddal%20mahiti%20havi%20aahe.`}
+                  href={`https://wa.me/918421702419?text=Namaste%2C%20Mi%20${encodeURIComponent(name)}.%20Mala%20${encodeURIComponent(currentProdObj.name)}%20yojanabaddal%20mahiti%20havi%20aahe.`}
                   target="_blank"
                   rel="noreferrer"
                   className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full font-bold text-sm flex items-center justify-center gap-2 shadow-md transition duration-150"
@@ -234,13 +296,6 @@ export default function PublicLeadForm() {
               </div>
             </div>
           )}
-        </div>
-
-        {/* Footer info */}
-        <div className="text-center mt-4 text-xs text-slate-400">
-          <p className="font-semibold text-slate-300">Family First | Rahul Kulkarni</p>
-          <p>Financial Planning • Insurance • Investments</p>
-          <p className="mt-1 text-slate-500">संपर्क: 8421702419</p>
         </div>
 
       </div>

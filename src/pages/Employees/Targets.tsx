@@ -62,8 +62,8 @@ export default function EmployeeTargets() {
     onError: () => toast.error('Failed to update targets'),
   });
 
-  const openTargetEdit = (emp: Employee, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const openTargetEdit = (emp: Employee, e?: React.MouseEvent) => {
+    e?.stopPropagation();
     setTargetEditEmp(emp);
     setValue('monthlyTarget', emp.monthlyTarget ?? 0);
     setValue('callsTarget',   emp.callsTarget   ?? 0);
@@ -134,7 +134,7 @@ export default function EmployeeTargets() {
           if (sortKey === k) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
           else { setSortKey(k); setSortDir('asc'); }
         }}
-        onRowClick={r => navigate(`/employees/${r.id}`)}
+        onRowClick={r => openTargetEdit(r)}
       />
 
       {/* Target Edit Modal */}

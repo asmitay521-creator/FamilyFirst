@@ -1,265 +1,18 @@
 import api from './api';
 import { useAuthStore } from '@store/auth.store';
-import { db } from './firebase';
-import { doc, setDoc, deleteDoc, getDocs, collection } from 'firebase/firestore';
+import { db, createFirebaseUserWithoutSignout } from './firebase';
+import { doc, setDoc, deleteDoc, getDoc, getDocs, collection } from 'firebase/firestore';
 
 export const isRemoteAuth = (): boolean => {
   const token = useAuthStore.getState().accessToken;
   return Boolean(token && !token.startsWith('auth-token-') && !token.startsWith('demo-'));
 };
 
-/* ─── Initial Preset Seed Datasets ────────────────────────────────────────── */
-export const INITIAL_PRESET_CONTACTS: any[] = [
-  {
-    id: 'contact-demo-1',
-    _id: 'contact-demo-1',
-    firstName: 'Rajesh',
-    lastName: 'Sharma',
-    phone: '9823012345',
-    alternatePhone: '9823012346',
-    email: 'rajesh.sharma@gmail.com',
-    gender: 'MALE',
-    maritalStatus: 'MARRIED',
-    dateOfBirth: '1985-06-15',
-    panNumber: 'ABCPS1234F',
-    aadhaarNumber: '123456789012',
-    annualIncome: 1200000,
-    tags: ['contact', 'client'],
-    isDependent: false,
-    assignedEmployeeId: 'emp-vaishnavi-bhosale-1',
-    isActive: true,
-    createdAt: '2024-01-10T10:00:00.000Z',
-    notes: 'Looking for family health insurance & life cover.',
-  },
-  {
-    id: 'contact-demo-2',
-    _id: 'contact-demo-2',
-    firstName: 'Priya',
-    lastName: 'Patil',
-    phone: '9876543210',
-    alternatePhone: '9876543211',
-    email: 'priya.patil@gmail.com',
-    gender: 'FEMALE',
-    maritalStatus: 'MARRIED',
-    dateOfBirth: '1990-03-22',
-    panNumber: 'DEFPP5678G',
-    aadhaarNumber: '987654321098',
-    annualIncome: 950000,
-    tags: ['contact', 'client'],
-    isDependent: false,
-    assignedEmployeeId: 'emp-gayatri-jadhav-1',
-    isActive: true,
-    createdAt: '2024-01-15T11:30:00.000Z',
-    notes: 'Interested in Term Life & Child Education Plan.',
-  },
-  {
-    id: 'contact-demo-3',
-    _id: 'contact-demo-3',
-    firstName: 'Amit',
-    lastName: 'Deshmukh',
-    phone: '9850123456',
-    alternatePhone: '',
-    email: 'amit.deshmukh@gmail.com',
-    gender: 'MALE',
-    maritalStatus: 'SINGLE',
-    dateOfBirth: '1995-11-08',
-    panNumber: 'GHIPA9012H',
-    aadhaarNumber: '456789012345',
-    annualIncome: 1500000,
-    tags: ['contact', 'lead'],
-    isDependent: false,
-    assignedEmployeeId: 'emp-asmita-yadav-1',
-    isActive: true,
-    createdAt: '2024-02-01T09:15:00.000Z',
-    notes: 'Inquired about Motor & Critical Illness Insurance.',
-  },
-  {
-    id: 'contact-demo-4',
-    _id: 'contact-demo-4',
-    firstName: 'Sanjay',
-    lastName: 'Kulkarni',
-    phone: '9422019876',
-    alternatePhone: '9422019877',
-    email: 'sanjay.kulkarni@gmail.com',
-    gender: 'MALE',
-    maritalStatus: 'MARRIED',
-    dateOfBirth: '1978-08-30',
-    panNumber: 'JKLPS3456I',
-    aadhaarNumber: '345678901234',
-    annualIncome: 2200000,
-    tags: ['contact', 'client', 'HNI'],
-    isDependent: false,
-    assignedEmployeeId: 'user-superadmin-1',
-    isActive: true,
-    createdAt: '2024-02-10T14:20:00.000Z',
-    notes: 'HNI Client. Holds multiple policies for business and family.',
-  }
-];
-
-export const INITIAL_PRESET_LEADS: any[] = [
-  {
-    id: 'lead-demo-1',
-    contactId: 'contact-demo-1',
-    contact: {
-      id: 'contact-demo-1',
-      firstName: 'Rajesh',
-      lastName: 'Sharma',
-      phone: '9823012345',
-      email: 'rajesh.sharma@gmail.com',
-    },
-    stage: 'TO_CONTACT',
-    status: 'INTERESTED',
-    source: 'Walk-in',
-    interests: ['Health'],
-    premiumBudget: 25000,
-    assignedEmployeeId: 'emp-vaishnavi-bhosale-1',
-    followUpDate: new Date(Date.now() + 86400000 * 3).toISOString().slice(0, 10),
-    notes: JSON.stringify({
-      leadStatus: 'INTERESTED',
-      leadType: 'FRESH',
-      cleanNotes: 'Requested quote for Star Health Optima Protect for 2 Adults + 1 Child.',
-      assignedEmployeeId: 'emp-vaishnavi-bhosale-1',
-    }),
-    createdAt: '2024-02-15T10:00:00.000Z',
-  },
-  {
-    id: 'lead-demo-2',
-    contactId: 'contact-demo-2',
-    contact: {
-      id: 'contact-demo-2',
-      firstName: 'Priya',
-      lastName: 'Patil',
-      phone: '9876543210',
-      email: 'priya.patil@gmail.com',
-    },
-    stage: 'CONTACTED',
-    status: 'HOT',
-    source: 'Social Media',
-    interests: ['Life'],
-    premiumBudget: 50000,
-    assignedEmployeeId: 'emp-gayatri-jadhav-1',
-    followUpDate: new Date(Date.now() + 86400000 * 2).toISOString().slice(0, 10),
-    notes: JSON.stringify({
-      leadStatus: 'HOT',
-      leadType: 'FRESH',
-      cleanNotes: 'Needs Term Insurance cover of 1 Crore. Medicals scheduled.',
-      assignedEmployeeId: 'emp-gayatri-jadhav-1',
-    }),
-    createdAt: '2024-02-18T11:00:00.000Z',
-  },
-  {
-    id: 'lead-demo-3',
-    contactId: 'contact-demo-3',
-    contact: {
-      id: 'contact-demo-3',
-      firstName: 'Amit',
-      lastName: 'Deshmukh',
-      phone: '9850123456',
-      email: 'amit.deshmukh@gmail.com',
-    },
-    stage: 'PROPOSAL_SENT',
-    status: 'VERY_HOT',
-    source: 'Referral',
-    interests: ['Motor'],
-    premiumBudget: 15000,
-    assignedEmployeeId: 'emp-asmita-yadav-1',
-    followUpDate: new Date(Date.now() + 86400000 * 5).toISOString().slice(0, 10),
-    notes: JSON.stringify({
-      leadStatus: 'VERY_HOT',
-      leadType: 'RENEWAL',
-      cleanNotes: 'Car Insurance renewal quote sent for Hyundai Creta.',
-      assignedEmployeeId: 'emp-asmita-yadav-1',
-    }),
-    createdAt: '2024-02-20T12:00:00.000Z',
-  }
-];
-
-export const INITIAL_PRESET_POLICIES: any[] = [
-  {
-    id: 'pol-demo-1',
-    policyNumber: 'POL-2024-8891',
-    contactId: 'contact-demo-1',
-    clientName: 'Rajesh Sharma',
-    contact: {
-      id: 'contact-demo-1',
-      firstName: 'Rajesh',
-      lastName: 'Sharma',
-      phone: '9823012345',
-      email: 'rajesh.sharma@gmail.com',
-    },
-    planId: 'plan-demo-1',
-    plan: {
-      id: 'plan-demo-1',
-      name: 'Star Health Optima Secure',
-      category: 'HEALTH',
-      company: { name: 'Star Health' },
-    },
-    sumAssured: 1000000,
-    premiumAmount: 22000,
-    paymentFrequency: 'YEARLY',
-    startDate: '2024-01-15',
-    endDate: '2025-01-15',
-    status: 'ACTIVE',
-    assignedEmployeeId: 'emp-vaishnavi-bhosale-1',
-    createdAt: '2024-01-15T10:00:00.000Z',
-  },
-  {
-    id: 'pol-demo-2',
-    policyNumber: 'POL-2024-9923',
-    contactId: 'contact-demo-4',
-    clientName: 'Sanjay Kulkarni',
-    contact: {
-      id: 'contact-demo-4',
-      firstName: 'Sanjay',
-      lastName: 'Kulkarni',
-      phone: '9422019876',
-      email: 'sanjay.kulkarni@gmail.com',
-    },
-    planId: 'plan-demo-2',
-    plan: {
-      id: 'plan-demo-2',
-      name: 'LIC Jeevan Umang',
-      category: 'LIFE',
-      company: { name: 'LIC of India' },
-    },
-    sumAssured: 2500000,
-    premiumAmount: 85000,
-    paymentFrequency: 'YEARLY',
-    startDate: '2023-11-01',
-    endDate: '2024-11-01',
-    status: 'ACTIVE',
-    assignedEmployeeId: 'user-superadmin-1',
-    createdAt: '2023-11-01T10:00:00.000Z',
-  }
-];
-
-export const INITIAL_PRESET_CLAIMS: any[] = [
-  {
-    id: 'clm-demo-1',
-    claimNumber: 'CLM-2024-5501',
-    status: 'INTIMATED',
-    claimType: 'Cashless',
-    claimAmount: 45000,
-    intimatedAt: '2024-02-10T10:00:00.000Z',
-    approvedAmount: 45000,
-    assignedEmployeeId: 'emp-vaishnavi-bhosale-1',
-    notes: 'Cashless hospitalization claim at Ruby Hall Clinic for Dengue treatment.',
-    contactId: 'contact-demo-1',
-    contact: {
-      id: 'contact-demo-1',
-      firstName: 'Rajesh',
-      lastName: 'Sharma',
-      phone: '9823012345',
-    },
-    policyId: 'pol-demo-1',
-    policy: {
-      id: 'pol-demo-1',
-      policyNumber: 'POL-2024-8891',
-      plan: { name: 'Star Health Optima Secure' },
-    },
-    createdAt: '2024-02-10T10:00:00.000Z',
-  }
-];
+/* ─── Initial Preset Seed Datasets (Clean Initial State) ─────────────────── */
+export const INITIAL_PRESET_CONTACTS: any[] = [];
+export const INITIAL_PRESET_LEADS: any[] = [];
+export const INITIAL_PRESET_POLICIES: any[] = [];
+export const INITIAL_PRESET_CLAIMS: any[] = [];
 
 export const INITIAL_PRESET_COMPANIES: any[] = [
   { id: 'comp-1', name: 'Star Health', code: 'STAR', logo: '' },
@@ -284,13 +37,13 @@ export const getLocalContacts = (): any[] => {
   try {
     const raw = localStorage.getItem(CONTACT_STORAGE_KEY);
     if (!raw) {
-      localStorage.setItem(CONTACT_STORAGE_KEY, JSON.stringify(INITIAL_PRESET_CONTACTS));
-      return INITIAL_PRESET_CONTACTS;
+      localStorage.setItem(CONTACT_STORAGE_KEY, JSON.stringify([]));
+      return [];
     }
     const list = JSON.parse(raw);
-    return Array.isArray(list) && list.length > 0 ? list : INITIAL_PRESET_CONTACTS;
+    return Array.isArray(list) ? list : [];
   } catch {
-    return INITIAL_PRESET_CONTACTS;
+    return [];
   }
 };
 
@@ -339,14 +92,80 @@ export const filterAssignedForEmployee = (items: any[]): any[] => {
   const currentUser = useAuthStore.getState().user;
   if (!currentUser || currentUser.role !== 'EMPLOYEE') return items;
 
-  const empId = currentUser.id || (currentUser as any)._id || (currentUser as any).employeeId;
-  const empEmail = currentUser.email;
+  const empId = String(currentUser.id || (currentUser as any)._id || (currentUser as any).employeeId || '').toLowerCase().trim();
+  const empEmail = String(currentUser.email || '').toLowerCase().trim();
+  const empFirst = String(currentUser.firstName || '').toLowerCase().trim();
+  const empLast = String(currentUser.lastName || '').toLowerCase().trim();
+  const empFullName = `${empFirst} ${empLast}`.trim();
 
   return items.filter((item: any) => {
-    const assigned = item.assignedEmployeeId || item.assignedTo || item.employeeId || item.agentId || item.assignedEmployee?.id || item.assignedEmployee?.email;
-    if (!assigned) return true;
-    const strAssigned = String(assigned);
-    return strAssigned === String(empId) || (empEmail && strAssigned === String(empEmail));
+    if (!item) return false;
+
+    // Check directly assigned IDs
+    const assignedId = String(
+      item.assignedEmployeeId ||
+      item.assignedTo ||
+      item.employeeId ||
+      item.agentId ||
+      item.assignedEmployee?.id ||
+      item.assignedEmployee?.userId ||
+      item.assignedEmployee?._id ||
+      ''
+    ).toLowerCase().trim();
+
+    const assignedEmail = String(
+      item.assignedEmployee?.email ||
+      item.assignedEmail ||
+      ''
+    ).toLowerCase().trim();
+
+    const assignedName = String(
+      item.assignedToName ||
+      item.assignedEmployeeName ||
+      item.assignedEmployee?.name ||
+      ''
+    ).toLowerCase().trim();
+
+    const createdById = String(item.createdById || item.creatorId || item.userId || '').toLowerCase().trim();
+    const createdByName = String(item.createdByName || '').toLowerCase().trim();
+    const assignedById = String(item.assignedById || '').toLowerCase().trim();
+    const assignedByName = String(item.assignedByName || '').toLowerCase().trim();
+
+    // Check extra notes
+    let extraNotes: any = null;
+    if (typeof item.notes === 'string' && item.notes.trim().startsWith('{')) {
+      try { extraNotes = JSON.parse(item.notes); } catch {}
+    }
+    const noteAssignedId = String(extraNotes?.assignedEmployeeId || extraNotes?.assignedTo || '').toLowerCase().trim();
+    const noteAssignedName = String(extraNotes?.assignedEmployeeName || extraNotes?.assignedToName || '').toLowerCase().trim();
+    const noteCreatedById = String(extraNotes?.createdById || '').toLowerCase().trim();
+    const noteCreatedByName = String(extraNotes?.createdByName || '').toLowerCase().trim();
+
+    // Match by ID
+    if (empId && (
+      assignedId === empId ||
+      createdById === empId ||
+      assignedById === empId ||
+      noteAssignedId === empId ||
+      noteCreatedById === empId
+    )) return true;
+
+    // Match by Email
+    if (empEmail && (
+      assignedEmail === empEmail ||
+      assignedId === empEmail
+    )) return true;
+
+    // Match by Name
+    if (empFullName && empFullName.length >= 3) {
+      if (assignedName && (assignedName.includes(empFullName) || empFullName.includes(assignedName))) return true;
+      if (noteAssignedName && (noteAssignedName.includes(empFullName) || empFullName.includes(noteAssignedName))) return true;
+      if (createdByName && (createdByName.includes(empFullName) || empFullName.includes(createdByName))) return true;
+      if (noteCreatedByName && (noteCreatedByName.includes(empFullName) || empFullName.includes(noteCreatedByName))) return true;
+      if (assignedByName && (assignedByName.includes(empFullName) || empFullName.includes(assignedByName))) return true;
+    }
+
+    return false;
   });
 };
 
@@ -435,6 +254,15 @@ export const contactsService = {
       gender: body.gender || '',
       maritalStatus: body.maritalStatus || '',
       dateOfBirth: body.dateOfBirth || null,
+      followUpDate: body.followUpDate || body.nextFollowUp || body.follow_up_date || '',
+      nextFollowUp: body.nextFollowUp || body.followUpDate || '',
+      source: body.source || body.leadSource || 'Direct',
+      leadSource: body.leadSource || body.source || 'Direct',
+      stage: body.stage || body.leadStage || 'TO_CONTACT',
+      leadStage: body.leadStage || body.stage || 'To Contact',
+      leadStatus: body.leadStatus || body.status || 'Interested',
+      productInterests: body.productInterests || [],
+      interests: body.interests || [],
       height: body.height ? Number(body.height) : undefined,
       weight: body.weight ? Number(body.weight) : undefined,
       panNumber: body.panNumber || body.pan || '',
@@ -493,12 +321,88 @@ export const contactsService = {
   update: async (id: string, body: any) => {
     try {
       const existing = getLocalContacts();
-      const target = existing.find(c => c.id === id || c._id === id);
-      if (target) {
-        Object.assign(target, body);
+      const targetIndex = existing.findIndex((c: any) => c.id === id || c._id === id);
+      let updatedContact: any;
+      if (targetIndex >= 0) {
+        existing[targetIndex] = { ...existing[targetIndex], ...body };
+        updatedContact = existing[targetIndex];
         localStorage.setItem(CONTACT_STORAGE_KEY, JSON.stringify(existing));
-        if (db) setDoc(doc(db, 'contacts', String(id)), JSON.parse(JSON.stringify(target)), { merge: true }).catch(()=>{});
+        if (db) setDoc(doc(db, 'contacts', String(id)), JSON.parse(JSON.stringify(existing[targetIndex])), { merge: true }).catch(()=>{});
+      } else {
+        const newObj = { id, _id: id, ...body };
+        updatedContact = newObj;
+        existing.push(newObj);
+        localStorage.setItem(CONTACT_STORAGE_KEY, JSON.stringify(existing));
+        if (db) setDoc(doc(db, 'contacts', String(id)), JSON.parse(JSON.stringify(newObj)), { merge: true }).catch(()=>{});
       }
+
+      // Sync updated customer info with all connected policies
+      try {
+        const fullName = `${body.firstName || ''} ${body.lastName || ''}`.trim();
+        const policies = getLocalPolicies();
+        let policiesChanged = false;
+        const custId = updatedContact?.customerId || updatedContact?.customerCode;
+
+        policies.forEach((p: any) => {
+          const isMatch = (p.contactId && p.contactId === id) ||
+            (p.contact?.id && p.contact.id === id) ||
+            (p.contact?._id && p.contact._id === id) ||
+            (custId && (p.customerId === custId || p.customerCode === custId));
+
+          if (isMatch) {
+            policiesChanged = true;
+            if (fullName) p.clientName = fullName;
+            if (body.phone) p.phone = body.phone;
+            p.contact = {
+              ...(p.contact || {}),
+              id: id,
+              firstName: body.firstName || p.contact?.firstName || 'Client',
+              lastName: body.lastName !== undefined ? body.lastName : (p.contact?.lastName || ''),
+              phone: body.phone || p.contact?.phone || '',
+              email: body.email || p.contact?.email || ''
+            };
+            if (db) {
+              setDoc(doc(db, 'policies', String(p.id)), JSON.parse(JSON.stringify(p)), { merge: true }).catch(()=>{});
+            }
+          }
+        });
+
+        if (policiesChanged) {
+          localStorage.setItem(POLICY_STORAGE_KEY, JSON.stringify(policies));
+        }
+      } catch (pErr) {
+        console.warn('[Sync Policies with Contact Update Notice]', pErr);
+      }
+
+      // Sync updated customer info with connected claims
+      try {
+        const claims = getLocalClaims();
+        let claimsChanged = false;
+        claims.forEach((cl: any) => {
+          if (cl.contactId === id || cl.contact?.id === id || cl.contact?._id === id) {
+            claimsChanged = true;
+            cl.contact = {
+              ...(cl.contact || {}),
+              id: id,
+              firstName: body.firstName || cl.contact?.firstName || 'Client',
+              lastName: body.lastName !== undefined ? body.lastName : (cl.contact?.lastName || ''),
+              phone: body.phone || cl.contact?.phone || '',
+              email: body.email || cl.contact?.email || ''
+            };
+          }
+        });
+        if (claimsChanged) {
+          localStorage.setItem(CLAIM_STORAGE_KEY, JSON.stringify(claims));
+        }
+      } catch (cErr) {
+        console.warn('[Sync Claims with Contact Update Notice]', cErr);
+      }
+
+      try {
+        const bc = new BroadcastChannel('crm_sync_channel');
+        bc.postMessage({ type: 'CONTACT_UPDATED', id, body });
+        bc.close();
+      } catch (e) {}
     } catch {}
     try {
       return await api.patch(`/contacts/${id}`, body).then((r: any) => r.data);
@@ -540,13 +444,13 @@ export const getLocalLeads = (): any[] => {
   try {
     const raw = localStorage.getItem(LEAD_STORAGE_KEY);
     if (!raw) {
-      localStorage.setItem(LEAD_STORAGE_KEY, JSON.stringify(INITIAL_PRESET_LEADS));
-      return INITIAL_PRESET_LEADS;
+      localStorage.setItem(LEAD_STORAGE_KEY, JSON.stringify([]));
+      return [];
     }
     const list = JSON.parse(raw);
-    return Array.isArray(list) && list.length > 0 ? list : INITIAL_PRESET_LEADS;
+    return Array.isArray(list) ? list : [];
   } catch {
-    return INITIAL_PRESET_LEADS;
+    return [];
   }
 };
 
@@ -622,16 +526,57 @@ export const leadsService = {
   },
 
   moveStage: async (id: string, stage: string) => {
+    const rawId = String(id);
+    const fsDocId = rawId.replace('fs_', '');
+    
+    // 1. Check Local Leads
     const existing = getLocalLeads();
-    const target = existing.find(l => l.id === id);
+    const target = existing.find(l => String(l.id) === rawId || String(l.id) === fsDocId);
     if (target) {
       target.stage = stage;
       localStorage.setItem(LEAD_STORAGE_KEY, JSON.stringify(existing));
     }
+
+    // 2. Check Website Leads
     try {
-      return await api.patch(`/leads/${id}/stage`, { stage }).then((r: any) => r.data);
+      const websiteLeads = JSON.parse(localStorage.getItem('insumitra_website_leads') || '[]');
+      const wTarget = websiteLeads.find((l: any) => String(l.id) === rawId || ('website_lead_' + l.id) === rawId || ('website_lead_' + l.timestamp) === rawId);
+      if (wTarget) {
+        wTarget.stage = stage;
+        localStorage.setItem('insumitra_website_leads', JSON.stringify(websiteLeads));
+      }
+    } catch {}
+
+    // 3. Check Checkup Leads
+    try {
+      const checkupLeads = JSON.parse(localStorage.getItem('rahul_kulkarni_checkups') || '[]');
+      const cTarget = checkupLeads.find((l: any) => String(l.id) === rawId || ('checkup_lead_' + l.id) === rawId || ('checkup_lead_' + l.timestamp) === rawId);
+      if (cTarget) {
+        cTarget.stage = stage;
+        localStorage.setItem('rahul_kulkarni_checkups', JSON.stringify(checkupLeads));
+      }
+    } catch {}
+
+    // 4. Check Contacts
+    try {
+      const contacts = JSON.parse(localStorage.getItem('insumitra_contacts') || '[]');
+      const ctTarget = contacts.find((c: any) => String(c.id) === rawId || String(c.id) === fsDocId);
+      if (ctTarget) {
+        ctTarget.stage = stage;
+        localStorage.setItem('insumitra_contacts', JSON.stringify(contacts));
+      }
+    } catch {}
+
+    if (db) {
+      try {
+        setDoc(doc(db, 'leads', fsDocId), { stage }, { merge: true }).catch(() => {});
+        setDoc(doc(db, 'leads', rawId), { stage }, { merge: true }).catch(() => {});
+      } catch {}
+    }
+    try {
+      return await api.patch(`/leads/${rawId}/stage`, { stage }).then((r: any) => r.data);
     } catch {
-      return { data: { id, stage } };
+      return { data: { id: rawId, stage } };
     }
   },
 
@@ -695,13 +640,13 @@ export const getLocalPolicies = (): any[] => {
   try {
     const raw = localStorage.getItem(POLICY_STORAGE_KEY);
     if (!raw) {
-      localStorage.setItem(POLICY_STORAGE_KEY, JSON.stringify(INITIAL_PRESET_POLICIES));
-      return INITIAL_PRESET_POLICIES;
+      localStorage.setItem(POLICY_STORAGE_KEY, JSON.stringify([]));
+      return [];
     }
     const list = JSON.parse(raw);
-    return Array.isArray(list) && list.length > 0 ? list : INITIAL_PRESET_POLICIES;
+    return Array.isArray(list) ? list : [];
   } catch {
-    return INITIAL_PRESET_POLICIES;
+    return [];
   }
 };
 
@@ -759,7 +704,15 @@ export const policiesService = {
     for (const p of firestoreList) if (p?.id && !map.has(p.id)) map.set(p.id, p);
     for (const p of apiList) if (p?.id && !map.has(p.id)) map.set(p.id, p);
     
-    const merged = filterAssignedForEmployee(Array.from(map.values()));
+    let merged = filterAssignedForEmployee(Array.from(map.values()));
+    if (params?.contactId) {
+      const cId = String(params.contactId).toLowerCase().trim();
+      merged = merged.filter((p: any) => {
+        const pContactId = String(p.contactId || p.contact?.id || p.contact?._id || '').toLowerCase().trim();
+        const pCustId = String(p.customerId || p.customerCode || '').toLowerCase().trim();
+        return pContactId === cId || pCustId === cId;
+      });
+    }
     return {
       data: merged,
       meta: {
@@ -772,10 +725,25 @@ export const policiesService = {
 
   get: async (id: string) => {
     const localList = getLocalPolicies();
-    const found = localList.find((p: any) => p.id === id);
+    const found = localList.find((p: any) => p.id === id || p._id === id);
     if (found) return { data: found };
     try {
-      return await api.get(`/policies/${id}`).then((r: any) => r.data);
+      if (db) {
+        const snap = await getDoc(doc(db, 'policies', String(id)));
+        if (snap.exists()) {
+          const fsData = { id: snap.id, ...snap.data() };
+          saveLocalPolicy(fsData);
+          return { data: fsData };
+        }
+      }
+    } catch (fsErr) {}
+    try {
+      const res = await api.get(`/policies/${id}`).then((r: any) => r.data);
+      if (res?.data || res) {
+        const pol = res.data ?? res;
+        saveLocalPolicy(pol);
+      }
+      return res;
     } catch (err) {
       return { data: null };
     }
@@ -812,26 +780,42 @@ export const policiesService = {
     let updated;
     try {
       const existing = getLocalPolicies();
-      const target = existing.find(p => p.id === id);
-      if (target) {
-        Object.assign(target, body);
+      const targetIndex = existing.findIndex((p: any) => p.id === id || p._id === id);
+      if (targetIndex >= 0) {
+        existing[targetIndex] = { ...existing[targetIndex], ...body };
         
         // Auto-fix the contact.firstName bug!
-        const fullName = body.clientName || target.clientName;
+        const fullName = body.clientName || existing[targetIndex].clientName;
         if (fullName) {
-           target.contact = target.contact || { id: target.contactId || 'contact_1' };
+           existing[targetIndex].contact = existing[targetIndex].contact || { id: existing[targetIndex].contactId || 'contact_1' };
            const parts = fullName.split(' ');
-           target.contact.firstName = parts[0] || 'Client';
-           target.contact.lastName = parts.slice(1).join(' ') || 'Profile';
+           existing[targetIndex].contact.firstName = parts[0] || 'Client';
+           existing[targetIndex].contact.lastName = parts.slice(1).join(' ') || 'Profile';
         }
         
         localStorage.setItem(POLICY_STORAGE_KEY, JSON.stringify(existing));
-        updated = target;
+        updated = existing[targetIndex];
         if (db) {
-          setDoc(doc(db, 'policies', String(id)), JSON.parse(JSON.stringify(target)), { merge: true }).catch(()=>{});
+          setDoc(doc(db, 'policies', String(id)), JSON.parse(JSON.stringify(existing[targetIndex])), { merge: true }).catch(()=>{});
+        }
+      } else {
+        const newPolicyObj = { id, ...body, updatedAt: new Date().toISOString() };
+        const updatedList = [newPolicyObj, ...existing];
+        localStorage.setItem(POLICY_STORAGE_KEY, JSON.stringify(updatedList));
+        updated = newPolicyObj;
+        if (db) {
+          setDoc(doc(db, 'policies', String(id)), JSON.parse(JSON.stringify(newPolicyObj)), { merge: true }).catch(()=>{});
         }
       }
-    } catch {}
+
+      try {
+        const bc = new BroadcastChannel('crm_sync_channel');
+        bc.postMessage({ type: 'POLICY_UPDATED', id, body });
+        bc.close();
+      } catch (e) {}
+    } catch (e) {
+      console.error('Error updating policy locally:', e);
+    }
     
     try {
       return await api.patch(`/policies/${id}`, body).then((r: any) => r.data);
@@ -892,13 +876,13 @@ export const getLocalClaims = (): any[] => {
   try {
     const raw = localStorage.getItem(CLAIM_STORAGE_KEY);
     if (!raw) {
-      localStorage.setItem(CLAIM_STORAGE_KEY, JSON.stringify(INITIAL_PRESET_CLAIMS));
-      return INITIAL_PRESET_CLAIMS;
+      localStorage.setItem(CLAIM_STORAGE_KEY, JSON.stringify([]));
+      return [];
     }
     const list = JSON.parse(raw);
-    return Array.isArray(list) && list.length > 0 ? list : INITIAL_PRESET_CLAIMS;
+    return Array.isArray(list) ? list : [];
   } catch {
-    return INITIAL_PRESET_CLAIMS;
+    return [];
   }
 };
 
@@ -936,7 +920,21 @@ export const claimsService = {
     }
     const localList = getLocalClaims();
     const localIds = new Set(localList.map(l => l.id));
-    const combined = filterAssignedForEmployee([...localList, ...apiList.filter(a => !localIds.has(a.id))]);
+    let combined = filterAssignedForEmployee([...localList, ...apiList.filter(a => !localIds.has(a.id))]);
+    if (params?.contactId) {
+      const cId = String(params.contactId).toLowerCase().trim();
+      combined = combined.filter((c: any) => {
+        const cContactId = String(c.contactId || c.contact?.id || c.contact?._id || '').toLowerCase().trim();
+        return cContactId === cId;
+      });
+    }
+    if (params?.policyId) {
+      const pId = String(params.policyId).toLowerCase().trim();
+      combined = combined.filter((c: any) => {
+        const cPolId = String(c.policyId || c.policy?.id || c.policy?._id || '').toLowerCase().trim();
+        return cPolId === pId;
+      });
+    }
     return { data: combined, meta: { total: combined.length, page: 1, limit: 2000 } };
   },
 
@@ -954,7 +952,10 @@ export const claimsService = {
 
   create: async (body: any) => {
     const localId = `clm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    
+    const currentUser = useAuthStore.getState().user;
+    const currentUserId = currentUser?.id || (currentUser as any)?.userId || '';
+    const currentUserName = currentUser ? `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() : '';
+
     // Resolve policy and contact if available
     let policyObj = body.policy;
     if (!policyObj && body.policyId) {
@@ -970,7 +971,10 @@ export const claimsService = {
       claimAmount: body.claimAmount !== undefined && body.claimAmount !== '' ? Number(body.claimAmount) : 0,
       intimatedAt: body.intimatedAt || new Date().toISOString(),
       approvedAmount: body.approvedAmount !== undefined ? Number(body.approvedAmount) : 0,
-      assignedEmployeeId: body.assignedEmployeeId || null,
+      assignedEmployeeId: body.assignedEmployeeId || (currentUser?.role === 'EMPLOYEE' ? currentUserId : null),
+      createdById: currentUserId,
+      createdByName: currentUserName,
+      userId: currentUserId,
       notes: body.notes || '',
       contactId: body.contactId || (policyObj?.contactId || ''),
       contact: body.contact || (policyObj?.contact || {
@@ -1099,50 +1103,70 @@ export const saveLocalTask = (task: any) => {
 /* ─── Persistent Local Employees Manager ─────────────────────────────────── */
 const EMPLOYEE_STORAGE_KEY = 'insumitra_custom_employees';
 
+export const DELETED_DUMMY_EMPLOYEE_EMAILS = new Set([
+  'superadmin123@gmail.com',
+  'vaishu123@gmail.com',
+  'vaishnavi@gmail.com',
+  'gay@gmail.com',
+  'gayatri@gmail.com',
+  'asmi@gmail.com',
+  'asmita@gmail.com',
+]);
+
+export const DELETED_DUMMY_EMPLOYEE_IDS = new Set([
+  'emp-superadmin-1',
+  'user-superadmin-1',
+  'emp-vaishnavi-bhosale-1',
+  'emp-gayatri-jadhav-1',
+  'emp-asmita-yadav-1',
+]);
+
+export const isDeletedDummyEmployee = (emp: any): boolean => {
+  if (!emp) return false;
+  const id = String(emp.id || emp.userId || emp.user?.id || '');
+  const email = String(emp.email || emp.user?.email || '').trim().toLowerCase();
+  const firstName = String(emp.firstName || emp.first_name || '').trim().toLowerCase();
+  const lastName = String(emp.lastName || emp.last_name || '').trim().toLowerCase();
+  const fullName = `${firstName} ${lastName}`.trim().toLowerCase();
+
+  if (DELETED_DUMMY_EMPLOYEE_IDS.has(id)) return true;
+  if (email && DELETED_DUMMY_EMPLOYEE_EMAILS.has(email)) return true;
+  if (
+    fullName === 'super admin' ||
+    fullName === 'vaishnavi bhosale' ||
+    fullName === 'gayatri jadhav' ||
+    fullName === 'asmita yadav' ||
+    (firstName === 'vaishnavi' && lastName === 'bhosale') ||
+    (firstName === 'gayatri' && lastName === 'jadhav') ||
+    (firstName === 'asmita' && lastName === 'yadav')
+  ) {
+    return true;
+  }
+  return false;
+};
+
 export const INITIAL_PRESET_EMPLOYEES: any[] = [
   {
-    id: 'emp-superadmin-1',
-    firstName: 'Super',
-    lastName: 'Admin',
-    designation: 'Owner & Administrator',
+    id: 'emp_priya_niralgi_b50',
+    firstName: 'PRIYA',
+    lastName: 'NIRALGI',
+    designation: 'OFFICE MANAGER',
     department: 'Management',
-    phone: '9876543210',
+    phone: '9561312419',
     isActive: true,
-    user: { id: 'user-superadmin-1', email: 'superadmin123@gmail.com', role: 'SUPER_ADMIN' },
-    dateOfJoining: '2023-01-01',
+    user: { id: 'emp_priya_niralgi_b50', email: 'familyfirstrk1985@gmail.com', role: 'EMPLOYEE' },
+    dateOfJoining: '2024-01-01',
   },
   {
-    id: 'emp-vaishnavi-bhosale-1',
-    firstName: 'Vaishnavi',
-    lastName: 'Bhosale',
-    designation: 'Senior Insurance Advisor',
-    department: 'Sales',
-    phone: '9876543210',
+    id: 'emp_aananda_wavre_5lv',
+    firstName: 'AANANDA',
+    lastName: 'WAVRE',
+    designation: 'ALL IN ONE',
+    department: 'Operations',
+    phone: '9766334020',
     isActive: true,
-    user: { id: 'emp-vaishnavi-bhosale-1', email: 'vaishu123@gmail.com', role: 'EMPLOYEE' },
-    dateOfJoining: '2023-03-15',
-  },
-  {
-    id: 'emp-gayatri-jadhav-1',
-    firstName: 'Gayatri',
-    lastName: 'Jadhav',
-    designation: 'Insurance Consultant',
-    department: 'Sales',
-    phone: '9876562345',
-    isActive: true,
-    user: { id: 'emp-gayatri-jadhav-1', email: 'gay@gmail.com', role: 'EMPLOYEE' },
-    dateOfJoining: '2023-05-01',
-  },
-  {
-    id: 'emp-asmita-yadav-1',
-    firstName: 'Asmita',
-    lastName: 'Yadav',
-    designation: 'Sales Specialist',
-    department: 'Sales',
-    phone: '8798654354',
-    isActive: true,
-    user: { id: 'emp-asmita-yadav-1', email: 'asmi@gmail.com', role: 'EMPLOYEE' },
-    dateOfJoining: '2023-06-10',
+    user: { id: 'emp_aananda_wavre_5lv', email: 'familyfirstrk1985@gmail.com', role: 'EMPLOYEE' },
+    dateOfJoining: '2024-01-01',
   }
 ];
 
@@ -1154,7 +1178,15 @@ export const getLocalEmployees = (): any[] => {
       return INITIAL_PRESET_EMPLOYEES;
     }
     const list = JSON.parse(raw);
-    return Array.isArray(list) && list.length > 0 ? list : INITIAL_PRESET_EMPLOYEES;
+    if (Array.isArray(list)) {
+      const filtered = list.filter(emp => !isDeletedDummyEmployee(emp));
+      const finalResult = filtered.length > 0 ? filtered : INITIAL_PRESET_EMPLOYEES;
+      if (filtered.length !== list.length || !list.length) {
+        localStorage.setItem(EMPLOYEE_STORAGE_KEY, JSON.stringify(finalResult));
+      }
+      return finalResult;
+    }
+    return INITIAL_PRESET_EMPLOYEES;
   } catch {
     return INITIAL_PRESET_EMPLOYEES;
   }
@@ -1162,28 +1194,91 @@ export const getLocalEmployees = (): any[] => {
 
 export const saveLocalEmployee = (emp: any) => {
   try {
+    if (isDeletedDummyEmployee(emp)) return;
     const existing = getLocalEmployees();
-    const updated = [emp, ...existing.filter(e => e.id !== emp.id && e.userId !== emp.id && e.user?.id !== emp.id)];
+    const updated = [emp, ...existing.filter(e => e.id !== emp.id && e.userId !== emp.id && e.user?.id !== emp.id && !isDeletedDummyEmployee(e))];
     localStorage.setItem(EMPLOYEE_STORAGE_KEY, JSON.stringify(updated));
     try {
       if (db && emp.id) {
-        setDoc(doc(db, 'employees', String(emp.id)), emp, { merge: true }).catch((err) => console.error("Firebase Sync Error:", err));
+        const firestoreData: any = {
+          id: String(emp.id),
+          first_name: emp.firstName || emp.first_name || '',
+          last_name: emp.lastName || emp.last_name || '',
+          firstName: emp.firstName || emp.first_name || '',
+          lastName: emp.lastName || emp.last_name || '',
+          phone: emp.phone || '',
+          designation: emp.designation || '',
+          department: emp.department || '',
+          is_active: emp.isActive ?? true,
+          date_of_joining: emp.dateOfJoining || emp.date_of_joining || new Date().toISOString().slice(0, 10),
+          dateOfJoining: emp.dateOfJoining || emp.date_of_joining || new Date().toISOString().slice(0, 10),
+          created_at: emp.createdAt || new Date().toISOString(),
+          createdAt: emp.createdAt || new Date().toISOString(),
+          gender: emp.gender || 'OTHER',
+          date_of_birth: emp.dateOfBirth || '',
+          base_salary: emp.baseSalary || 0,
+          monthly_target: emp.monthlyTarget || 0,
+          user: emp.user || {
+            id: String(emp.id),
+            email: emp.email || `${(emp.firstName || 'emp').toLowerCase()}@gmail.com`,
+            role: 'EMPLOYEE',
+          },
+        };
+        setDoc(doc(db, 'employee_profiles', String(emp.id)), firestoreData, { merge: true }).catch((err) => console.error("Firebase Sync Error (employee_profiles):", err));
+        setDoc(doc(db, 'employees', String(emp.id)), firestoreData, { merge: true }).catch((err) => console.error("Firebase Sync Error (employees):", err));
       }
-    } catch {}
+    } catch (e) {
+      console.error("Firestore sync exception", e);
+    }
     return updated;
   } catch (e) {
     console.error('Failed to save local employee', e);
   }
 };
 
+// Auto sync any unsynced local employees to Firestore on module load and purge dummy records
+export const syncAllLocalEmployeesToFirestore = () => {
+  if (!db) return;
+  try {
+    // Delete any old preset dummy docs from Firestore
+    const dummyIds = [
+      'emp-superadmin-1',
+      'user-superadmin-1',
+      'emp-vaishnavi-bhosale-1',
+      'emp-gayatri-jadhav-1',
+      'emp-asmita-yadav-1'
+    ];
+    dummyIds.forEach(id => {
+      deleteDoc(doc(db, 'employees', id)).catch(() => {});
+      deleteDoc(doc(db, 'employee_profiles', id)).catch(() => {});
+    });
+
+    const list = getLocalEmployees();
+    list.forEach((emp) => {
+      if (isDeletedDummyEmployee(emp)) return;
+      if (emp.id && (String(emp.id).startsWith('emp_') || String(emp.id).startsWith('custom_') || emp.firstName === 'PRIYA' || emp.firstName === 'AANANDA' || emp.firstName === 'Abhishek' || emp.first_name === 'Abhishek')) {
+        saveLocalEmployee(emp);
+        const empEmail = emp.email || emp.user?.email;
+        if (empEmail && empEmail.includes('@')) {
+          createFirebaseUserWithoutSignout(empEmail, 'Pass@123456').catch(() => {});
+        }
+      }
+    });
+  } catch (e) {
+    console.error('Sync all local employees error:', e);
+  }
+};
+setTimeout(() => syncAllLocalEmployeesToFirestore(), 500);
+
 export const removeLocalEmployee = (id: string) => {
   try {
     const existing = getLocalEmployees();
-    const filtered = existing.filter(e => e.id !== id && e.userId !== id && e.user?.id !== id);
+    const filtered = existing.filter(e => e.id !== id && e.userId !== id && e.user?.id !== id && e.email !== id && e.user?.email !== id);
     localStorage.setItem(EMPLOYEE_STORAGE_KEY, JSON.stringify(filtered));
     try {
       if (db && id) {
         deleteDoc(doc(db, 'employees', String(id))).catch((err) => console.error("Firebase Sync Error:", err));
+        deleteDoc(doc(db, 'employee_profiles', String(id))).catch((err) => console.error("Firebase Sync Error:", err));
       }
     } catch {}
     return filtered;
@@ -1205,25 +1300,83 @@ export const employeesService = {
       }
     }
 
+    // Also fetch from Firestore employee_profiles if available
+    let firestoreList: any[] = [];
+    if (db) {
+      try {
+        const snap = await getDocs(collection(db, 'employee_profiles'));
+        snap.forEach(docSnap => {
+          const d = docSnap.data();
+          const item = { id: docSnap.id, ...d };
+          if (isDeletedDummyEmployee(item)) {
+            deleteDoc(doc(db, 'employee_profiles', docSnap.id)).catch(() => {});
+            return;
+          }
+          firestoreList.push({
+            id: docSnap.id,
+            firstName: d.first_name || d.firstName || '',
+            lastName: d.last_name || d.lastName || '',
+            phone: d.phone || '',
+            designation: d.designation || '',
+            department: d.department || '',
+            dateOfJoining: d.date_of_joining || d.dateOfJoining || '',
+            isActive: d.is_active ?? d.isActive ?? true,
+            user: d.user || {
+              id: docSnap.id,
+              email: d.email || `${(d.first_name || d.firstName || 'emp').toLowerCase()}@gmail.com`,
+              role: 'EMPLOYEE',
+            },
+            ...d,
+          });
+        });
+
+        // Also clean up 'employees' collection
+        try {
+          const empSnap = await getDocs(collection(db, 'employees'));
+          empSnap.forEach(docSnap => {
+            const item = { id: docSnap.id, ...docSnap.data() };
+            if (isDeletedDummyEmployee(item)) {
+              deleteDoc(doc(db, 'employees', docSnap.id)).catch(() => {});
+            }
+          });
+        } catch {}
+      } catch (err) {
+        console.warn('[Firestore employee_profiles list fetch notice]', err);
+      }
+    }
+
     const localList = getLocalEmployees();
     const map = new Map<string, any>();
 
     // 1. Initial preset employees
     INITIAL_PRESET_EMPLOYEES.forEach(emp => {
-      map.set(String(emp.id), emp);
-      if (emp.user?.email) map.set(emp.user.email.toLowerCase(), emp);
+      if (!isDeletedDummyEmployee(emp)) {
+        map.set(String(emp.id), emp);
+        if (emp.user?.email) map.set(emp.user.email.toLowerCase(), emp);
+      }
     });
 
-    // 2. Saved local employees
-    localList.forEach(emp => {
+    // 2. Firestore employees
+    firestoreList.forEach(emp => {
+      if (isDeletedDummyEmployee(emp)) return;
       const k = String(emp.id || emp.userId || emp.user?.id);
       map.set(k, { ...(map.get(k) || {}), ...emp });
       if (emp.user?.email) map.set(emp.user.email.toLowerCase(), emp);
       else if (emp.email) map.set(emp.email.toLowerCase(), emp);
     });
 
-    // 3. API employees
+    // 3. Saved local employees
+    localList.forEach(emp => {
+      if (isDeletedDummyEmployee(emp)) return;
+      const k = String(emp.id || emp.userId || emp.user?.id);
+      map.set(k, { ...(map.get(k) || {}), ...emp });
+      if (emp.user?.email) map.set(emp.user.email.toLowerCase(), emp);
+      else if (emp.email) map.set(emp.email.toLowerCase(), emp);
+    });
+
+    // 4. API employees
     apiList.forEach(emp => {
+      if (isDeletedDummyEmployee(emp)) return;
       const k = String(emp.id || emp.userId || emp.user?.id);
       map.set(k, { ...(map.get(k) || {}), ...emp });
     });
@@ -1231,13 +1384,14 @@ export const employeesService = {
     // Deduplicate by unique id
     const uniqueEmployees = new Map<string, any>();
     Array.from(map.values()).forEach(emp => {
+      if (isDeletedDummyEmployee(emp)) return;
       const uniqueId = String(emp.id || emp.userId || emp.user?.id || emp.email || emp.user?.email || Math.random());
       if (!uniqueEmployees.has(uniqueId)) {
         uniqueEmployees.set(uniqueId, emp);
       }
     });
 
-    const combined = Array.from(uniqueEmployees.values());
+    const combined = Array.from(uniqueEmployees.values()).filter(emp => !isDeletedDummyEmployee(emp));
     return {
       data: combined,
       meta: {
@@ -1281,6 +1435,14 @@ export const employeesService = {
 
     saveLocalEmployee(newEmp);
 
+    // Register user in Firebase Authentication (so they exist in Authentication -> Users for login & forgot password)
+    const empEmail = body.email || newEmp.user?.email;
+    if (empEmail && empEmail.includes('@')) {
+      createFirebaseUserWithoutSignout(empEmail, body.password).catch((err) =>
+        console.warn('Firebase Auth user creation notice:', err)
+      );
+    }
+
     try {
       const res = await api.post('/employees', body).then((r: any) => r.data);
       const created = res?.data ?? res;
@@ -1319,6 +1481,23 @@ export const employeesService = {
       return await api.put(`/employees/${id}`, body).then((r: any) => r.data);
     } catch {
       return { success: true, message: 'Employee updated in local storage' };
+    }
+  },
+
+  delete: async (id: string) => {
+    removeLocalEmployee(id);
+    try {
+      if (db && id) {
+        await deleteDoc(doc(db, 'employees', String(id))).catch((err) => console.error("Firebase Sync Error:", err));
+        await deleteDoc(doc(db, 'employee_profiles', String(id))).catch((err) => console.error("Firebase Sync Error:", err));
+      }
+    } catch (e) {
+      console.error('Firestore delete exception', e);
+    }
+    try {
+      return await api.delete(`/employees/${id}`).then((r: any) => r.data);
+    } catch {
+      return { success: true, message: 'Employee deleted successfully' };
     }
   },
 

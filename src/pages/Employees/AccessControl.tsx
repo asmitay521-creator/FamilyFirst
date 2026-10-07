@@ -79,8 +79,8 @@ export default function EmployeeAccessControl() {
     onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to update permissions'),
   });
 
-  const openPermEdit = (emp: Employee, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const openPermEdit = (emp: Employee, e?: React.MouseEvent) => {
+    e?.stopPropagation();
     setPermEditEmp(emp);
     setValue('role', emp.user?.role as any ?? 'EMPLOYEE');
     setValue('permissions', emp.user?.permissions ?? []);
@@ -179,7 +179,7 @@ export default function EmployeeAccessControl() {
           if (sortKey === k) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
           else { setSortKey(k); setSortDir('asc'); }
         }}
-        onRowClick={r => navigate(`/employees/${r.id}`)}
+        onRowClick={r => openPermEdit(r)}
       />
 
       {/* Permission Edit Modal */}

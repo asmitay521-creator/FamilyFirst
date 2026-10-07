@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { useClaims, useCreateClaim, useUpdateClaimStatus, useDeleteClaim } from '@hooks/useClaims';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { contactsService, policiesService, claimsService, documentsService } from '@api/index';
+import { contactsService, policiesService, claimsService, documentsService, employeesService, getLocalEmployees } from '@api/index';
 import DataTable, { Column } from '@comps/common/DataTable';
 
 import Modal from '@comps/common/Modal';
@@ -64,9 +64,34 @@ const UI_TO_BACKEND: Record<string, string> = {
   Settled: 'SETTLED',
 };
 
+const CLAIM_STATUS_OPTIONS = [
+  "Intimated",
+  "Discharge Done",
+  "Pending Documents from Hospital/Customer",
+  "Documents Collected from Hospital/Customer",
+  "Submitted to Company",
+  "Pending for approval",
+  "Query Raised",
+  "Query Resolved",
+  "Partially Approved",
+  "Approved",
+  "Rejected",
+  "No Response from Customer",
+  "Pre-Authorisation Approved",
+  "Pre-Authorisation Rejected",
+  "Enhancement Approved",
+  "Enhancement Rejected",
+  "Interim Authorisation Approved",
+  "Interim Authorisation Rejected",
+  "Final Authorisation Approved",
+  "Final Authorisation Rejected",
+  "Advised to go for Reimbursement",
+  "Treatment Cancelled/Changed"
+];
+
 export function getClaimNotesData(notesField?: string | null) {
   const defaultNotes = { 
-    diagnosis: '', hospital: '', hospitalAddress: '', patientName: '', deductionsNotes: '', admissionAt: '', dischargeAt: '', notes: '', statusOverride: '', amtHospital: 0, amtMedicine: 0, amtLab: 0, amtPreHosp: 0, amtPostHosp: 0, amtOthers: 0, subClaimNo: '', uiClaimStatus: '', comment: '', insuranceCompanyCategory: '', insuranceCompany: '', insuranceProductName: '', agentName: '',
+    diagnosis: '', hospital: '', hospitalAddress: '', patientName: '', patientRelationship: '', deductionsNotes: '', admissionAt: '', dischargeAt: '', notes: '', statusOverride: '', amtHospital: 0, amtMedicine: 0, amtLab: 0, amtPreHosp: 0, amtPostHosp: 0, amtOthers: 0, subClaimNo: '', uiClaimStatus: '', comment: '', insuranceCompanyCategory: '', insuranceCompany: '', insuranceProductName: '', agentName: '',
     deathAdmissionDate: '', causeOfDeath: '', dateOfOccurance: '', dateOfDeath: '', wasInComa: '', deathSumInsured: '', deathTotalClaimedAmount: '', deathComment: '', nominees: '[]',
     hospitalName: '', hospitalState: '', hospitalCity: '', hospitalPincode: '', hospitalContactNo: '', hospitalRating: '', hospitalType: '', claimsPerson1Name: '', claimsPerson1Contact: '', claimsPerson2Name: '', claimsPerson2Contact: '', hospitalComment: '', hospitalDoctors: '[]',
     diagnosisSimple: '', roomCategory: '', typeOfManagement: '', typeOfAdmission: '', isMedicoLegalCase: '', hospitalisationComment: '', amtAnesthesia: 0, billingComment: '',
@@ -82,6 +107,7 @@ export function getClaimNotesData(notesField?: string | null) {
         hospital: parsed.hospital || '',
         hospitalAddress: parsed.hospitalAddress || '',
         patientName: parsed.patientName || '',
+        patientRelationship: parsed.patientRelationship || '',
         deductionsNotes: parsed.deductionsNotes || '',
         admissionAt: parsed.admissionAt || '',
         dischargeAt: parsed.dischargeAt || '',
@@ -172,6 +198,7 @@ const schema = z.object({
   hospital: z.string().optional(),
   hospitalAddress: z.string().optional(),
   patientName: z.string().optional(),
+  patientRelationship: z.string().optional(),
   admissionAt: z.string().optional(),
   dischargeAt: z.string().optional(),
   amtHospital: z.union([z.number(), z.string()]).optional().default(0),
@@ -360,7 +387,7 @@ function ClaimEditForm({ initial, isPending, onSave, onCancel, employees }: {
   const [rejectionReason, setRejectionReason] = useState((initial as any).rejectionReason ?? '');
   const [assignedEmployeeId, setAssignedEmployeeId] = useState((initial as any).assignedEmployeeId ?? '');
   const [activeClaimTab, setActiveClaimTab] = useState('Claim Details');
-  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({ proposer: true, claim: true, death: true, nominee: true, amounts: true, documents: true });
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({ proposer: false, claim: false, death: false, nominee: false, amounts: false, documents: false });
   const toggleCollapse = (sec: string) => setCollapsedSections(prev => ({ ...prev, [sec]: !prev[sec] }));
 
   // Nominee array state for edit form
@@ -447,6 +474,7 @@ function ClaimEditForm({ initial, isPending, onSave, onCancel, employees }: {
   const [notesText, setNotesText] = useState(notesData.notes);
   const [subClaimNo, setSubClaimNo] = useState(notesData.subClaimNo || '');
   const [uiClaimStatus, setUiClaimStatus] = useState(notesData.uiClaimStatus || '');
+  const [editStatusDropdownOpen, setEditStatusDropdownOpen] = useState(false);
   const [comment, setComment] = useState(notesData.comment || '');
   const [insuranceCompanyCategory, setInsuranceCompanyCategory] = useState(notesData.insuranceCompanyCategory || '');
   const [insuranceCompany, setInsuranceCompany] = useState(notesData.insuranceCompany || '');
@@ -716,8 +744,8 @@ function ClaimEditForm({ initial, isPending, onSave, onCancel, employees }: {
                     <input value={agentName} onChange={e => setAgentName(e.target.value)} readOnly className="input mt-1 bg-gray-50 text-gray-500 cursor-not-allowed" />
                   </div>
                   <div className="md:col-span-4">
-                    <label className="label text-gray-500">Patient / Insured Person</label>
-                    <input value={patientName} onChange={e => setPatientName(e.target.value)} readOnly className="input mt-1 bg-gray-50 text-gray-500 cursor-not-allowed" />
+                    <label className="label">Patient / Insured Person</label>
+                    <input value={patientName} onChange={e => setPatientName(e.target.value)} placeholder="Enter patient / insured person name" className="input mt-1" />
                   </div>
                 </div>
               )}
@@ -762,7 +790,7 @@ function ClaimEditForm({ initial, isPending, onSave, onCancel, employees }: {
             <select className="input" value={assignedEmployeeId} onChange={e => setAssignedEmployeeId(e.target.value)}>
               <option value="">Unassigned</option>
               {employees.map((emp: any) => (
-                <option key={emp.id} value={emp.userId}>
+                <option key={emp.id || emp.userId} value={emp.id || emp.userId}>
                   {emp.firstName} {emp.lastName}
                 </option>
               ))}
@@ -776,33 +804,52 @@ function ClaimEditForm({ initial, isPending, onSave, onCancel, employees }: {
           <label className="label">Diagnosis</label>
           <input className="input" value={diagnosis} onChange={e => setDiagnosis(e.target.value)} />
         </div>
-        <div>
+        <div className="relative">
           <label className="label">Claim Status</label>
-          <select className="input" value={uiClaimStatus} onChange={e => setUiClaimStatus(e.target.value)}>
-            <option value="">Select Status</option>
-            <option value="Intimated">Intimated</option>
-            <option value="Discharge Done">Discharge Done</option>
-            <option value="Pending Documents from Hospital/Customer">Pending Documents from Hospital/Customer</option>
-            <option value="Documents Collected from Hospital/Customer">Documents Collected from Hospital/Customer</option>
-            <option value="Submitted to Company">Submitted to Company</option>
-            <option value="Pending for approval">Pending for approval</option>
-            <option value="Query Raised">Query Raised</option>
-            <option value="Query Resolved">Query Resolved</option>
-            <option value="Partially Approved">Partially Approved</option>
-            <option value="Approved">Approved</option>
-            <option value="Rejected">Rejected</option>
-            <option value="No Response from Customer">No Response from Customer</option>
-            <option value="Pre-Authorisation Approved">Pre-Authorisation Approved</option>
-            <option value="Pre-Authorisation Rejected">Pre-Authorisation Rejected</option>
-            <option value="Enhancement Approved">Enhancement Approved</option>
-            <option value="Enhancement Rejected">Enhancement Rejected</option>
-            <option value="Interim Authorisation Approved">Interim Authorisation Approved</option>
-            <option value="Interim Authorisation Rejected">Interim Authorisation Rejected</option>
-            <option value="Final Authorisation Approved">Final Authorisation Approved</option>
-            <option value="Final Authorisation Rejected">Final Authorisation Rejected</option>
-            <option value="Advised to go for Reimbursement">Advised to go for Reimbursement</option>
-            <option value="Treatment Cancelled/Changed">Treatment Cancelled/Changed</option>
-          </select>
+          <div
+            onClick={() => setEditStatusDropdownOpen(prev => !prev)}
+            className="input mt-1 bg-white flex items-center justify-between cursor-pointer select-none border border-slate-200 hover:border-purple-400 transition-colors"
+          >
+            <span className={uiClaimStatus ? 'text-slate-800 font-medium' : 'text-slate-400'}>
+              {uiClaimStatus || 'Select Status'}
+            </span>
+            <ChevronDown size={15} className={`text-slate-400 transition-transform duration-200 ${editStatusDropdownOpen ? 'rotate-180 text-purple-600' : ''}`} />
+          </div>
+          {editStatusDropdownOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setEditStatusDropdownOpen(false)} />
+              <ul className="absolute left-0 top-full z-50 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-2xl max-h-56 overflow-y-auto no-scrollbar py-1 animate-fadeIn divide-y divide-slate-50">
+                <li
+                  onClick={() => {
+                    setUiClaimStatus('');
+                    setEditStatusDropdownOpen(false);
+                  }}
+                  className="px-3.5 py-2 text-xs text-slate-400 hover:bg-purple-50 hover:text-purple-700 cursor-pointer transition-colors font-medium"
+                >
+                  Select Status
+                </li>
+                {CLAIM_STATUS_OPTIONS.map((st) => (
+                  <li
+                    key={st}
+                    onClick={() => {
+                      setUiClaimStatus(st);
+                      setEditStatusDropdownOpen(false);
+                    }}
+                    className={`px-3.5 py-2 text-xs cursor-pointer transition-colors flex items-center justify-between ${
+                      uiClaimStatus === st
+                        ? 'bg-purple-50 text-purple-700 font-bold'
+                        : 'text-slate-700 hover:bg-slate-50 hover:text-purple-700 font-medium'
+                    }`}
+                  >
+                    <span>{st}</span>
+                    {uiClaimStatus === st && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-purple-600" />
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </div>
       </div>
 
@@ -1515,7 +1562,8 @@ export default function Claims() {
   // Claim Detail sheet
   const [selectedClaim, setSelectedClaim] = useState<any | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({ newProposer: true, newClaim: true, newDeath: true, newNominee: true, newHospital: true });
+  const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({ newProposer: false, newClaim: false, newDeath: false, newNominee: false, newHospital: false });
   const toggleCollapse = (sec: string) => setCollapsedSections(prev => ({ ...prev, [sec]: !prev[sec] }));
 
   // Doctor array state for new claim
@@ -1543,10 +1591,26 @@ export default function Claims() {
   };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const employees = useLookupStore(s => s.employees);
+  const { employees, loadEmployees } = useLookupStore();
+
+  useEffect(() => {
+    loadEmployees();
+  }, [loadEmployees]);
+
+  const { data: empQueryRes } = useQuery({
+    queryKey: ['employees', 'all-for-claims'],
+    queryFn: () => employeesService.list({ page: 1, limit: 500 }),
+    staleTime: 60_000,
+  });
+
+  const employeesList = useMemo(() => {
+    const raw = empQueryRes?.data ?? empQueryRes ?? (employees as any)?.data ?? employees;
+    const list = Array.isArray(raw) && raw.length > 0 ? raw : getLocalEmployees();
+    return Array.isArray(list) ? list : [];
+  }, [empQueryRes, employees]);
 
   // Fetch all claims for client side filtering matching reference app
-  const { data: claimsRes, isLoading } = useClaims({ page: 1, limit: 500 });
+  const { data: claimsRes, isLoading, refetch: refetchClaims } = useClaims({ page: 1, limit: 500 });
   const rawClaims = claimsRes?.data ?? [];
 
   // Filters
@@ -1581,7 +1645,7 @@ export default function Claims() {
       // Employee Role Data Isolation Safeguard:
       if (isEmployeeRole) {
         const currentUserId = String(authUser?.id || '').toLowerCase().trim();
-        const myEmp = (employees as any)?.find?.((e: any) => {
+        const myEmp = (employeesList as any)?.find?.((e: any) => {
           const eUid = String(e.userId || e.user?.id || e.id || '').toLowerCase().trim();
           return eUid && eUid === currentUserId;
         });
@@ -1610,8 +1674,9 @@ export default function Claims() {
           (assignedToName && myNames.some((mn: string) => assignedToName.includes(mn) || mn.includes(assignedToName)));
         const isCreatedByMe = createdById && validMyIds.has(createdById);
         const isAssignedByMe = assignedById && validMyIds.has(assignedById);
+        const isUnassigned = !assignedEmpId || assignedEmpId === 'unassigned' || assignedEmpId === 'null' || assignedEmpId === 'undefined';
 
-        if (!isAssignedToMe && !isCreatedByMe && !isAssignedByMe) {
+        if (!isAssignedToMe && !isCreatedByMe && !isAssignedByMe && !isUnassigned) {
           return false;
         }
       }
@@ -1675,7 +1740,7 @@ export default function Claims() {
 
       return true;
     });
-  }, [rawClaims, search, filterStatus, filterStartDate, filterEndDate, filterCompany, filterHospital, filterClaimType, analyticsDuration, filterAgent, authUser, employees]);
+  }, [rawClaims, search, filterStatus, filterStartDate, filterEndDate, filterCompany, filterHospital, filterClaimType, analyticsDuration, filterAgent, authUser, employeesList]);
 
   // Client-side Sorting
   const sortedClaims = useMemo(() => {
@@ -2003,15 +2068,19 @@ export default function Claims() {
     }
   }, [watchClaimNumber, rawClaims, setValue]);
 
-  // Auto-fill patient name when policy is selected
+  // Auto-fill patient name when policy is selected (only if not already entered by user)
   useEffect(() => {
     if (watchPolicyId && selectedContact) {
-      setValue('patientName', `${selectedContact.firstName} ${selectedContact.lastName}`);
+      const currentPatient = watch('patientName');
+      if (!currentPatient || !currentPatient.trim()) {
+        setValue('patientName', `${selectedContact.firstName} ${selectedContact.lastName}`);
+      }
     }
-  }, [watchPolicyId, selectedContact, setValue]);
+  }, [watchPolicyId, selectedContact, setValue, watch]);
 
   const closeModal = () => {
     setModalOpen(false);
+    setStatusDropdownOpen(false);
     reset();
     setSelectedContact(null); setContactSearch('');
     setSelectedPolicy(null);
@@ -2057,14 +2126,15 @@ export default function Claims() {
         }
       }
 
-      const { diagnosis, hospital, hospitalAddress, patientName, deductionsNotes, admissionAt, dischargeAt, notes, assignedEmployeeId, amtHospital, amtMedicine, amtLab, amtPreHosp, amtPostHosp, amtOthers, subClaimNo, uiClaimStatus, comment, insuranceCompanyCategory, insuranceCompany, insuranceProductName, agentName, deathAdmissionDate, causeOfDeath, dateOfOccurance, dateOfDeath, wasInComa, deathSumInsured, deathTotalClaimedAmount, deathComment, hospitalName, hospitalState, hospitalCity, hospitalPincode, hospitalContactNo, hospitalRating, hospitalType, claimsPerson1Name, claimsPerson1Contact, claimsPerson2Name, claimsPerson2Contact, hospitalComment, diagnosisSimple, roomCategory, typeOfManagement, typeOfAdmission, isMedicoLegalCase, hospitalisationComment, amtAnesthesia, billingComment, amtFinalBill, amtNonPayables, amtCopay, amtDeductible, amtBalanceEMIs, amtNcdRecovery, amtExcessSumInsured, amtExcessAilmentLimit, amtHigherRoomRent, amtReasonableCost, amtOtherRecoveries, amtPatientToPay, amtExcessAgreedPackage, amtNetworkDiscount, amtNotCollected, amtPayableToInsured, approvalComment, ...rest } = body;
+      const { diagnosis, hospital, hospitalAddress, patientName, patientRelationship, deductionsNotes, admissionAt, dischargeAt, notes, assignedEmployeeId, amtHospital, amtMedicine, amtLab, amtPreHosp, amtPostHosp, amtOthers, subClaimNo, uiClaimStatus, comment, insuranceCompanyCategory, insuranceCompany, insuranceProductName, agentName, deathAdmissionDate, causeOfDeath, dateOfOccurance, dateOfDeath, wasInComa, deathSumInsured, deathTotalClaimedAmount, deathComment, hospitalName, hospitalState, hospitalCity, hospitalPincode, hospitalContactNo, hospitalRating, hospitalType, claimsPerson1Name, claimsPerson1Contact, claimsPerson2Name, claimsPerson2Contact, hospitalComment, diagnosisSimple, roomCategory, typeOfManagement, typeOfAdmission, isMedicoLegalCase, hospitalisationComment, amtAnesthesia, billingComment, amtFinalBill, amtNonPayables, amtCopay, amtDeductible, amtBalanceEMIs, amtNcdRecovery, amtExcessSumInsured, amtExcessAilmentLimit, amtHigherRoomRent, amtReasonableCost, amtOtherRecoveries, amtPatientToPay, amtExcessAgreedPackage, amtNetworkDiscount, amtNotCollected, amtPayableToInsured, approvalComment, ...rest } = body;
+      const effectiveHospName = hospitalName || hospital || '';
       const notesJson = serializeNotes({
-        diagnosis, hospital, hospitalAddress, patientName, deductionsNotes, admissionAt, dischargeAt, notes,
+        diagnosis, hospital: effectiveHospName, hospitalAddress, patientName, patientRelationship, deductionsNotes, admissionAt, dischargeAt, notes,
         amtHospital, amtMedicine, amtLab, amtPreHosp, amtPostHosp, amtOthers,
         subClaimNo, uiClaimStatus, comment, insuranceCompanyCategory, insuranceCompany, insuranceProductName, agentName,
         deathAdmissionDate, causeOfDeath, dateOfOccurance, dateOfDeath, wasInComa, deathSumInsured, deathTotalClaimedAmount, deathComment,
         nominees: JSON.stringify(newNominees),
-        hospitalName, hospitalState, hospitalCity, hospitalPincode, hospitalContactNo, hospitalRating, hospitalType, claimsPerson1Name, claimsPerson1Contact, claimsPerson2Name, claimsPerson2Contact, hospitalComment,
+        hospitalName: effectiveHospName, hospitalState, hospitalCity, hospitalPincode, hospitalContactNo, hospitalRating, hospitalType, claimsPerson1Name, claimsPerson1Contact, claimsPerson2Name, claimsPerson2Contact, hospitalComment,
         hospitalDoctors: JSON.stringify(newDoctors),
         diagnosisSimple, roomCategory, typeOfManagement, typeOfAdmission, isMedicoLegalCase, hospitalisationComment, amtAnesthesia, billingComment,
         amtFinalBill, amtNonPayables, amtCopay, amtDeductible, amtBalanceEMIs, amtNcdRecovery, amtExcessSumInsured, amtExcessAilmentLimit, amtHigherRoomRent, amtReasonableCost, amtOtherRecoveries, amtPatientToPay, amtExcessAgreedPackage, amtNetworkDiscount, amtNotCollected, amtPayableToInsured, approvalComment
@@ -2078,7 +2148,10 @@ export default function Claims() {
         claimAmount: calcClaimAmount,
         intimatedAt: rest.intimatedAt || new Date().toISOString().split('T')[0],
         patientName: patientName || (selectedContact ? `${selectedContact.firstName} ${selectedContact.lastName}` : 'Insured Person'),
+        hospitalName: effectiveHospName,
         assignedEmployeeId: assignedEmployeeId || undefined,
+        contact: selectedContact,
+        policy: selectedPolicy,
         notes: notesJson,
       });
       const claimId = res.data?.id;
@@ -2109,6 +2182,7 @@ export default function Claims() {
       closeModal();
       qcClaims.invalidateQueries({ queryKey: ['claims'] });
       qcClaims.invalidateQueries({ queryKey: ['claims', 'summary'] });
+      refetchClaims();
     } catch (e: any) {
       console.error(e);
       toast.error(e?.response?.data?.message || 'Failed to save claim');
@@ -2147,13 +2221,30 @@ export default function Claims() {
     },
     {
       key: 'contact',
-      label: 'Client & Policy',
-      render: r => (
-        <div className="flex flex-col">
-          <span className="font-bold text-gray-900">{r.contact ? `${r.contact.firstName} ${r.contact.lastName}` : '—'}</span>
-          <span className="text-xs text-gray-500">Policy: {r.policy?.policyNumber ?? '—'}</span>
-        </div>
-      )
+      label: 'Client, Patient & Policy',
+      render: r => {
+        const extra = getClaimNotesData(r.notes);
+        const pName = extra.patientName || (r as any).patientName;
+        const hospName = extra.hospitalName || extra.hospital || (r as any).hospitalName;
+        return (
+          <div className="flex flex-col gap-0.5 min-w-[170px]">
+            <span className="font-bold text-gray-900">{r.contact ? `${r.contact.firstName} ${r.contact.lastName}` : '—'}</span>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[11px] text-gray-500 font-mono">Pol: {r.policy?.policyNumber ?? '—'}</span>
+              {pName && (
+                <span className="text-[10px] font-extrabold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200/60" title={`Patient: ${pName}`}>
+                  Pt: {pName}
+                </span>
+              )}
+            </div>
+            {hospName && (
+              <span className="text-[10px] text-slate-500 font-medium truncate max-w-[220px]" title={hospName}>
+                🏥 {hospName}
+              </span>
+            )}
+          </div>
+        );
+      }
     },
     {
       key: 'claimAmount',
@@ -2850,7 +2941,7 @@ export default function Claims() {
                 <div className="flex-1 min-h-[350px] rounded-xl border p-1.5 space-y-1.5 transition-all duration-200 overflow-y-auto custom-scrollbar bg-slate-50/50">
                   {stageClaims.map(c => {
                     const notes = getClaimNotesData(c.notes);
-                    const emp = employees.find((e: any) => e.id === c.assignedEmployeeId);
+                    const emp = employeesList.find((e: any) => e.id === c.assignedEmployeeId || e.userId === c.assignedEmployeeId || e.user?.id === c.assignedEmployeeId);
                     const assigneeName = emp ? `${emp.firstName} ${emp.lastName}` : 'Unassigned';
                     return (
                       <div
@@ -3025,7 +3116,7 @@ export default function Claims() {
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">▼</span>
                     </div>
                     {contactDropdown && !selectedContact && (
-                      <ul className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-44 overflow-y-auto">
+                      <ul className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-44 overflow-y-auto no-scrollbar">
                         {(contactResults?.data ?? []).length === 0 ? (
                           <li className="px-3 py-2 text-sm text-gray-400">No contacts found</li>
                         ) : (
@@ -3062,7 +3153,7 @@ export default function Claims() {
                         <span className="text-gray-400 text-xs">▼</span>
                       </button>
                       {policyDropdown && (
-                        <ul className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-xl max-h-48 overflow-y-auto custom-scrollbar">
+                        <ul className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-xl max-h-48 overflow-y-auto no-scrollbar">
                           {activeContactPolicies.length === 0 ? (
                             <li className="px-3 py-2.5 text-xs text-gray-400">No active policies found</li>
                           ) : (
@@ -3126,13 +3217,30 @@ export default function Claims() {
 
                     {/* Patient / Insured Person */}
                     <div>
-                      <label className="label">Patient / Insured Person</label>
-                      <select
-                        disabled={!selectedContact}
-                        className="input w-full bg-white mt-1"
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="label text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
+                          Patient Name (रुग्णाचे नाव) <span className="text-red-500 font-bold">*</span>
+                        </label>
+                        {selectedContact && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setValue('patientName', `${selectedContact.firstName} ${selectedContact.lastName}`);
+                              setValue('patientRelationship' as any, 'Self');
+                            }}
+                            className="text-[10px] font-bold text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100 px-2 py-0.5 rounded cursor-pointer transition-colors"
+                          >
+                            Set to Proposer (स्वतः)
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        list="patient-suggestions"
+                        className="input w-full bg-white mt-1 border-slate-200 focus:border-purple-500 text-xs font-semibold text-slate-800"
+                        placeholder="Enter patient full name..."
                         {...register('patientName')}
-                      >
-                        <option value="">Select Patient</option>
+                      />
+                      <datalist id="patient-suggestions">
                         {selectedContact && (
                           <>
                             <option value={`${selectedContact.firstName} ${selectedContact.lastName}`}>
@@ -3150,7 +3258,7 @@ export default function Claims() {
                             })}
                           </>
                         )}
-                      </select>
+                      </datalist>
                     </div>
                   </div>
 
@@ -3176,8 +3284,8 @@ export default function Claims() {
                       <label className="label">Assigned Employee</label>
                       <select {...register('assignedEmployeeId')} className="input mt-1 bg-white">
                         <option value="">Unassigned</option>
-                        {employees.map((e: any) => (
-                          <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>
+                        {employeesList.map((e: any) => (
+                          <option key={e.id || e.userId} value={e.id || e.userId}>{e.firstName} {e.lastName}</option>
                         ))}
                       </select>
                     </div>
@@ -3203,6 +3311,55 @@ export default function Claims() {
                   </div>
                   {!collapsedSections['newClaim'] && (
                     <div className="p-4 space-y-4">
+                      {/* Patient Name & Relationship in Claim Details */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-purple-50/50 rounded-xl border border-purple-100">
+                        <div className="sm:col-span-2">
+                          <label className="label text-[11px] font-extrabold text-purple-900 mb-1 flex items-center justify-between">
+                            <span>Patient Name (रुग्णाचे नाव) <span className="text-red-500 font-bold">*</span></span>
+                            {selectedContact && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setValue('patientName', `${selectedContact.firstName} ${selectedContact.lastName}`);
+                                  setValue('patientRelationship' as any, 'Self');
+                                }}
+                                className="text-[10px] font-bold text-purple-700 hover:text-purple-900 bg-white/90 border border-purple-200 px-2 py-0.5 rounded cursor-pointer transition-all shadow-2xs"
+                              >
+                                Set to Proposer (स्वतः)
+                              </button>
+                            )}
+                          </label>
+                          <input
+                            list="patient-suggestions"
+                            className="input w-full bg-white mt-1 border-purple-200 focus:border-purple-500 focus:ring-1 focus:ring-purple-500/20 text-xs font-bold text-slate-800"
+                            placeholder="Enter patient full name..."
+                            {...register('patientName')}
+                          />
+                        </div>
+                        <div>
+                          <label className="label text-[11px] font-extrabold text-purple-900 mb-1 block">
+                            Relationship (नाते)
+                          </label>
+                          <select
+                            {...register('patientRelationship' as any)}
+                            className="input w-full bg-white mt-1 border-purple-200 focus:border-purple-500 text-xs font-semibold text-slate-800"
+                            onChange={(e) => {
+                              const rel = e.target.value;
+                              if (rel === 'Self' && selectedContact) {
+                                setValue('patientName', `${selectedContact.firstName} ${selectedContact.lastName}`);
+                              }
+                            }}
+                          >
+                            <option value="Self">Self (स्वतः)</option>
+                            <option value="Spouse">Spouse (पती / पत्नी)</option>
+                            <option value="Son">Son (मुलगा)</option>
+                            <option value="Daughter">Daughter (मुलगी)</option>
+                            <option value="Father">Father (वडील)</option>
+                            <option value="Mother">Mother (आई)</option>
+                            <option value="Other">Other (इतर)</option>
+                          </select>
+                        </div>
+                      </div>
                       {/* Row: Claim Type | Claim Number | Sub Claim No */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
@@ -3228,33 +3385,54 @@ export default function Claims() {
 
                   {/* Row: Status | Intimation Date */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
+                    {/* Claim Status Custom Downward Dropdown */}
+                    <div className="relative">
                       <label className="label">Claim Status</label>
-                      <select {...register('uiClaimStatus')} className="input mt-1">
-                        <option value="">Select Status</option>
-                        <option value="Intimated">Intimated</option>
-                        <option value="Discharge Done">Discharge Done</option>
-                        <option value="Pending Documents from Hospital/Customer">Pending Documents from Hospital/Customer</option>
-                        <option value="Documents Collected from Hospital/Customer">Documents Collected from Hospital/Customer</option>
-                        <option value="Submitted to Company">Submitted to Company</option>
-                        <option value="Pending for approval">Pending for approval</option>
-                        <option value="Query Raised">Query Raised</option>
-                        <option value="Query Resolved">Query Resolved</option>
-                        <option value="Partially Approved">Partially Approved</option>
-                        <option value="Approved">Approved</option>
-                        <option value="Rejected">Rejected</option>
-                        <option value="No Response from Customer">No Response from Customer</option>
-                        <option value="Pre-Authorisation Approved">Pre-Authorisation Approved</option>
-                        <option value="Pre-Authorisation Rejected">Pre-Authorisation Rejected</option>
-                        <option value="Enhancement Approved">Enhancement Approved</option>
-                        <option value="Enhancement Rejected">Enhancement Rejected</option>
-                        <option value="Interim Authorisation Approved">Interim Authorisation Approved</option>
-                        <option value="Interim Authorisation Rejected">Interim Authorisation Rejected</option>
-                        <option value="Final Authorisation Approved">Final Authorisation Approved</option>
-                        <option value="Final Authorisation Rejected">Final Authorisation Rejected</option>
-                        <option value="Advised to go for Reimbursement">Advised to go for Reimbursement</option>
-                        <option value="Treatment Cancelled/Changed">Treatment Cancelled/Changed</option>
-                      </select>
+                      <input type="hidden" {...register('uiClaimStatus')} />
+                      <div
+                        onClick={() => setStatusDropdownOpen(prev => !prev)}
+                        className="input mt-1 bg-white flex items-center justify-between cursor-pointer select-none border border-slate-200 hover:border-purple-400 transition-colors"
+                      >
+                        <span className={watch('uiClaimStatus') ? 'text-slate-800 font-medium' : 'text-slate-400'}>
+                          {watch('uiClaimStatus') || 'Select Status'}
+                        </span>
+                        <ChevronDown size={15} className={`text-slate-400 transition-transform duration-200 ${statusDropdownOpen ? 'rotate-180 text-purple-600' : ''}`} />
+                      </div>
+                      {statusDropdownOpen && (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={() => setStatusDropdownOpen(false)} />
+                          <ul className="absolute left-0 top-full z-50 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-2xl max-h-56 overflow-y-auto no-scrollbar py-1 animate-fadeIn divide-y divide-slate-50">
+                            <li
+                              onClick={() => {
+                                setValue('uiClaimStatus', '');
+                                setStatusDropdownOpen(false);
+                              }}
+                              className="px-3.5 py-2 text-xs text-slate-400 hover:bg-purple-50 hover:text-purple-700 cursor-pointer transition-colors font-medium"
+                            >
+                              Select Status
+                            </li>
+                            {CLAIM_STATUS_OPTIONS.map((st) => (
+                              <li
+                                key={st}
+                                onClick={() => {
+                                  setValue('uiClaimStatus', st);
+                                  setStatusDropdownOpen(false);
+                                }}
+                                className={`px-3.5 py-2 text-xs cursor-pointer transition-colors flex items-center justify-between ${
+                                  watch('uiClaimStatus') === st
+                                    ? 'bg-purple-50 text-purple-700 font-bold'
+                                    : 'text-slate-700 hover:bg-slate-50 hover:text-purple-700 font-medium'
+                                }`}
+                              >
+                                <span>{st}</span>
+                                {watch('uiClaimStatus') === st && (
+                                  <span className="w-1.5 h-1.5 rounded-full bg-purple-600" />
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
                     </div>
                     <div>
                       <label className="label">Intimation Date <span className="text-red-500">*</span></label>
@@ -3440,91 +3618,206 @@ export default function Claims() {
                   </div>
                   {!collapsedSections['newHospital'] && (
                     <div className="p-4 space-y-4">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                        <div>
-                          <label className="label text-[10px]">Hospital City</label>
-                          <select 
-                            className="input mt-1 py-1 text-xs" 
-                            {...register('hospitalCity')}
-                            onChange={(e) => {
-                              setValue('hospitalCity', e.target.value);
-                              setValue('hospitalName', '');
-                              setValue('hospitalAddress', '');
-                              setValue('hospitalState', '');
-                              setValue('hospitalPincode', '');
-                              setValue('hospitalContactNo', '');
-                              setValue('hospitalRating', '');
-                              setValue('hospitalType', '');
-                            }}
-                          >
-                            <option value="">Select City</option>
-                            {Array.from<string>(new Set(hospitals.map((h: any) => h.hospitalCity as string).filter(Boolean))).map((c: string) => (
-                              <option key={c} value={c}>{c}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="label text-[10px]">Hospital Name</label>
-                          <select 
-                            className="input mt-1 py-1 text-xs" 
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
+                        {/* 1. Hospital Name (हॉस्पिटलचे नाव) */}
+                        <div className="sm:col-span-2">
+                          <label className="label text-[10px] font-bold text-slate-700">
+                            Hospital Name (हॉस्पिटलचे नाव) <span className="text-red-500 font-bold">*</span>
+                          </label>
+                          <input 
+                            type="text"
+                            list="hosp-name-options"
+                            placeholder="Enter or select hospital name (e.g. Ruby Hall, Jupiter...)"
+                            className="input mt-1 py-1.5 text-xs w-full bg-white font-semibold" 
                             {...register('hospitalName')}
                             onChange={(e) => {
                               const val = e.target.value;
                               setValue('hospitalName', val);
-                              const hosp = hospitals.find((h: any) => h.hospitalName === val);
+                              const hosp = hospitals.find((h: any) => h.hospitalName?.toLowerCase() === val.toLowerCase());
                               if (hosp) {
-                                if (!watchHospitalCity) setValue('hospitalCity', hosp.hospitalCity);
-                                setValue('hospitalAddress', ''); // Store doesn't have precise address line, leave blank or we could map from city
-                                setValue('hospitalState', hosp.hospitalState);
-                                setValue('hospitalPincode', hosp.hospitalPincode);
-                                setValue('hospitalContactNo', hosp.hospitalContactNo);
-                                setValue('hospitalRating', hosp.hospitalRating);
-                                setValue('hospitalType', hosp.hospitalType);
+                                if (hosp.hospitalCity) setValue('hospitalCity', hosp.hospitalCity);
+                                if (hosp.hospitalState) setValue('hospitalState', hosp.hospitalState);
+                                if (hosp.hospitalPincode) setValue('hospitalPincode', hosp.hospitalPincode);
+                                if (hosp.hospitalContactNo) setValue('hospitalContactNo', hosp.hospitalContactNo);
+                                if (hosp.hospitalRating) setValue('hospitalRating', hosp.hospitalRating);
+                                if (hosp.hospitalType) setValue('hospitalType', hosp.hospitalType);
                               }
                             }}
-                          >
-                            <option value="">Select Hospital</option>
-                            {hospitals.filter((h: any) => !watchHospitalCity || h.hospitalCity === watchHospitalCity).map((h: any) => (
-                              <option key={h.id} value={h.hospitalName}>{h.hospitalName}</option>
+                          />
+                          <datalist id="hosp-name-options">
+                            {hospitals.map((h: any) => (
+                              <option key={h.id || h.hospitalName} value={h.hospitalName}>{h.hospitalCity ? `${h.hospitalName} (${h.hospitalCity})` : h.hospitalName}</option>
                             ))}
-                          </select>
+                            <option value="Ruby Hall Clinic" />
+                            <option value="Jupiter Hospital" />
+                            <option value="KEM Hospital" />
+                            <option value="Lilavati Hospital" />
+                            <option value="Fortis Hospital" />
+                            <option value="Apollo Hospital" />
+                            <option value="Manipal Hospital" />
+                            <option value="Sahyadri Super Speciality Hospital" />
+                            <option value="Deenanath Mangeshkar Hospital" />
+                            <option value="Kokilaben Dhirubhai Ambani Hospital" />
+                            <option value="Max Super Speciality Hospital" />
+                            <option value="Medanta - The Medicity" />
+                          </datalist>
                         </div>
+
+                        {/* 2. Hospital Address (हॉस्पिटलचा पत्ता) */}
                         <div>
-                          <label className="label text-[10px]">Hospital Pincode</label>
+                          <label className="label text-[10px] font-bold text-slate-700">
+                            Hospital Address / Area (पत्ता / परिसर)
+                          </label>
+                          <input 
+                            type="text" 
+                            placeholder="Street, Landmark, Area..." 
+                            className="input mt-1 py-1.5 text-xs w-full bg-white font-medium" 
+                            {...register('hospitalAddress')} 
+                          />
+                        </div>
+
+                        {/* 3. Hospital City (शहर) */}
+                        <div>
+                          <label className="label text-[10px] font-bold text-slate-700">Hospital City (शहर)</label>
+                          <input 
+                            type="text" 
+                            list="hosp-city-options" 
+                            placeholder="e.g. Pune, Mumbai..." 
+                            className="input mt-1 py-1.5 text-xs w-full bg-white font-medium" 
+                            {...register('hospitalCity')} 
+                          />
+                          <datalist id="hosp-city-options">
+                            {Array.from<string>(new Set(hospitals.map((h: any) => h.hospitalCity as string).filter(Boolean))).map((c: string) => (
+                              <option key={c} value={c} />
+                            ))}
+                            <option value="Pune" />
+                            <option value="Mumbai" />
+                            <option value="Thane" />
+                            <option value="Navi Mumbai" />
+                            <option value="Nashik" />
+                            <option value="Nagpur" />
+                            <option value="Chhatrapati Sambhajinagar (Aurangabad)" />
+                            <option value="Kolhapur" />
+                            <option value="Solapur" />
+                            <option value="Delhi" />
+                            <option value="Bengaluru" />
+                            <option value="Hyderabad" />
+                            <option value="Ahmedabad" />
+                          </datalist>
+                        </div>
+
+                        {/* 4. Hospital State (राज्य) */}
+                        <div>
+                          <label className="label text-[10px] font-bold text-slate-700">State (राज्य)</label>
+                          <input 
+                            type="text" 
+                            placeholder="e.g. Maharashtra" 
+                            className="input mt-1 py-1.5 text-xs w-full bg-white font-medium" 
+                            {...register('hospitalState')} 
+                          />
+                        </div>
+
+                        {/* 5. Hospital Pincode (पिनकोड) */}
+                        <div>
+                          <label className="label text-[10px] font-bold text-slate-700">Pincode (पिनकोड)</label>
                           <input
                             type="text"
                             maxLength={6}
-                            className="input mt-1 py-1 text-xs"
+                            placeholder="6-digit pincode"
+                            className="input mt-1 py-1.5 text-xs w-full bg-white font-medium"
                             {...register('hospitalPincode', {
                               onChange: (e) => setValue('hospitalPincode', e.target.value.replace(/\D/g, '').slice(0, 6))
                             })}
                           />
                         </div>
+
+                        {/* 6. Hospital Contact No */}
                         <div>
-                          <label className="label text-[10px]">Hospital Contact No</label>
+                          <label className="label text-[10px] font-bold text-slate-700">Hospital Phone / Helpline</label>
                           <input
                             type="tel"
                             maxLength={10}
-                            className="input mt-1 py-1 text-xs"
-                            placeholder="10-digit mobile"
+                            className="input mt-1 py-1.5 text-xs w-full bg-white font-medium"
+                            placeholder="10-digit phone"
                             {...register('hospitalContactNo', {
                               onChange: (e) => setValue('hospitalContactNo', e.target.value.replace(/\D/g, '').slice(0, 10))
                             })}
                           />
                         </div>
+
+                        {/* 7. Date of Admission (दाखल तारीख) */}
                         <div>
-                          <label className="label text-[10px]">Hospital Rating</label>
-                          <input type="text" className="input mt-1 py-1 text-xs" {...register('hospitalRating')} />
+                          <label className="label text-[10px] font-bold text-purple-900">
+                            Admission Date (दाखल तारीख)
+                          </label>
+                          <input 
+                            type="date" 
+                            className="input mt-1 py-1.5 text-xs w-full bg-white font-semibold cursor-pointer border-purple-200" 
+                            {...register('admissionAt')} 
+                          />
                         </div>
+
+                        {/* 8. Date of Discharge (डिस्चार्ज तारीख) */}
                         <div>
-                          <label className="label text-[10px]">Hospital Type</label>
-                          <select className="input mt-1 py-1 text-xs" {...register('hospitalType')}>
+                          <label className="label text-[10px] font-bold text-purple-900">
+                            Discharge Date (डिस्चार्ज तारीख)
+                          </label>
+                          <input 
+                            type="date" 
+                            className="input mt-1 py-1.5 text-xs w-full bg-white font-semibold cursor-pointer border-purple-200" 
+                            {...register('dischargeAt')} 
+                          />
+                        </div>
+
+                        {/* 9. Room Category */}
+                        <div>
+                          <label className="label text-[10px] font-bold text-slate-700">Room Category (खोली वर्ग)</label>
+                          <input 
+                            type="text" 
+                            list="room-cat-datalist" 
+                            placeholder="e.g. Single Private, Twin Sharing, ICU" 
+                            className="input mt-1 py-1.5 text-xs w-full bg-white font-medium" 
+                            {...register('roomCategory')} 
+                          />
+                          <datalist id="room-cat-datalist">
+                            <option value="General Ward" />
+                            <option value="Twin Sharing / Semi-Private" />
+                            <option value="Single Private Room" />
+                            <option value="Deluxe / Suite" />
+                            <option value="ICU / ICCU / NICU" />
+                            <option value="Day Care / OPD" />
+                          </datalist>
+                        </div>
+
+                        {/* 10. Type of Admission */}
+                        <div>
+                          <label className="label text-[10px] font-bold text-slate-700">Admission Type</label>
+                          <select className="input mt-1 py-1.5 text-xs w-full bg-white font-semibold" {...register('typeOfAdmission')}>
                             <option value="">Select Type</option>
-                            <option value="Network">Network</option>
-                            <option value="Non-Network">Non-Network</option>
-                            <option value="Blacklisted">Blacklisted</option>
+                            <option value="Emergency">Emergency (तातडीची)</option>
+                            <option value="Planned">Planned (नियोजित)</option>
+                            <option value="Day-Care">Day-Care (दिवसभर)</option>
+                            <option value="Maternity">Maternity (प्रसूती)</option>
                             <option value="Other">Other</option>
                           </select>
+                        </div>
+
+                        {/* 11. Hospital Type */}
+                        <div>
+                          <label className="label text-[10px] font-bold text-slate-700">Hospital Category</label>
+                          <select className="input mt-1 py-1.5 text-xs w-full bg-white font-semibold" {...register('hospitalType')}>
+                            <option value="">Select Category</option>
+                            <option value="Network">Network Hospital (Cashless Available)</option>
+                            <option value="Non-Network">Non-Network (Reimbursement)</option>
+                            <option value="Blacklisted">Blacklisted Hospital</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </div>
+
+                        {/* 12. Hospital Rating */}
+                        <div>
+                          <label className="label text-[10px] font-bold text-slate-700">Hospital Rating / Accreditation</label>
+                          <input type="text" placeholder="e.g. NABH, A+, 4.5/5" className="input mt-1 py-1.5 text-xs w-full bg-white font-medium" {...register('hospitalRating')} />
                         </div>
                       </div>
 
@@ -4011,7 +4304,7 @@ export default function Claims() {
           isPending={updateClaimMutation.isPending}
           onSave={body => updateClaimMutation.mutate({ id: editTarget.id, body })}
           onCancel={() => setEditTarget(null)}
-          employees={employees}
+          employees={employeesList}
         />
       )}
 

@@ -7,8 +7,8 @@ import { authService } from '@api/auth.service';
 import { useAuthStore } from '@store/auth.store';
 import { useLookupStore } from '@store/lookup.store';
 import { verifyEmployeeCredentials } from '../../utils/employeePasswordStorage';
-import { sendPasswordResetEmail } from 'firebase/auth';
-import { auth } from '../../services/firebase';
+import { sendPasswordResetEmail, signInWithEmailAndPassword } from 'firebase/auth';
+import { auth, createFirebaseUserWithoutSignout } from '../../services/firebase';
 import Modal from '@comps/common/Modal';
 import toast from 'react-hot-toast';
 import {
@@ -60,29 +60,43 @@ export default function Login() {
     setResetErrorMsg('');
     setResetSuccessMsg('');
 
-    let cleanEmail = resetEmail.trim();
+    const cleanEmail = resetEmail.trim();
     if (!cleanEmail) {
       setResetErrorMsg('Please enter your email address.');
       return;
     }
-    if (!cleanEmail.includes('@')) {
-      cleanEmail = `${cleanEmail}@gmail.com`;
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      setResetErrorMsg('Please enter a valid email address (e.g. user@example.com).');
+      return;
     }
 
     setResetLoading(true);
     try {
+      // 1. Auto-ensure user exists in Firebase Auth in background so reset link always succeeds
+      try {
+        await createFirebaseUserWithoutSignout(cleanEmail);
+      } catch (provisionErr) {
+        console.warn('Firebase Auth auto-provision notice:', provisionErr);
+      }
+
+      // 2. Send Firebase Password Reset Link
       await sendPasswordResetEmail(auth, cleanEmail);
-      const successText = `Password reset link sent to ${cleanEmail}. Please check your inbox or spam folder.`;
+      const successText = 'Password reset link has been sent to your email. Please check your inbox (or Spam folder) and follow the instructions.';
       setResetSuccessMsg(successText);
       toast.success(`Password reset email sent to ${cleanEmail}`);
     } catch (err: any) {
       let msg = 'Failed to send password reset email. Please verify your email and try again.';
-      if (err.code === 'auth/user-not-found') {
-        msg = 'No user account found with this email address.';
-      } else if (err.code === 'auth/invalid-email') {
-        msg = 'Invalid email address format.';
-      } else if (err.code === 'auth/too-many-requests') {
+      const code = err?.code || '';
+      if (code === 'auth/user-not-found') {
+        msg = 'No user account found matching this email address.';
+      } else if (code === 'auth/invalid-email') {
+        msg = 'Invalid email address format. Please check and try again.';
+      } else if (code === 'auth/too-many-requests') {
         msg = 'Too many attempts. Please wait a few minutes before trying again.';
+      } else if (code === 'auth/network-request-failed') {
+        msg = 'Network connection problem. Please verify your internet connection.';
       } else if (err.message) {
         msg = err.message;
       }
@@ -102,6 +116,8 @@ export default function Login() {
         cleanEmail = `${cleanEmail}@gmail.com`;
       }
       const cleanPassword = data.password.trim();
+      const lowerRaw = rawInput.toLowerCase();
+      const lowerCleanEmail = cleanEmail.toLowerCase();
 
       const localVerified = verifyEmployeeCredentials(rawInput, cleanPassword);
 
@@ -120,75 +136,104 @@ export default function Login() {
           return;
         }
 
+        // Try Firebase Auth
+        try {
+          const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, cleanPassword);
+          if (userCredential?.user) {
+            const empSession = {
+              id: userCredential.user.uid,
+              email: userCredential.user.email || cleanEmail,
+              role: 'EMPLOYEE',
+              firstName: userCredential.user.displayName || cleanEmail.split('@')[0],
+              lastName: '',
+              tenantId: 'tenant-demo-1',
+            };
+            useAuthStore.getState().setTokens(`fb-token-${empSession.id}`, `fb-refresh-${empSession.id}`);
+            useAuthStore.getState().setUser(empSession);
+            try { useLookupStore.getState().loadAll(); } catch {}
+            toast.success(`Login successful! Welcome, ${empSession.firstName}`);
+            window.location.replace('/workspace');
+            return;
+          }
+        } catch (fbErr: any) {}
+
         // Try backend login
         try {
           const res = await authService.login({ email: cleanEmail, password: cleanPassword });
-          const userObj = res?.user ? { ...res.user, role: 'EMPLOYEE' } : {
-            id: `emp-${rawInput.replace(/[^a-zA-Z0-9]/g, '')}`,
-            email: cleanEmail,
-            role: 'EMPLOYEE',
-            firstName: rawInput.split('@')[0],
-            lastName: '',
-            tenantId: 'tenant-demo-1',
-          };
-          useAuthStore.getState().setUser(userObj);
-          toast.success(`Login successful! Welcome, ${userObj.firstName || 'Employee'}`);
-          window.location.replace('/workspace');
-          return;
-        } catch (backendErr: any) {
-          throw new Error('Invalid employee username or password. Please check your credentials.');
-        }
+          if (res?.user) {
+            const userObj = { ...res.user, role: 'EMPLOYEE' };
+            useAuthStore.getState().setUser(userObj);
+            toast.success(`Login successful! Welcome, ${userObj.firstName || 'Employee'}`);
+            window.location.replace('/workspace');
+            return;
+          }
+        } catch (backendErr: any) {}
+
+        throw new Error('Invalid employee username or password. Please check your credentials.');
       }
 
       // ── Handle Owner Login ──
       if (selectedRole === 'owner') {
-        const lowerRaw = rawInput.toLowerCase();
-        const isOwnerCred = lowerRaw.includes('superadmin') || lowerRaw.includes('owner') || lowerRaw.includes('admin') || lowerRaw === 'superadmin123';
-        const isOwnerPass = cleanPassword === 'Password@123' || cleanPassword === 'superadmin123' || cleanPassword === 'admin@123';
+        // 1. Try Firebase Auth (with exact Firebase credentials user configured)
+        try {
+          const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, cleanPassword);
+          if (userCredential?.user) {
+            const ownerSession = {
+              id: userCredential.user.uid,
+              email: userCredential.user.email || cleanEmail,
+              role: 'OWNER',
+              firstName: 'Super',
+              lastName: 'Admin',
+              tenantId: 'tenant-demo-1',
+            };
+            useAuthStore.getState().setTokens(`fb-token-${ownerSession.id}`, `fb-refresh-${ownerSession.id}`);
+            useAuthStore.getState().setUser(ownerSession);
+            try { useLookupStore.getState().loadAll(); } catch {}
+            toast.success(`Login successful! Welcome, Owner`);
+            window.location.replace('/dashboard');
+            return;
+          }
+        } catch (fbErr: any) {
+          // Firebase auth failed; check configured static owner credentials
+        }
 
-        if (isOwnerCred && isOwnerPass) {
+        // 2. Check Owner Credentials specified by User
+        const isOwnerEmail = lowerCleanEmail === 'familyfirstrk1985@gmail.com' || lowerRaw === 'familyfirstrk1985';
+        const isOwnerPass = cleanPassword === 'family1985';
+
+        // Secondary developer fallback
+        const isDevSuperAdmin = (lowerCleanEmail === 'superadmin123@gmail.com' || lowerRaw === 'superadmin123' || lowerRaw === 'superadmin') && cleanPassword === 'Password@123';
+
+        if ((isOwnerEmail && isOwnerPass) || isDevSuperAdmin) {
           const ownerSession = {
-            id: 'user-superadmin-1',
-            email: cleanEmail,
+            id: isOwnerEmail ? 'user-owner-rk1985' : 'user-superadmin-1',
+            email: isOwnerEmail ? 'familyfirstrk1985@gmail.com' : cleanEmail,
             role: 'OWNER',
-            firstName: 'Super',
-            lastName: 'Admin',
+            firstName: isOwnerEmail ? 'Owner' : 'Super',
+            lastName: isOwnerEmail ? 'Admin' : 'Admin',
             tenantId: 'tenant-demo-1',
           };
-          useAuthStore.getState().setTokens(`auth-token-owner`, `auth-refresh-owner`);
+          useAuthStore.getState().setTokens(`auth-token-${ownerSession.id}`, `auth-refresh-${ownerSession.id}`);
           useAuthStore.getState().setUser(ownerSession);
           try { useLookupStore.getState().loadAll(); } catch {}
-          toast.success(`Login successful! Welcome, Super Admin`);
+          toast.success(`Login successful! Welcome, Owner`);
           window.location.replace('/dashboard');
           return;
         }
 
-        // Check if user accidentally entered employee credentials on owner tab
-        if (localVerified && localVerified.role === 'EMPLOYEE') {
-          const empSession = {
-            ...localVerified,
-            role: 'EMPLOYEE',
-          };
-          useAuthStore.getState().setTokens(`auth-token-${empSession.id}`, `auth-refresh-${empSession.id}`);
-          useAuthStore.getState().setUser(empSession);
-          try { useLookupStore.getState().loadAll(); } catch {}
-          toast.success(`Welcome, ${empSession.firstName}! Logged in to Workspace.`);
-          window.location.replace('/workspace');
-          return;
-        }
-
+        // 3. Try Backend API
         try {
           const res = await authService.login({ email: cleanEmail, password: cleanPassword });
-          const userObj = res?.user ? { ...res.user, role: 'OWNER' } : null;
-          if (userObj) {
+          if (res?.user) {
+            const userObj = { ...res.user, role: 'OWNER' };
             useAuthStore.getState().setUser(userObj);
+            toast.success(`Login successful! Welcome, ${userObj.firstName || 'Owner'}`);
+            window.location.replace('/dashboard');
+            return;
           }
-          toast.success(`Login successful! Welcome, ${userObj?.firstName || 'Owner'}`);
-          window.location.replace('/dashboard');
-          return;
-        } catch (err: any) {
-          throw new Error('Invalid owner username or password. Please check your credentials.');
-        }
+        } catch (backendErr: any) {}
+
+        throw new Error('Invalid owner email/username or password. Please check your credentials.');
       }
     } catch (e: any) {
       toast.error(e.response?.data?.message ?? e.message ?? 'Invalid username or password');

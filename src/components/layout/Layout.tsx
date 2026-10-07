@@ -16,7 +16,7 @@ const TITLES: Record<string, string> = {
   commissions:  'Commissions',
   whatsapp:     'WhatsApp',
   calendar:     'Calendar',
-  settings:     'Settings',
+  settings:     'Edit Profile',
   subscription: 'Subscription',
 };
 
