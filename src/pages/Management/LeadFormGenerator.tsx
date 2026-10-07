@@ -232,16 +232,8 @@ export default function LeadFormGenerator() {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setShowAddProductModal(true)}
-            className="inline-flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 text-white font-bold px-3.5 py-2 rounded-xl text-xs transition shadow-sm cursor-pointer active:scale-95"
-          >
-            <Plus className="w-4 h-4" />
-            <span>+ Add New Product</span>
-          </button>
-
-          <button
             onClick={() => setShowPreviewModal(true)}
-            className="inline-flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-800 font-bold px-3.5 py-2 rounded-xl text-xs transition border border-slate-300 shadow-sm cursor-pointer active:scale-95"
+            className="inline-flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-800 font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm transition border border-slate-300 shadow-sm cursor-pointer active:scale-95"
           >
             <Eye className="w-4 h-4 text-emerald-600" />
             <span>Preview Form</span>
@@ -256,31 +248,35 @@ export default function LeadFormGenerator() {
         <div className="p-5 sm:p-6 space-y-4">
           
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                Select Product / Insurance Scheme *
-              </label>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
+              Select Product / Insurance Scheme *
+            </label>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+              <div className="relative flex-1">
+                <select
+                  value={selectedProduct}
+                  onChange={(e) => setSelectedProduct(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition cursor-pointer"
+                >
+                  {productsList.map((prod) => (
+                    <option key={prod.id} value={prod.id}>
+                      {prod.name} {prod.badge ? `(${prod.badge})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <button
                 type="button"
                 onClick={() => setShowAddProductModal(true)}
-                className="text-xs font-bold text-purple-600 hover:text-purple-700 hover:underline flex items-center gap-1 cursor-pointer"
+                className="inline-flex items-center justify-center gap-2 bg-[#7c3aed] hover:bg-[#6d28d9] text-white font-bold px-5 py-3 rounded-xl text-xs sm:text-sm whitespace-nowrap transition shadow-md hover:shadow-purple-500/20 active:scale-95 cursor-pointer shrink-0"
               >
-                <Plus className="w-3 h-3" />
-                Add New Scheme
+                <Plus className="w-4 h-4 stroke-[2.5]" />
+                <span>Add New Product</span>
               </button>
             </div>
 
-            <select
-              value={selectedProduct}
-              onChange={(e) => setSelectedProduct(e.target.value)}
-              className="w-full px-4 py-3.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 text-sm font-semibold focus:ring-2 focus:ring-emerald-500 outline-none transition cursor-pointer"
-            >
-              {productsList.map((prod) => (
-                <option key={prod.id} value={prod.id}>
-                  {prod.name} {prod.badge ? `(${prod.badge})` : ''}
-                </option>
-              ))}
-            </select>
             <p className="text-xs text-slate-500 mt-1.5">
               The selected product will be automatically pre-selected when customers open your form link.
             </p>
