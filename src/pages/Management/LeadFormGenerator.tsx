@@ -14,7 +14,10 @@ import {
   ProductOption, 
   DEFAULT_PRODUCT_OPTIONS, 
   getAllProductOptions, 
-  saveCustomProduct 
+  saveCustomProduct,
+  DEFAULT_CATEGORIES,
+  getAllCategories,
+  saveCustomCategory
 } from '../../utils/productOptions';
 
 export default function LeadFormGenerator() {
@@ -28,10 +31,15 @@ export default function LeadFormGenerator() {
   const [copiedMsg, setCopiedMsg] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
 
+  // Categories State
+  const [categoriesList, setCategoriesList] = useState<string[]>(() => getAllCategories());
+
   // Add Custom Product Modal State
   const [showAddProductModal, setShowAddProductModal] = useState(false);
   const [newProductName, setNewProductName] = useState('');
-  const [newProductCategory, setNewProductCategory] = useState('Life');
+  const [newProductCategory, setNewProductCategory] = useState('Life Insurance');
+  const [isCustomCategoryMode, setIsCustomCategoryMode] = useState(false);
+  const [customCategoryInput, setCustomCategoryInput] = useState('');
   const [savingProduct, setSavingProduct] = useState(false);
 
   // Live Leads
@@ -45,6 +53,25 @@ export default function LeadFormGenerator() {
     staleTime: 5 * 60_000,
   });
   const employees: any[] = empRes?.data || [];
+
+  // Live Firestore listener for custom categories
+  useEffect(() => {
+    if (!db) return;
+    try {
+      const unsub = onSnapshot(collection(db, 'custom_categories'), (snapshot) => {
+        const cats: string[] = [];
+        snapshot.forEach((docSnap) => {
+          const d = docSnap.data();
+          if (d.name) cats.push(d.name);
+        });
+        if (cats.length > 0) {
+          const combined = Array.from(new Set([...DEFAULT_CATEGORIES, ...cats]));
+          setCategoriesList(combined);
+        }
+      });
+      return () => unsub();
+    } catch {}
+  }, []);
 
   // Live Firestore listener for custom products
   useEffect(() => {
@@ -75,13 +102,43 @@ export default function LeadFormGenerator() {
     } catch {}
   }, []);
 
-  // Handle Adding New Product
+  // Handle Adding New Product & Category
   const handleAddNewProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanName = newProductName.trim();
     if (!cleanName) {
       toast.error('Please enter a product or scheme name');
       return;
+    }
+
+    // Determine final category
+    let finalCategory = newProductCategory;
+    if (isCustomCategoryMode) {
+      const cleanCat = customCategoryInput.trim();
+      if (!cleanCat) {
+        toast.error('Please enter a category name');
+        return;
+      }
+      finalCategory = cleanCat;
+
+      // Save category locally and in state
+      saveCustomCategory(cleanCat);
+      setCategoriesList((prev) => Array.from(new Set([...prev, cleanCat])));
+
+      // Save category to Firestore
+      if (db) {
+        try {
+          const catId = 'cat_' + cleanCat.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 30);
+          await setDoc(doc(db, 'custom_categories', catId), {
+            id: catId,
+            name: cleanCat,
+            createdAt: new Date().toISOString(),
+            createdBy: user?.id || 'admin',
+          }, { merge: true });
+        } catch (err) {
+          console.warn('Firestore save category error:', err);
+        }
+      }
     }
 
     setSavingProduct(true);
@@ -91,7 +148,7 @@ export default function LeadFormGenerator() {
       id: prodId,
       name: cleanName,
       nameEn: cleanName,
-      badge: newProductCategory,
+      badge: finalCategory,
       isCustom: true,
     };
 
@@ -108,7 +165,7 @@ export default function LeadFormGenerator() {
         await setDoc(doc(db, 'custom_products', prodId), {
           id: prodId,
           name: cleanName,
-          badge: newProductCategory,
+          badge: finalCategory,
           createdAt: new Date().toISOString(),
           createdBy: user?.id || 'admin',
         }, { merge: true });
@@ -119,9 +176,11 @@ export default function LeadFormGenerator() {
 
     setSelectedProduct(prodId);
     setNewProductName('');
+    setIsCustomCategoryMode(false);
+    setCustomCategoryInput('');
     setSavingProduct(false);
     setShowAddProductModal(false);
-    toast.success(`Product "${cleanName}" added successfully!`);
+    toast.success(`Product "${cleanName}" (${finalCategory}) added successfully!`);
   };
 
   // Direct Live URL for WhatsApp Sharing
@@ -538,22 +597,80 @@ export default function LeadFormGenerator() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-                  Category Tag
-                </label>
-                <select
-                  value={newProductCategory}
-                  onChange={(e) => setNewProductCategory(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-sm font-semibold outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
-                >
-                  <option value="Life">Life Insurance</option>
-                  <option value="Health">Health Insurance</option>
-                  <option value="Motor">Motor Insurance</option>
-                  <option value="Savings">Savings & Investment</option>
-                  <option value="Pension">Retirement & Pension</option>
-                  <option value="Child">Child Education</option>
-                  <option value="General">General / Business Insurance</option>
-                </select>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                    Category Tag
+                  </label>
+                  {!isCustomCategoryMode ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCustomCategoryMode(true);
+                        setCustomCategoryInput('');
+                      }}
+                      className="text-xs font-bold text-purple-600 dark:text-purple-400 hover:text-purple-700 hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      + Add New Category
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setIsCustomCategoryMode(false)}
+                      className="text-xs font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:underline cursor-pointer"
+                    >
+                      Choose Existing Category
+                    </button>
+                  )}
+                </div>
+
+                {!isCustomCategoryMode ? (
+                  <select
+                    value={newProductCategory}
+                    onChange={(e) => {
+                      if (e.target.value === '__ADD_NEW__') {
+                        setIsCustomCategoryMode(true);
+                        setCustomCategoryInput('');
+                      } else {
+                        setNewProductCategory(e.target.value);
+                      }
+                    }}
+                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-sm font-semibold outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                  >
+                    {categoriesList.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                    <option value="__ADD_NEW__" className="text-purple-600 font-bold">
+                      + Add New Category...
+                    </option>
+                  </select>
+                ) : (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        required={isCustomCategoryMode}
+                        autoFocus
+                        placeholder="Enter New Category Name (e.g. Travel, Commercial, Cyber)..."
+                        value={customCategoryInput}
+                        onChange={(e) => setCustomCategoryInput(e.target.value)}
+                        className="flex-1 px-4 py-3 bg-slate-50 dark:bg-slate-800 border-2 border-purple-500 rounded-xl text-slate-900 dark:text-white text-sm font-semibold outline-none focus:ring-2 focus:ring-purple-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setIsCustomCategoryMode(false)}
+                        className="px-3 py-3 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition border border-slate-200 dark:border-slate-700 cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-purple-600 dark:text-purple-400 font-medium">
+                      ✓ This category will be automatically added to the dropdown for future use.
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2">

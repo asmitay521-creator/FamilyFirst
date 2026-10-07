@@ -7,15 +7,26 @@ export interface ProductOption {
 }
 
 export const DEFAULT_PRODUCT_OPTIONS: ProductOption[] = [
-  { id: 'term_insurance', name: 'Term Life Insurance', nameEn: 'Term Life Insurance', badge: 'Life' },
-  { id: 'pension', name: 'Retirement & Pension Plan', nameEn: 'Retirement & Pension Plan', badge: 'Pension' },
-  { id: 'health_general', name: 'Health Insurance (Mediclaim)', nameEn: 'Health Insurance (Mediclaim)', badge: 'Health' },
-  { id: 'child_future', name: 'Child Education & Future Fund', nameEn: 'Child Education & Future Fund', badge: 'Child' },
-  { id: 'investment', name: 'Guaranteed Savings & Investment Plan', nameEn: 'Guaranteed Savings & Investment Plan', badge: 'Savings' },
-  { id: 'motor', name: 'Motor & Vehicle Insurance', nameEn: 'Motor & Vehicle Insurance', badge: 'Motor' },
+  { id: 'term_insurance', name: 'Term Life Insurance', nameEn: 'Term Life Insurance', badge: 'Life Insurance' },
+  { id: 'pension', name: 'Retirement & Pension Plan', nameEn: 'Retirement & Pension Plan', badge: 'Retirement & Pension' },
+  { id: 'health_general', name: 'Health Insurance (Mediclaim)', nameEn: 'Health Insurance (Mediclaim)', badge: 'Health Insurance' },
+  { id: 'child_future', name: 'Child Education & Future Fund', nameEn: 'Child Education & Future Fund', badge: 'Child Education' },
+  { id: 'investment', name: 'Guaranteed Savings & Investment Plan', nameEn: 'Guaranteed Savings & Investment Plan', badge: 'Savings & Investment' },
+  { id: 'motor', name: 'Motor & Vehicle Insurance', nameEn: 'Motor & Vehicle Insurance', badge: 'Motor Insurance' },
+];
+
+export const DEFAULT_CATEGORIES: string[] = [
+  'Life Insurance',
+  'Health Insurance',
+  'Motor Insurance',
+  'Savings & Investment',
+  'Retirement & Pension',
+  'Child Education',
+  'General / Business Insurance',
 ];
 
 export const PRODUCT_STORAGE_KEY = 'familyfirst_custom_products';
+export const CATEGORY_STORAGE_KEY = 'familyfirst_custom_categories';
 
 export function getCustomProducts(): ProductOption[] {
   try {
@@ -46,5 +57,34 @@ export function getAllProductOptions(): ProductOption[] {
   return [...DEFAULT_PRODUCT_OPTIONS, ...uniqueCustom];
 }
 
-export const PRODUCT_OPTIONS: ProductOption[] = DEFAULT_PRODUCT_OPTIONS;
+export function getCustomCategories(): string[] {
+  try {
+    const raw = localStorage.getItem(CATEGORY_STORAGE_KEY);
+    if (!raw) return [];
+    const list = JSON.parse(raw);
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
 
+export function saveCustomCategory(category: string): string[] {
+  const clean = category.trim();
+  if (!clean) return getCustomCategories();
+  try {
+    const existing = getCustomCategories();
+    const updated = Array.from(new Set([...existing, clean]));
+    localStorage.setItem(CATEGORY_STORAGE_KEY, JSON.stringify(updated));
+    return updated;
+  } catch {
+    return [];
+  }
+}
+
+export function getAllCategories(): string[] {
+  const custom = getCustomCategories();
+  const all = Array.from(new Set([...DEFAULT_CATEGORIES, ...custom]));
+  return all;
+}
+
+export const PRODUCT_OPTIONS: ProductOption[] = DEFAULT_PRODUCT_OPTIONS;
