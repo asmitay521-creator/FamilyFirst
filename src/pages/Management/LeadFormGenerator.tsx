@@ -183,11 +183,22 @@ export default function LeadFormGenerator() {
     toast.success(`Product "${cleanName}" (${finalCategory}) added successfully!`);
   };
 
-  // Direct Live URL for WhatsApp Sharing
-  const BASE_URL = 'https://familyfirstweb.vercel.app';
+  // Dynamically detect the live hosting domain (Hostinger custom domain, Vercel, etc.)
+  const getBaseUrl = () => {
+    if (typeof window !== 'undefined' && window.location) {
+      const hostname = window.location.hostname;
+      // If running on any live domain (Hostinger, custom domain, Vercel, etc.)
+      if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1' && !hostname.startsWith('192.168.')) {
+        return window.location.origin;
+      }
+    }
+    // Fallback if running on local dev machine
+    return 'https://familyfirstweb.vercel.app';
+  };
   
-  // Clean direct URL generator (Live URL for WhatsApp)
+  // Clean direct URL generator (uses the current hosting domain automatically)
   const generateUrl = () => {
+    const baseUrl = getBaseUrl().replace(/\/+$/, '');
     const params = new URLSearchParams();
     if (selectedProduct) {
       params.set('product', selectedProduct);
@@ -201,7 +212,7 @@ export default function LeadFormGenerator() {
     }
 
     const qs = params.toString();
-    return `${BASE_URL}/lead-form.html${qs ? `?${qs}` : ''}`;
+    return `${baseUrl}/lead-form.html${qs ? `?${qs}` : ''}`;
   };
 
   const currentLink = generateUrl();
